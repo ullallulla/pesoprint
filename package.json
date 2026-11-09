@@ -1,0 +1,30 @@
+{
+    "name": "pesoprint",
+    "version": "0.0.0",
+    "private": true,
+    "type": "module",
+    "scripts": {
+        "dev": "vp run -r --parallel dev",
+        "build": "vp run -r build",
+        "test": "vp run -r test",
+        "ready": "vp check && vp run -r test && vp run -r build",
+        "db:up": "docker compose up -d --wait postgres",
+        "db:down": "docker compose down",
+        "db:generate": "vp run --filter @app/api db:generate",
+        "db:migrate": "vp run --filter @app/api db:migrate",
+        "prepare": "vp config"
+    },
+    "devDependencies": {
+        "vite-plus": "catalog:"
+    },
+    "devEngines": {
+        "packageManager": {
+            "name": "pnpm",
+            "version": "12.18.0",
+            "onFail": "download"
+        }
+    },
+    "engines": {
+        "node": ">=26"
+    }
+}

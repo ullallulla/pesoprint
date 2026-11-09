@@ -1,0 +1,11 @@
+# Docker builds use the repository root as context (see apps/*/Dockerfile).
+.git
+**/node_modules
+**/dist
+**/build
+**/.react-router
+**/.env
+**/.env.*
+!**/.env.example
+**/coverage
+docs

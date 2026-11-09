@@ -1,0 +1,40 @@
+{
+    "name": "@app/web",
+    "version": "0.0.0",
+    "private": true,
+    "type": "module",
+    "scripts": {
+        "build": "react-router build",
+        "dev": "react-router dev",
+        "start": "react-router-serve ./build/server/index.js",
+        "typegen": "react-router typegen",
+        "test": "vp test"
+    },
+    "dependencies": {
+        "@app/shared": "workspace:*",
+        "@react-router/node": "^8.5.1",
+        "@react-router/serve": "^8.5.1",
+        "class-variance-authority": "catalog:",
+        "cn": "catalog:",
+        "isbot": "catalog:",
+        "lucide-react": "catalog:",
+        "radix-ui": "catalog:",
+        "react": "catalog:",
+        "react-dom": "catalog:",
+        "react-router": "^8.5.1",
+        "zod": "catalog:"
+    },
+    "devDependencies": {
+        "@react-router/dev": "^8.5.1",
+        "@tailwindcss/vite": "catalog:",
+        "@types/node": "catalog:",
+        "@types/react": "catalog:",
+        "@types/react-dom": "catalog:",
+        "shadcn": "catalog:",
+        "tailwindcss": "catalog:",
+        "tw-animate-css": "catalog:",
+        "typescript": "catalog:",
+        "vite": "catalog:",
+        "vite-plus": "catalog:"
+    }
+}
