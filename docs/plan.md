@@ -174,7 +174,7 @@ Each milestone ends with: CI green, deployed to staging, and a short demo you co
 
 ### M0 – Foundation
 
-- Tag the old code as `v0-prototype`, then start fresh on `main`
+- Tag the old code as `v0-prototype`, then start fresh on `master`
 - Vite+ monorepo with `apps/api`, `apps/web`, `packages/shared`, plus local Postgres in Docker Compose
 - **API:** Hono app with a `/api/health` route, a central error handler (consistent JSON errors), request logging, OpenAPI docs at `/api/docs`, Drizzle set up with a first migration
 - **Web:** React Router v7 app with Tailwind + shadcn, your old theme, and the header/footer layout ported over. Typed API client.

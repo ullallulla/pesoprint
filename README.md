@@ -28,8 +28,8 @@ Tooling is [Vite+](https://viteplus.dev) (`vp`): Vite, Vitest, Oxlint, Oxfmt, ts
 
 ```bash
 vp install                              # install dependencies
-cp apps/api/.env.example apps/api/.env  # API settings (database URLs)
-cp apps/web/.env.example apps/web/.env  # web settings (API URL)
+cp apps/api/.env.example apps/api/.env  # API settings (database URLs, Clerk secret key)
+cp apps/web/.env.example apps/web/.env  # web settings (API URL, Clerk keys)
 vp run db:up                            # start Postgres (dev + test databases)
 vp run db:migrate                       # apply database migrations
 vp run dev                              # start the API (:3001) and the web app (:5173)
@@ -38,6 +38,26 @@ vp run dev                              # start the API (:3001) and the web app 
 - Web app: http://localhost:5173
 - API docs (Swagger UI): http://localhost:3001/api/docs
 - OpenAPI document: http://localhost:3001/api/openapi.json
+
+## Authentication (Clerk)
+
+Sign-in is handled by [Clerk](https://clerk.com). The web app sends the user's session token to the API (`Authorization: Bearer …`), and the API verifies it and checks the role.
+
+One-time setup in the [Clerk Dashboard](https://dashboard.clerk.com):
+
+1. **API keys**: copy the publishable key and secret key into `apps/web/.env` and `apps/api/.env`.
+2. **Sessions → Customize session token**: add this claim, so the API can read roles without calling Clerk:
+    ```json
+    { "metadata": "{{user.public_metadata}}" }
+    ```
+3. **Users → your user → Public metadata**: set `{ "role": "admin" }` to get into `/admin`. Sign out and in again so your token picks up the role.
+4. **Webhooks** (optional locally): add an endpoint `https://<public-url>/api/webhooks/clerk` with the `user.created`, `user.updated` and `user.deleted` events, and put its signing secret in `CLERK_WEBHOOK_SIGNING_SECRET`. Locally you need a tunnel (e.g. `cloudflared tunnel --url http://localhost:3001`). The webhook keeps the `users` table in sync.
+
+| Endpoint                   | Access                                  |
+| -------------------------- | --------------------------------------- |
+| `GET /api/me`              | Any signed-in user                      |
+| `GET /api/admin/overview`  | Admins only (`metadata.role = "admin"`) |
+| `POST /api/webhooks/clerk` | Clerk only (signature-verified)         |
 
 ## Everyday commands
 
@@ -64,11 +84,13 @@ Both apps have production images, built from the repository root:
 docker build -f apps/api/Dockerfile -t pesoprint-api .
 docker build -f apps/web/Dockerfile -t pesoprint-web .
 
-docker run --rm -e DATABASE_URL=postgres://... pesoprint-api node dist/migrate.mjs   # migrations
-docker run -p 3001:3001 -e DATABASE_URL=postgres://... pesoprint-api
-docker run -p 3000:3000 -e API_URL=http://<api-host>:3001 pesoprint-web
+docker run --rm -e DATABASE_URL=postgres://... -e CLERK_SECRET_KEY=sk_... pesoprint-api node dist/migrate.mjs
+docker run -p 3001:3001 -e DATABASE_URL=postgres://... -e CLERK_SECRET_KEY=sk_... \
+    -e WEB_ORIGINS=https://<web-origin> -e CLERK_WEBHOOK_SIGNING_SECRET=whsec_... pesoprint-api
+docker run -p 3000:3000 -e API_URL=http://<api-host>:3001 \
+    -e VITE_CLERK_PUBLISHABLE_KEY=pk_... -e CLERK_SECRET_KEY=sk_... pesoprint-web
 ```
 
 ## CI
 
-GitHub Actions (`.github/workflows/ci.yml`) runs on every push to `main` and every pull request: `vp check`, all tests (with a Postgres service for the database tests), the production builds, and both Docker image builds.
+GitHub Actions (`.github/workflows/ci.yml`) runs on every push to `master` and every pull request: `vp check`, all tests (with a Postgres service for the database tests), the production builds, and both Docker image builds.

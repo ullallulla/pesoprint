@@ -6,15 +6,18 @@ import { secureHeaders } from 'hono/secure-headers';
 
 import { errorCodeForStatus, sendError } from './lib/errors.ts';
 import { createRouter } from './lib/router.ts';
+import { adminRoutes, type AdminDeps } from './routes/admin.ts';
 import { healthRoutes, type HealthDeps } from './routes/health.ts';
+import { meRoutes } from './routes/me.ts';
+import { webhookRoutes, type WebhookDeps } from './routes/webhooks.ts';
 
-export interface AppOptions extends HealthDeps {
+export interface AppOptions extends HealthDeps, AdminDeps, WebhookDeps {
     logRequests: boolean;
 }
 
 /**
  * Builds the Hono app without starting a server, so tests can call `app.request()` directly.
- * External dependencies (database, clock, version) are passed in instead of imported.
+ * External dependencies (database, token verification, clock, version) are passed in instead of imported.
  */
 export function createApp(options: AppOptions) {
     const app = createRouter();
@@ -26,8 +29,17 @@ export function createApp(options: AppOptions) {
     }
 
     app.route('/api', healthRoutes(options));
+    app.route('/api', meRoutes(options));
+    app.route('/api', adminRoutes(options));
+    app.route('/api', webhookRoutes(options));
 
     // OpenAPI document + interactive docs
+    app.openAPIRegistry.registerComponent('securitySchemes', 'bearerAuth', {
+        type: 'http',
+        scheme: 'bearer',
+        bearerFormat: 'JWT',
+        description: 'Clerk session token (in the web app: `await getToken()`).',
+    });
     app.doc31('/api/openapi.json', {
         openapi: '3.1.0',
         info: {

@@ -11,6 +11,23 @@ const envSchema = z.object({
         .enum(['true', 'false'])
         .default('true')
         .transform((value) => value === 'true'),
+    /** Clerk secret key, used to verify session tokens sent by the web app. */
+    CLERK_SECRET_KEY: z.string().startsWith('sk_', 'CLERK_SECRET_KEY must start with sk_'),
+    /** Signing secret of the Clerk webhook endpoint. Without it, POST /api/webhooks/clerk answers 503. */
+    CLERK_WEBHOOK_SIGNING_SECRET: z.string().startsWith('whsec_').optional(),
+    /**
+     * Comma-separated origins of the web app. Session tokens issued for any other origin are rejected
+     * (Clerk "authorized parties" check).
+     */
+    WEB_ORIGINS: z
+        .string()
+        .default('http://localhost:5173')
+        .transform((value) =>
+            value
+                .split(',')
+                .map((origin) => origin.trim())
+                .filter(Boolean),
+        ),
 });
 
 export type Env = z.infer<typeof envSchema>;

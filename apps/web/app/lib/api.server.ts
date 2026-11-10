@@ -21,6 +21,8 @@ export interface ApiFetchOptions extends RequestInit {
     acceptStatuses?: number[];
     /** Override the API base URL (used in tests). */
     baseUrl?: string;
+    /** Clerk session token of the signed-in user; sent as `Authorization: Bearer <token>`. */
+    token?: string | null;
 }
 
 /**
@@ -30,12 +32,15 @@ export interface ApiFetchOptions extends RequestInit {
 export async function apiFetch<TSchema extends z.ZodType>(
     path: string,
     schema: TSchema,
-    { acceptStatuses = [], baseUrl, ...init }: ApiFetchOptions = {},
+    { acceptStatuses = [], baseUrl, token, ...init }: ApiFetchOptions = {},
 ): Promise<z.output<TSchema>> {
     const url = new URL(path, baseUrl ?? getEnv().API_URL);
     const headers = new Headers(init.headers);
     if (!headers.has('accept')) {
         headers.set('accept', 'application/json');
+    }
+    if (token) {
+        headers.set('authorization', `Bearer ${token}`);
     }
     const response = await fetch(url, { ...init, headers });
 

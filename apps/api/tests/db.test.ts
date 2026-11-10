@@ -5,6 +5,7 @@ import { afterAll, beforeAll, describe, expect, test } from 'vite-plus/test';
 
 import { createDatabase, pingDatabase, runMigrations } from '../src/db/client.ts';
 import { users } from '../src/db/schema.ts';
+import { createUsersService } from '../src/services/users.ts';
 
 const url = process.env.TEST_DATABASE_URL;
 
@@ -43,5 +44,20 @@ describe.skipIf(!url)('database (integration)', () => {
         await expect(db.insert(users).values({ id: 'user_test_2', email: 'buyer@example.com' })).rejects.toMatchObject({
             cause: { code: '23505' }, // Postgres unique_violation
         });
+    });
+
+    test('users service: upsert creates, then updates, then remove deletes', async () => {
+        const service = createUsersService(db);
+        const before = await service.count();
+
+        await service.upsert({ id: 'user_svc', email: 'svc@example.com', displayName: 'First' });
+        await service.upsert({ id: 'user_svc', email: 'svc2@example.com', displayName: 'Second', role: 'admin' });
+
+        const [row] = await db.select().from(users).where(eq(users.id, 'user_svc'));
+        expect(row).toMatchObject({ email: 'svc2@example.com', displayName: 'Second', role: 'admin' });
+        expect(await service.count()).toBe(before + 1);
+
+        await service.remove('user_svc');
+        expect(await service.count()).toBe(before);
     });
 });

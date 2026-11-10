@@ -6,7 +6,8 @@ import { cn } from '~/lib/utils';
 // Only routes that exist are linked. More arrive with each milestone (catalogue in M1).
 const navItems = [{ to: '/', label: 'Home' }];
 
-export function SiteHeader() {
+/** `children` is the right-hand side (sign-in / user menu). Error pages render the header without it. */
+export function SiteHeader({ children }: { children?: React.ReactNode }) {
     return (
         <header className='sticky top-0 z-50 w-full border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60'>
             <div className='mx-auto flex h-16 max-w-7xl items-center justify-between px-4'>
@@ -33,7 +34,7 @@ export function SiteHeader() {
                         ))}
                     </nav>
                 </div>
-                {/* Sign-in (Clerk) goes here once the Clerk app is set up. */}
+                <div className='flex items-center gap-2'>{children}</div>
             </div>
         </header>
     );

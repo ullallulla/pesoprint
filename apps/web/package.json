@@ -12,6 +12,7 @@
     },
     "dependencies": {
         "@app/shared": "workspace:*",
+        "@clerk/react-router": "catalog:",
         "@react-router/node": "^8.5.1",
         "@react-router/serve": "^8.5.1",
         "class-variance-authority": "catalog:",

@@ -1,16 +1,9 @@
 import { apiErrorSchema, healthResponseSchema } from '@app/shared';
 import { describe, expect, test } from 'vite-plus/test';
 
-import { createApp } from '../src/app.ts';
+import { buildApp as buildTestApp } from './helpers.ts';
 
-function buildApp(databaseUp = true) {
-    return createApp({
-        checkDatabase: async () => databaseUp,
-        version: '1.2.3',
-        startedAt: new Date(Date.now() - 5_000),
-        logRequests: false,
-    });
-}
+const buildApp = (databaseUp = true) => buildTestApp({ checkDatabase: async () => databaseUp });
 
 describe('GET /api/health', () => {
     test('returns 200 and ok when the database is up', async () => {

@@ -1,11 +1,18 @@
+import { ClerkProvider } from '@clerk/react-router';
+import { clerkMiddleware, rootAuthLoader } from '@clerk/react-router/server';
 import { isRouteErrorResponse, Link, Links, Meta, Outlet, Scripts, ScrollRestoration } from 'react-router';
 
+import { HeaderAuth } from '~/components/header-auth';
 import { SiteFooter } from '~/components/site-footer';
 import { SiteHeader } from '~/components/site-header';
 import { Button } from '~/components/ui/button';
 
 import type { Route } from './+types/root';
 import './app.css';
+
+// Clerk reads the session cookie on every request; rootAuthLoader passes the auth state to the browser.
+export const middleware: Route.MiddlewareFunction[] = [clerkMiddleware()];
+export const loader = (args: Route.LoaderArgs) => rootAuthLoader(args);
 
 export const links: Route.LinksFunction = () => [
     { rel: 'preconnect', href: 'https://fonts.googleapis.com' },
@@ -26,9 +33,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
                 <Links />
             </head>
             <body className='flex min-h-screen flex-col'>
-                <SiteHeader />
-                <div className='flex flex-1 flex-col'>{children}</div>
-                <SiteFooter />
+                {children}
                 <ScrollRestoration />
                 <Scripts />
             </body>
@@ -36,10 +41,21 @@ export function Layout({ children }: { children: React.ReactNode }) {
     );
 }
 
-export default function App() {
-    return <Outlet />;
+export default function App({ loaderData }: Route.ComponentProps) {
+    return (
+        <ClerkProvider loaderData={loaderData}>
+            <SiteHeader>
+                <HeaderAuth />
+            </SiteHeader>
+            <div className='flex flex-1 flex-col'>
+                <Outlet />
+            </div>
+            <SiteFooter />
+        </ClerkProvider>
+    );
 }
 
+// Renders outside <ClerkProvider> (the root loader may have failed), so the header has no sign-in here.
 export function ErrorBoundary({ error }: Route.ErrorBoundaryProps) {
     let title = 'Something went wrong';
     let details = 'An unexpected error occurred. Please try again.';
@@ -59,17 +75,21 @@ export function ErrorBoundary({ error }: Route.ErrorBoundaryProps) {
     }
 
     return (
-        <main className='mx-auto flex w-full max-w-7xl flex-1 flex-col items-start gap-4 px-4 py-16'>
-            <h1 className='text-3xl font-bold'>{title}</h1>
-            <p className='text-muted-foreground'>{details}</p>
-            <Button asChild variant='outline'>
-                <Link to='/'>Back to home</Link>
-            </Button>
-            {stack && (
-                <pre className='w-full overflow-x-auto rounded-md bg-muted p-4 text-sm'>
-                    <code>{stack}</code>
-                </pre>
-            )}
-        </main>
+        <>
+            <SiteHeader />
+            <main className='mx-auto flex w-full max-w-7xl flex-1 flex-col items-start gap-4 px-4 py-16'>
+                <h1 className='text-3xl font-bold'>{title}</h1>
+                <p className='text-muted-foreground'>{details}</p>
+                <Button asChild variant='outline'>
+                    <Link to='/'>Back to home</Link>
+                </Button>
+                {stack && (
+                    <pre className='w-full overflow-x-auto rounded-md bg-muted p-4 text-sm'>
+                        <code>{stack}</code>
+                    </pre>
+                )}
+            </main>
+            <SiteFooter />
+        </>
     );
 }

@@ -16,10 +16,13 @@ export function errorCodeForStatus(status: number): ApiErrorCode {
     return codeByStatus[status] ?? (status >= 500 ? 'internal_error' : 'bad_request');
 }
 
-/** Sends an error in the shared `ApiError` shape so every client can handle errors the same way. */
-export function sendError(
+/**
+ * Sends an error in the shared `ApiError` shape so every client can handle errors the same way.
+ * The status stays a literal type (e.g. 503), so OpenAPI routes can check it against their documented responses.
+ */
+export function sendError<TStatus extends ContentfulStatusCode>(
     c: Context,
-    status: ContentfulStatusCode,
+    status: TStatus,
     code: ApiErrorCode,
     message: string,
     issues?: NonNullable<ApiError['error']['issues']>,

@@ -15,6 +15,7 @@
     },
     "dependencies": {
         "@app/shared": "workspace:*",
+        "@clerk/backend": "catalog:",
         "@hono/node-server": "catalog:",
         "@hono/swagger-ui": "catalog:",
         "@hono/zod-openapi": "catalog:",
