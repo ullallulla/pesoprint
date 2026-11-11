@@ -11,6 +11,7 @@
         "test": "vp test",
         "db:generate": "drizzle-kit generate",
         "db:migrate": "vpx src/migrate.ts",
+        "db:seed": "vpx src/seed.ts",
         "db:studio": "drizzle-kit studio"
     },
     "dependencies": {

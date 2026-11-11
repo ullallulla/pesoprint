@@ -12,6 +12,7 @@
         "db:down": "docker compose down",
         "db:generate": "vp run --filter @app/api db:generate",
         "db:migrate": "vp run --filter @app/api db:migrate",
+        "db:seed": "vp run --filter @app/api db:seed",
         "prepare": "vp config"
     },
     "devDependencies": {
