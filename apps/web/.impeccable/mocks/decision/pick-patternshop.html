@@ -1,0 +1,148 @@
+<!doctype html>
+<html lang="en">
+    <head>
+        <meta charset="utf-8" />
+        <title>The Pattern Shop — Pesoprint first viewport sketch</title>
+        <link
+            href="https://fonts.googleapis.com/css2?family=Stardos+Stencil:wght@700&family=Archivo:wght@500;700&display=swap"
+            rel="stylesheet"
+        />
+        <style>
+            * {
+                box-sizing: border-box;
+                margin: 0;
+                padding: 0;
+            }
+            html,
+            body {
+                width: 1440px;
+                height: 900px;
+                overflow: hidden;
+            }
+            body {
+                background: #8c8f8a;
+                color: #151515;
+                font-family: 'Archivo', sans-serif;
+                position: relative;
+            }
+            body::before {
+                content: '';
+                position: absolute;
+                inset: 0;
+                background: radial-gradient(#0000001a 1px, transparent 1.4px) 0 0/6px 6px;
+            }
+            nav {
+                position: relative;
+                height: 80px;
+                background: #151515;
+                color: #f1f1ec;
+                display: flex;
+                align-items: center;
+                gap: 34px;
+                padding: 0 56px;
+                font: 700 17px 'Archivo';
+                text-transform: uppercase;
+                letter-spacing: 0.08em;
+            }
+            nav .mark {
+                font: 700 28px 'Stardos Stencil';
+                color: #e8b90f;
+                letter-spacing: 0.04em;
+            }
+            nav .sp {
+                flex: 1;
+            }
+            h1 {
+                position: absolute;
+                left: 56px;
+                top: 140px;
+                width: 620px;
+                font: 700 84px/0.92 'Stardos Stencil';
+                text-transform: uppercase;
+            }
+            .search {
+                position: absolute;
+                left: 56px;
+                top: 560px;
+                width: 560px;
+                height: 64px;
+                background: #f1f1ec;
+                border: 3px solid #151515;
+                display: flex;
+                align-items: center;
+                padding: 0 22px;
+                font: 500 20px 'Archivo';
+            }
+            .bench {
+                position: absolute;
+                left: 0;
+                right: 0;
+                bottom: 0;
+                height: 150px;
+                background: #3a3d3b;
+            }
+            .pattern {
+                position: absolute;
+                right: 180px;
+                bottom: 150px;
+                width: 520px;
+                height: 640px;
+            }
+            .tag {
+                position: absolute;
+                width: 150px;
+                height: 76px;
+                background: #e8b90f;
+                border: 3px solid #151515;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                font: 700 26px 'Stardos Stencil';
+                text-transform: uppercase;
+            }
+            .tag::before {
+                content: '';
+                position: absolute;
+                left: 12px;
+                width: 14px;
+                height: 14px;
+                border-radius: 50%;
+                background: #8c8f8a;
+                border: 2px solid #151515;
+            }
+            .no {
+                position: absolute;
+                right: 150px;
+                bottom: 40px;
+                color: #f1f1ec;
+                font: 700 44px 'Stardos Stencil';
+                letter-spacing: 0.06em;
+            }
+        </style>
+    </head>
+    <body>
+        <nav>
+            <span class="mark">PESOPRINT</span><span>Models</span><span>Free</span><span>Print service</span
+            ><span class="sp"></span><span>Cart (0)</span>
+        </nav>
+        <h1>One master. Three ways to copy it.</h1>
+        <div class="search">Search patterns</div>
+        <div class="bench"></div>
+        <svg class="pattern" viewBox="0 0 520 640" aria-hidden="true">
+            <path
+                d="M200 0h120v90c0 40 170 110 170 300 0 150-110 250-230 250S30 540 30 390C30 200 200 130 200 90z"
+                fill="#B3261E"
+            />
+            <rect x="200" y="0" width="120" height="70" fill="#151515" />
+            <g fill="#E8B90F">
+                <rect x="200" y="14" width="120" height="12" />
+                <rect x="200" y="42" width="120" height="12" />
+            </g>
+            <line x1="260" y1="0" x2="260" y2="640" stroke="#151515" stroke-width="4" stroke-dasharray="14 10" />
+        </svg>
+        <div class="tag" style="right: 640px; top: 420px; transform: rotate(-8deg)">Free</div>
+        <div class="tag" style="right: 110px; top: 300px; transform: rotate(6deg)">File</div>
+        <div class="tag" style="right: 150px; top: 520px; transform: rotate(-4deg); background: #f1f1ec">Print</div>
+        <div class="no">PATTERN № 014</div>
+    </body>
+</html>

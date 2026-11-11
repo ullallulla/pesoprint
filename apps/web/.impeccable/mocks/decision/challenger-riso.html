@@ -1,0 +1,113 @@
+<!doctype html>
+<html lang="en">
+    <head>
+        <meta charset="utf-8" />
+        <title>Two-ink Riso — Pesoprint first viewport sketch</title>
+        <link
+            href="https://fonts.googleapis.com/css2?family=Anton&family=Courier+Prime:wght@700&display=swap"
+            rel="stylesheet"
+        />
+        <style>
+            * {
+                box-sizing: border-box;
+                margin: 0;
+                padding: 0;
+            }
+            html,
+            body {
+                width: 1440px;
+                height: 900px;
+                overflow: hidden;
+            }
+            body {
+                background: #efebe1;
+                color: #0078bf;
+                font-family: 'Courier Prime', monospace;
+                position: relative;
+            }
+            nav {
+                height: 84px;
+                margin: 0 48px;
+                display: flex;
+                align-items: center;
+                gap: 36px;
+                border-bottom: 3px solid #0078bf;
+                font: 700 18px 'Courier Prime';
+                text-transform: uppercase;
+            }
+            nav .mark {
+                font: 400 34px 'Anton';
+                color: #0078bf;
+            }
+            nav .sp {
+                flex: 1;
+            }
+            h1 {
+                position: absolute;
+                left: 48px;
+                top: 140px;
+                font: 400 156px/0.9 'Anton';
+                text-transform: uppercase;
+                color: #0078bf;
+                mix-blend-mode: multiply;
+            }
+            h1.pink {
+                color: #ff48b0;
+                transform: translate(7px, 5px);
+            }
+            .shelf {
+                position: absolute;
+                right: 48px;
+                top: 130px;
+                width: 600px;
+                height: 600px;
+                display: grid;
+                grid-template-columns: repeat(3, 1fr);
+                gap: 14px;
+                padding: 14px;
+                border: 3px solid #ff48b0;
+            }
+            .shelf div {
+                background: radial-gradient(circle, #0078bf 34%, transparent 36%) 0 0/9px 9px;
+                mix-blend-mode: multiply;
+            }
+            .shelf div:nth-child(odd) {
+                background: radial-gradient(circle, #ff48b0 34%, transparent 36%) 0 0/9px 9px;
+            }
+            .ways {
+                position: absolute;
+                left: 48px;
+                top: 640px;
+                display: flex;
+                gap: 16px;
+            }
+            .ways span {
+                border: 3px solid #0078bf;
+                padding: 18px 26px;
+                font: 700 22px 'Courier Prime';
+                text-transform: uppercase;
+                box-shadow: 5px 4px 0 #ff48b0;
+            }
+        </style>
+    </head>
+    <body>
+        <nav>
+            <span class="mark">PESOPRINT</span><span>Models</span><span>Free</span><span>Print</span
+            ><span class="sp"></span><span>Search</span><span>Cart (0)</span>
+        </nav>
+        <h1>Download.<br />Buy. Print.</h1>
+        <h1 class="pink" aria-hidden="true">Download.<br />Buy. Print.</h1>
+        <div class="shelf" aria-hidden="true">
+            <div></div>
+            <div></div>
+            <div></div>
+            <div></div>
+            <div></div>
+            <div></div>
+            <div></div>
+            <div></div>
+            <div></div>
+        </div>
+        <div class="ways"><span>Free models</span><span>Buy files</span><span>Order a print</span></div>
+    </body>
+</html>

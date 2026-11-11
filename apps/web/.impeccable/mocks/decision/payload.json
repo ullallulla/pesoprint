@@ -1,0 +1,164 @@
+{
+    "title": "Choose Pesoprint's visual world",
+    "question": "The roll assigned Colourway, a world taken from Nordic screen-printed textiles. Keep it, take an alternate, or re-roll.",
+    "options": [
+        {
+            "id": "assigned",
+            "kind": "assigned",
+            "label": "Colourway",
+            "kicker": "THE ROLL",
+            "lineage": "Nordic screen-printed furnishing textiles (1950s–70s) and the selvedge printed along each bolt",
+            "thesis": "Every model is a pattern sold in colourways, and the page takes the colour you choose.",
+            "palette": ["#2B44C7", "#F2B92B", "#1F5B45", "#E2482E", "#F5F6F2", "#14161A"],
+            "materials": ["flat screen-print ink", "selvedge registration squares", "large repeat shapes"],
+            "viewport": "A full-bleed cobalt field with one big object photo, a selvedge strip naming the model and its colour squares, the three ways to get it as working buttons, and catalogue search.",
+            "risk": "Strong colour fields can fight real photos of coloured prints, so it needs your own photography on matching backdrops. It must also stay clear of any one famous textile house's motifs.",
+            "raised": [
+                {
+                    "from": "challenger-sevenseg",
+                    "raise": "Ghost cells: an out-of-stock colour or a missing print option stays in place, drawn faint, so the option panel never reflows."
+                },
+                {
+                    "from": "challenger-provenance",
+                    "raise": "Price certainty is shown in the type: confirmed prices are set solid, and estimates such as shipping before an address are set in outline with 'from'."
+                },
+                {
+                    "from": "challenger-film",
+                    "raise": "Edge codes: every model carries a catalogue number in its selvedge on cards, the product page, the cart and receipts."
+                },
+                {
+                    "from": "challenger-mezzotint",
+                    "raise": "No object is ever shown on white. Each photo sits on its own colourway field."
+                }
+            ],
+            "html": ".impeccable/mocks/decision/assigned.html",
+            "comp": ".impeccable/mocks/decision/assigned.webp"
+        },
+        {
+            "id": "model-pick",
+            "kind": "pick",
+            "label": "Swatch Deck",
+            "kicker": "IMPECCABLE’S PICK",
+            "lineage": "filament sample swatches and paint-company colour fan decks",
+            "thesis": "The catalogue as a fanned swatch deck: each model is a tab that lists its materials and colours.",
+            "palette": ["#EDEDEA", "#1C1E22", "#E94F37", "#2E86AB", "#F6C90E", "#3BB273"],
+            "materials": ["moulded plastic swatch tabs", "embossed labels", "ring-bound fan"],
+            "viewport": "A deck of model swatch tabs fanned across the right two-thirds, with the headline, search and the three ways to get a model on the left.",
+            "risk": "Familiar: filament brands already use swatch grids, so it may read as a filament shop more than a model shop. Where most runs in this category land.",
+            "html": ".impeccable/mocks/decision/model-pick.html",
+            "comp": ".impeccable/mocks/decision/model-pick.webp"
+        },
+        {
+            "id": "challenger-riso",
+            "kind": "challenger",
+            "catalogId": "posters-covers-sleeves-risograph-zine-cover",
+            "label": "Two-ink Riso",
+            "verdict": "competitive",
+            "lineage": "small-press risograph zine covers",
+            "thesis": "Pesoprint as a small print shop: every page pulled in two misregistered spot inks.",
+            "palette": ["#FF48B0", "#0078BF", "#EFEBE1", "#5A3D86"],
+            "materials": ["fluorescent pink and blue spot ink", "newsprint stock", "fixed-size halftone"],
+            "viewport": "A misregistered two-ink headline, a halftoned shelf of models, and the three ways to get a model as stamped buttons.",
+            "case": "Holds on audience: DIY makers know this print-shop culture. Loses on clarity: a two-ink halftone can't show a model's real filament colour, and colour choice is the product.",
+            "risk": "Fights the colour picker, and the look is getting common on small-shop sites.",
+            "html": ".impeccable/mocks/decision/challenger-riso.html",
+            "comp": ".impeccable/mocks/decision/challenger-riso.webp",
+            "hero": "https://impeccable.style/worlds/cards/posters-covers-sleeves-risograph-zine-cover-hero.webp"
+        },
+        {
+            "id": "challenger-sevenseg",
+            "kind": "challenger",
+            "catalogId": "signals-instruments-seven-segment-alarm-clock",
+            "label": "Seven-Segment",
+            "verdict": "declined",
+            "lineage": "LED clocks, price totems and scoreboards",
+            "thesis": "Prices and counts lit in segment digits on a near-black panel.",
+            "palette": ["#111111", "#FF3B1F", "#3A1410"],
+            "materials": ["LED segments", "ghost cells"],
+            "viewport": "A price totem stack of models with lit prices.",
+            "case": "Loses both: it reads as a printer control panel, and it hides the objects.",
+            "risk": "Becomes a costume of the printer's own display.",
+            "kept": "Ghost cells: unavailable options keep their place, unlit.",
+            "hero": "https://impeccable.style/worlds/cards/signals-instruments-seven-segment-alarm-clock-hero.webp"
+        },
+        {
+            "id": "challenger-provenance",
+            "kind": "challenger",
+            "catalogId": "exhibition-museum-curation-provenance-ribbon",
+            "label": "Provenance Ribbon",
+            "verdict": "declined",
+            "lineage": "museum provenance records",
+            "thesis": "Each object's life, from design to file to print to parcel, as one ribbon.",
+            "palette": ["#E9DFC8", "#B0182A", "#8A8A8A"],
+            "materials": ["archival buff", "silk ribbon"],
+            "viewport": "One ribbon tracing a model from sketch to shipped parcel.",
+            "case": "Loses both: it suits order tracking but not browsing, and the buff and serif lean to the cream default.",
+            "risk": "Heavy for a shop's first page.",
+            "kept": "Known vs estimated prices told apart in the type.",
+            "hero": "https://impeccable.style/worlds/cards/exhibition-museum-curation-provenance-ribbon-hero.webp"
+        },
+        {
+            "id": "challenger-film",
+            "kind": "challenger",
+            "catalogId": "cinema-cinematography-editing-hand-processed-film-bloom",
+            "label": "Hand-processed 16mm",
+            "verdict": "declined",
+            "lineage": "hand-processed film strips",
+            "thesis": "Models shown frame by frame on a scratched film strip.",
+            "palette": ["#0E0E0E", "#9A9A94", "#F07A2A"],
+            "materials": ["emulsion grain", "sprocket edge codes"],
+            "viewport": "A strip of model frames with edge-code numbers.",
+            "case": "Loses both: no link to printing, and the grain hides the detail of the prints.",
+            "risk": "Pure mood.",
+            "kept": "Edge codes: every model numbered in its margin.",
+            "hero": "https://impeccable.style/worlds/cards/cinema-cinematography-editing-hand-processed-film-bloom-hero.webp"
+        },
+        {
+            "id": "challenger-mezzotint",
+            "kind": "challenger",
+            "catalogId": "ink-pigment-printmaking-mezzotint-velvet-night",
+            "label": "Mezzotint Night",
+            "verdict": "declined",
+            "lineage": "mezzotint printmaking",
+            "thesis": "Objects burnished out of velvet black.",
+            "palette": ["#0B0B0C", "#D9D9D6", "#6B4E3A"],
+            "materials": ["rocked plate black", "burnished highlights"],
+            "viewport": "A single model emerging from black.",
+            "case": "Loses both: luxury mood, with no room for colour choice.",
+            "risk": "Hides colour, which is the product.",
+            "kept": "Objects never sit on plain white.",
+            "hero": "https://impeccable.style/worlds/cards/ink-pigment-printmaking-mezzotint-velvet-night-hero.webp"
+        },
+        {
+            "id": "challenger-algorave",
+            "kind": "challenger",
+            "catalogId": "medium-native-algorave-source-floor",
+            "label": "Algorave Floor",
+            "verdict": "declined",
+            "lineage": "live-coded music nights",
+            "thesis": "The catalogue as a live code buffer.",
+            "palette": ["#050505", "#39FF88", "#FF2BD6", "#FFB000"],
+            "materials": ["projected mono code"],
+            "viewport": "A code buffer listing models as patterns.",
+            "case": "Loses both: the neon-on-black tech look, and nothing to do with objects.",
+            "risk": "The dark tech cliché.",
+            "kept": "Preview a change before it applies (the price updates as you pick).",
+            "hero": "https://impeccable.style/worlds/cards/medium-native-algorave-source-floor-hero.webp"
+        }
+    ],
+    "reroll": { "registers": ["safer", "bolder"] },
+    "buildPath": { "value": "code" },
+    "canon": true,
+    "canonCard": {
+        "kind": "canon",
+        "label": "The category standard",
+        "thesis": "A 3D-model site like the big repositories, done very well.",
+        "palette": ["#FFFFFF", "#111827", "#F26B1D", "#F3F4F6"],
+        "materials": ["clean card grid", "product photography", "top search bar"],
+        "viewport": "A search-led header, category chips, and rows of model cards with price and download badges.",
+        "risk": "Looks like every other model repository by design.",
+        "html": ".impeccable/mocks/decision/canon.html",
+        "comp": ".impeccable/mocks/decision/canon.webp"
+    },
+    "steer": true
+}

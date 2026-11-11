@@ -107,27 +107,30 @@ pesoprint/
 
 ---
 
-## 3. Data model (first draft)
+## 3. Data model
 
-Money is stored as **integer cents** with a `currency` column. Every order line stores a **snapshot** of the price and title at the moment of purchase.
+Money is stored as **integer cents**. Catalogue prices are EUR and **include VAT** (what the consumer sees); orders also store a `currency`. Every order line stores a **snapshot** of the price and title at the moment of purchase.
 
 ```
 users            id (Clerk user id, text PK), email, display_name, role (customer|admin|creator),
                  created_at
                  -- creator fields (bio, avatar, mollie_organization_id) are added later
 
-categories       id, slug (unique), name, parent_id?, position
+categories       id, slug (unique), name, description?, parent_id? → categories, position
+                 -- at most 2 levels; depth and cycles checked in the category service
 
-products         id, slug (unique), creator_id → users, category_id → categories,
-                 title, description, status (draft|published|archived),
-                 is_free, digital_price_cents?, print_base_price_cents?,
-                 license, search_vector (tsvector),
-                 download_count, rating_avg, rating_count,   -- denormalised for fast listing
-                 created_at, updated_at, published_at
+products         id, slug (unique), creator_id → users, category_id? → categories,
+                 title, description (markdown), status (draft|published|archived),
+                 digital_price_cents?,      -- null = no file offered, 0 = free download, > 0 = paid
+                 print_base_price_cents?,   -- null = not offered as a print
+                 license?,                  -- one per model, Printables-style list (packages/shared)
+                 size_x/y/z_mm?, print_weight_g?, featured_at?,
+                 search_vector (generated tsvector), created_at, updated_at, published_at
+                 -- download_count (M2) and rating_sum/rating_count (M5) are added in their milestones
 
-product_images   id, product_id, storage_key, alt, position
-product_files    id, product_id, kind (download|preview), storage_key,
-                 filename, format (stl|3mf|glb|step), size_bytes
+product_images   id, product_id, storage_key, alt, width, height, size_bytes, position, created_at
+product_files    id, product_id, kind (download|preview), format (stl|3mf|step|obj|glb),
+                 filename, storage_key, size_bytes, sha256?, position, created_at
 
 materials        id, name (PLA, PETG, …), surcharge_cents, active
 colours          id, material_id, name, hex, in_stock
@@ -164,6 +167,13 @@ favourites       user_id, product_id, created_at
     2. The server re-prices everything, calculates VAT, and creates an order with status `pending`.
     3. The server creates a Mollie payment with `redirectUrl` and `webhookUrl`, then redirects the buyer to Mollie.
     4. Mollie calls our webhook with the payment id. We **fetch the payment from the Mollie API** (this is the verification) and set the order to `paid` only if Mollie says it's paid.
+- **Catalogue rules enforced by the database** (CHECK constraints, M1): a published product has `published_at`, a category, at least one price, and a licence if a file is offered. Paid files must use one of the shop's own licences (Standard Digital File or Commercial Use), never CC or open-source.
+- **`digital_price_cents` is never tested for truthiness.** `0` (free) and `null` (no file) mean different things; use the shared helpers.
+- **Featured products:** pick any product by setting `featured_at`; the home page shows published ones, most recently featured first.
+- **File access:**
+    - Images and the preview GLB are in the **public** bucket and served directly. The 3D viewer is public on every product, including paid ones.
+    - The **preview GLB is always a decimated (low-poly) mesh**, good for judging the shape but not for printing. Anything the viewer shows can be saved from the browser, so decimation, not access control, is what protects paid models.
+    - Download files are in the **private** bucket. A single `canDownload(product, file, user)` check decides access: admins and the creator always; free + published for anyone; paid + published/archived with an entitlement (buyers keep access after archiving); otherwise `404`. Allowed requests are redirected to a ~5-minute signed URL.
 - **Getting ready for creators:** `products.creator_id` exists from day one. In the MVP it always points to you.
 
 ---
@@ -196,7 +206,7 @@ Each milestone ends with: CI green, deployed to staging, and a short demo you co
 
 ### M2 – Free downloads (first public launch)
 
-- `GET /api/downloads/:productId` endpoint: checks the model is free and published (or that the user owns it), logs a download event, and redirects to a short-lived signed R2 URL
+- `GET /api/downloads/:productId/files/:fileId` endpoint: checks the model is free and published (or that the user owns it), logs a download event, and redirects to a short-lived signed R2 URL
 - Rate limiting per IP hash
 - Download counter shown on product cards
 - Basic legal pages (terms, privacy) and cookie consent before PostHog loads

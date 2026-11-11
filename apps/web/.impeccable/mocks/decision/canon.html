@@ -1,0 +1,140 @@
+<!doctype html>
+<html lang="en">
+    <head>
+        <meta charset="utf-8" />
+        <title>Category standard — Pesoprint first viewport sketch</title>
+        <style>
+            * {
+                box-sizing: border-box;
+                margin: 0;
+                padding: 0;
+            }
+            html,
+            body {
+                width: 1440px;
+                height: 900px;
+                overflow: hidden;
+            }
+            body {
+                background: #fff;
+                color: #111827;
+                font-family: system-ui, sans-serif;
+            }
+            header {
+                height: 76px;
+                display: flex;
+                align-items: center;
+                gap: 28px;
+                padding: 0 48px;
+                border-bottom: 1px solid #e5e7eb;
+            }
+            .mark {
+                font: 800 26px system-ui;
+            }
+            .search {
+                flex: 1;
+                max-width: 640px;
+                height: 46px;
+                border-radius: 10px;
+                background: #f3f4f6;
+                display: flex;
+                align-items: center;
+                padding: 0 18px;
+            }
+            .sp {
+                flex: 1;
+            }
+            .btn {
+                background: #f26b1d;
+                color: #fff;
+                padding: 12px 20px;
+                border-radius: 10px;
+                font-weight: 700;
+            }
+            .chips {
+                display: flex;
+                gap: 10px;
+                padding: 20px 48px;
+            }
+            .chips span {
+                padding: 10px 16px;
+                border-radius: 999px;
+                background: #f3f4f6;
+                font-weight: 600;
+            }
+            .banner {
+                margin: 0 48px;
+                height: 240px;
+                border-radius: 16px;
+                background: #111827;
+                color: #fff;
+                padding: 44px;
+            }
+            .banner h1 {
+                font: 800 52px/1.05 system-ui;
+                letter-spacing: -0.02em;
+                max-width: 720px;
+            }
+            .grid {
+                display: grid;
+                grid-template-columns: repeat(5, 1fr);
+                gap: 20px;
+                padding: 28px 48px;
+            }
+            .card .img {
+                aspect-ratio: 1;
+                border-radius: 12px;
+                background: #e5e7eb;
+                position: relative;
+            }
+            .card .img b {
+                position: absolute;
+                left: 10px;
+                top: 10px;
+                background: #f26b1d;
+                color: #fff;
+                font-size: 13px;
+                padding: 4px 8px;
+                border-radius: 6px;
+            }
+            .card p {
+                margin-top: 10px;
+                font-weight: 600;
+            }
+        </style>
+    </head>
+    <body>
+        <header>
+            <span class="mark">pesoprint</span>
+            <div class="search">Search 3D models</div>
+            <span class="sp"></span><span>Sign in</span><span class="btn">Cart</span>
+        </header>
+        <div class="chips">
+            <span>All</span><span>Free</span><span>Home</span><span>Functional</span><span>Toys</span
+            ><span>Print service</span>
+        </div>
+        <div class="banner"><h1>3D models to download, buy, or have printed.</h1></div>
+        <div class="grid">
+            <div class="card">
+                <div class="img"><b>Free</b></div>
+                <p>Model name</p>
+            </div>
+            <div class="card">
+                <div class="img"></div>
+                <p>Model name</p>
+            </div>
+            <div class="card">
+                <div class="img"><b>Free</b></div>
+                <p>Model name</p>
+            </div>
+            <div class="card">
+                <div class="img"></div>
+                <p>Model name</p>
+            </div>
+            <div class="card">
+                <div class="img"></div>
+                <p>Model name</p>
+            </div>
+        </div>
+    </body>
+</html>

@@ -1,0 +1,171 @@
+{
+    "title": "Choose Pesoprint's visual world: retro and steampunk",
+    "question": "Re-rolled with your steer. The roll assigned The Ironmonger's Window. Keep it, take my pick, or re-roll again. None of the dealt catalogue worlds beat it, so they appear as compact rows.",
+    "options": [
+        {
+            "id": "assigned-ironmonger",
+            "kind": "assigned",
+            "label": "The Ironmonger's Window",
+            "kicker": "THE ROLL",
+            "lineage": "Victorian ironmongers' and engineers' supply shops: reverse-gilded glass fascias, enamel signs, brass fittings, window displays",
+            "thesis": "Pesoprint as a workshop shopfront: the objects sit in the window, and gold leaf on black glass names the shop.",
+            "palette": ["#0F1412", "#D4AF5A", "#1F3D2B", "#7A1F1F", "#B08D3C", "#EEF0EA"],
+            "materials": ["reverse-gilded black glass", "vitreous enamel signs", "brass rails and ticket holders"],
+            "viewport": "A gilded glass fascia across the top, then a three-bay shop window (Free, Files, Printed to order), each bay a shelf of real objects with brass price tickets, and search set on a brass door plate.",
+            "risk": "Can slide into steampunk costume (gears everywhere, sepia). Colours must stay true, and gold-leaf type only works at display sizes.",
+            "raised": [
+                {
+                    "from": "challenger-darkroom",
+                    "raise": "Test strip: the colour picker shows the model in every available colour as one banded strip before you commit."
+                },
+                {
+                    "from": "challenger-papercut",
+                    "raise": "No gradients or soft shadows. Depth in the window comes only from overlapping flat planes: glass, shelf, card, object."
+                },
+                {
+                    "from": "challenger-bitmap",
+                    "raise": "One specimen scale: the gilded face is used at three fixed sizes (fascia, window card, ticket), never mixed with a second display face."
+                },
+                {
+                    "from": "challenger-zine",
+                    "raise": "Show-cards annotate: small hand-lettered cards point at real facts on each object (size, material, print time)."
+                },
+                {
+                    "from": "challenger-bass",
+                    "raise": "One idea per bay: each section below the window is a single full-width bay with one job."
+                },
+                {
+                    "from": "challenger-sleepcity",
+                    "raise": "Each department (Free, Files, Print service) keeps its own enamel sign colour everywhere on the site."
+                }
+            ],
+            "html": ".impeccable/mocks/decision/assigned-ironmonger.html",
+            "comp": ".impeccable/mocks/decision/assigned-ironmonger.webp"
+        },
+        {
+            "id": "pick-patternshop",
+            "kind": "pick",
+            "label": "The Pattern Shop",
+            "kicker": "IMPECCABLE’S PICK",
+            "lineage": "foundry pattern shops, where wooden master patterns were painted in a colour code before casting",
+            "thesis": "Every model is a master pattern, the original you make copies from.",
+            "palette": ["#B3261E", "#151515", "#E8B90F", "#8C8F8A", "#3A3D3B", "#F1F1EC"],
+            "materials": ["colour-coded painted patterns", "stencilled pattern numbers", "moulding-sand grey"],
+            "viewport": "One large painted master pattern on a sand-grey bench, with a stencilled pattern number and the three ways to get it as hanging stencilled tags.",
+            "risk": "Less familiar than it looks: pattern-making is obscure outside engineering circles, and the shop floor can read dusty if the paint colours are timid.",
+            "html": ".impeccable/mocks/decision/pick-patternshop.html",
+            "comp": ".impeccable/mocks/decision/pick-patternshop.webp"
+        },
+        {
+            "id": "challenger-bass",
+            "kind": "challenger",
+            "catalogId": "posters-covers-sleeves-saul-bass-title",
+            "label": "Cut-paper Titles",
+            "verdict": "declined",
+            "lineage": "1950s cut-paper film title sequences",
+            "thesis": "The shop told in flat cut-paper cards on bold colour fields.",
+            "palette": ["#D9561E", "#111111", "#EDE6D6"],
+            "materials": ["cut paper", "flat colour fields"],
+            "viewport": "One silhouette per full-bleed card.",
+            "case": "Retro but not steampunk, and silhouettes hide the objects' real colours.",
+            "risk": "Pastiche of one famous designer.",
+            "kept": "One idea per bay.",
+            "hero": "https://impeccable.style/worlds/cards/posters-covers-sleeves-saul-bass-title-hero.webp"
+        },
+        {
+            "id": "challenger-darkroom",
+            "kind": "challenger",
+            "catalogId": "signals-instruments-darkroom-safelight-bay",
+            "label": "Darkroom Safelight",
+            "verdict": "declined",
+            "lineage": "analogue photo darkrooms",
+            "thesis": "Orders move through stations like prints through baths.",
+            "palette": ["#C2591B", "#1A1210", "#E8E4DC"],
+            "materials": ["amber safelight", "test strips"],
+            "viewport": "Stations from choose to ship under amber light.",
+            "case": "The amber wash hides filament colour, which is the product.",
+            "risk": "Moody, low contrast.",
+            "kept": "Test strips: preview every colour before committing.",
+            "hero": "https://impeccable.style/worlds/cards/signals-instruments-darkroom-safelight-bay-hero.webp"
+        },
+        {
+            "id": "challenger-papercut",
+            "kind": "challenger",
+            "catalogId": "craft-making-lowicz-layered-papercut",
+            "label": "Layered Papercut",
+            "verdict": "declined",
+            "lineage": "Polish folk papercuts",
+            "thesis": "Models built up layer by layer, like prints.",
+            "palette": ["#D7263D", "#1B998B", "#F46036", "#2E294E"],
+            "materials": ["glossy layered paper"],
+            "viewport": "A symmetrical roundel of models.",
+            "case": "Nice link to layer-by-layer printing, but folk craft rather than retro engineering.",
+            "risk": "Decorative over functional.",
+            "kept": "Depth only from overlapping flat planes.",
+            "hero": "https://impeccable.style/worlds/cards/craft-making-lowicz-layered-papercut-hero.webp"
+        },
+        {
+            "id": "challenger-bitmap",
+            "kind": "challenger",
+            "catalogId": "emigre-bitmap-specimen",
+            "label": "Bitmap Specimen",
+            "verdict": "declined",
+            "lineage": "1980s bitmap type specimens",
+            "thesis": "Pixel type at poster scale.",
+            "palette": ["#FFFFFF", "#000000", "#FF3D00"],
+            "materials": ["pixel type", "dot matrix"],
+            "viewport": "A towering pixel headline over dense columns.",
+            "case": "The wrong era for the steer, and type-led rather than object-led.",
+            "risk": "Reads as a type foundry.",
+            "kept": "One display face at a strict size scale.",
+            "hero": "https://impeccable.style/worlds/cards/emigre-bitmap-specimen-hero.webp"
+        },
+        {
+            "id": "challenger-zine",
+            "kind": "challenger",
+            "catalogId": "hand-drawn-zine-explainer",
+            "label": "Hand-drawn Explainer",
+            "verdict": "declined",
+            "lineage": "hand-drawn tech zines",
+            "thesis": "A friend sketching how printing works.",
+            "palette": ["#F4EEDC", "#111111", "#FFE14D", "#FF7AB6"],
+            "materials": ["marker", "highlighter"],
+            "viewport": "Doodled diagram with a mascot.",
+            "case": "Friendly but not retro, and it uses the cream-paper default.",
+            "risk": "Childish for paid goods.",
+            "kept": "Annotating cards that point at real facts.",
+            "hero": "https://impeccable.style/worlds/cards/hand-drawn-zine-explainer-hero.webp"
+        },
+        {
+            "id": "challenger-sleepcity",
+            "kind": "challenger",
+            "catalogId": "dream-surreal-impossible-worlds-sleeping-city-fold",
+            "label": "Sleeping City",
+            "verdict": "declined",
+            "lineage": "surreal dream maps",
+            "thesis": "A city folding into a quilt.",
+            "palette": ["#16213E", "#E9C46A", "#F1FAEE"],
+            "materials": ["night navy", "embroidered stars"],
+            "viewport": "A folded night city.",
+            "case": "No link to the product or the steer.",
+            "risk": "Pure mood.",
+            "kept": "Each department keeps its own colour.",
+            "hero": "https://impeccable.style/worlds/cards/dream-surreal-impossible-worlds-sleeping-city-fold-hero.webp"
+        }
+    ],
+    "reroll": { "registers": ["safer", "bolder"] },
+    "buildPath": { "value": "code" },
+    "canon": true,
+    "canonCard": {
+        "kind": "canon",
+        "label": "The category standard",
+        "thesis": "A 3D-model site like the big repositories, done very well.",
+        "palette": ["#FFFFFF", "#111827", "#F26B1D", "#F3F4F6"],
+        "materials": ["clean card grid", "product photography", "top search bar"],
+        "viewport": "A search-led header, category chips, and rows of model cards with price and download badges.",
+        "risk": "Looks like every other model repository by design.",
+        "html": ".impeccable/mocks/decision/canon.html",
+        "comp": ".impeccable/mocks/decision/canon.webp"
+    },
+    "steer": true
+}

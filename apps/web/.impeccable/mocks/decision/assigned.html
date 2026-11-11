@@ -1,0 +1,343 @@
+<!doctype html>
+<html lang="en">
+    <head>
+        <meta charset="utf-8" />
+        <title>Colourway — Pesoprint first viewport sketch</title>
+        <link rel="preconnect" href="https://fonts.googleapis.com" />
+        <link
+            href="https://fonts.googleapis.com/css2?family=Familjen+Grotesk:wght@500;700&family=Archivo+Narrow:wght@500;700&display=swap"
+            rel="stylesheet"
+        />
+        <style>
+            :root {
+                --field: #2b44c7;
+                --ink: #f2b92b;
+                --deep: #1e2f8f;
+                --paper: #f5f6f2;
+                --dark: #14161a;
+            }
+            [data-cw='spruce'] {
+                --field: #1f5b45;
+                --ink: #f49ab0;
+                --deep: #16402f;
+            }
+            [data-cw='tomato'] {
+                --field: #e2482e;
+                --ink: #2a1f5c;
+                --deep: #b8331d;
+            }
+            [data-cw='mustard'] {
+                --field: #f2b92b;
+                --ink: #1f5b45;
+                --deep: #d99a12;
+                --paper: #14161a;
+            }
+            * {
+                box-sizing: border-box;
+                margin: 0;
+                padding: 0;
+            }
+            html,
+            body {
+                width: 1440px;
+                height: 900px;
+                overflow: hidden;
+            }
+            body {
+                background: var(--field);
+                color: var(--paper);
+                font-family: 'Familjen Grotesk', sans-serif;
+                transition: background 0.6s;
+                position: relative;
+            }
+            /* the repeat: big flat screen-printed shapes */
+            .repeat {
+                position: absolute;
+                inset: 0;
+                pointer-events: none;
+            }
+            .repeat .s {
+                position: absolute;
+                background: var(--deep);
+                transition: background 0.6s;
+            }
+            .s1 {
+                width: 760px;
+                height: 760px;
+                border-radius: 50%;
+                right: -120px;
+                top: 40px;
+            }
+            .s2 {
+                width: 300px;
+                height: 600px;
+                border-radius: 150px 150px 0 0;
+                right: 620px;
+                bottom: -260px;
+            }
+            .s3 {
+                width: 180px;
+                height: 180px;
+                border-radius: 50%;
+                right: 60px;
+                bottom: -70px;
+                top: auto;
+                background: var(--ink) !important;
+                opacity: 0.9;
+            }
+            /* selvedge */
+            .selvedge {
+                position: absolute;
+                left: 0;
+                top: 0;
+                bottom: 0;
+                width: 64px;
+                background: var(--paper);
+                color: var(--dark);
+                display: flex;
+                flex-direction: column;
+                align-items: center;
+                justify-content: space-between;
+                padding: 22px 0;
+                z-index: 3;
+            }
+            [data-cw='mustard'] .selvedge {
+                color: #f5f6f2;
+            }
+            .selvedge .txt {
+                writing-mode: vertical-rl;
+                transform: rotate(180deg);
+                font: 700 13px/1 'Archivo Narrow';
+                letter-spacing: 0.16em;
+                text-transform: uppercase;
+            }
+            .reg {
+                display: flex;
+                flex-direction: column;
+                gap: 10px;
+            }
+            .reg button {
+                width: 22px;
+                height: 22px;
+                border: 2px solid var(--dark);
+                cursor: pointer;
+            }
+            [data-cw='mustard'] .reg button {
+                border-color: #f5f6f2;
+            }
+            .reg button[aria-pressed='true'] {
+                outline: 3px solid var(--dark);
+                outline-offset: 3px;
+            }
+            /* nav */
+            nav {
+                position: absolute;
+                left: 64px;
+                right: 0;
+                top: 0;
+                height: 84px;
+                display: flex;
+                align-items: center;
+                padding: 0 56px;
+                gap: 40px;
+                z-index: 3;
+            }
+            .mark {
+                font: 700 30px/1 'Familjen Grotesk';
+                letter-spacing: -0.02em;
+            }
+            nav a {
+                color: inherit;
+                text-decoration: none;
+                font: 500 18px/1 'Familjen Grotesk';
+            }
+            nav .sp {
+                flex: 1;
+            }
+            .search {
+                width: 360px;
+                height: 52px;
+                border: 2px solid var(--paper);
+                display: flex;
+                align-items: center;
+                padding: 0 18px;
+                font-size: 18px;
+                gap: 12px;
+            }
+            .cart {
+                font: 700 18px 'Familjen Grotesk';
+            }
+            /* hero */
+            h1 {
+                position: absolute;
+                left: 120px;
+                top: 150px;
+                width: 760px;
+                font: 700 112px/0.92 'Familjen Grotesk';
+                letter-spacing: -0.035em;
+                z-index: 2;
+            }
+            h1 em {
+                font-style: normal;
+                color: var(--ink);
+                transition: color 0.6s;
+            }
+            .object {
+                position: absolute;
+                right: 150px;
+                top: 150px;
+                width: 520px;
+                height: 600px;
+                z-index: 2;
+            }
+            .object svg {
+                width: 100%;
+                height: 100%;
+            }
+            .tag {
+                position: absolute;
+                right: 110px;
+                top: 640px;
+                background: var(--paper);
+                color: var(--dark);
+                padding: 14px 18px;
+                font: 700 15px/1.3 'Archivo Narrow';
+                letter-spacing: 0.08em;
+                text-transform: uppercase;
+                z-index: 3;
+            }
+            .tag b {
+                display: block;
+                font: 700 26px/1.1 'Familjen Grotesk';
+                letter-spacing: -0.01em;
+                text-transform: none;
+            }
+            /* the three ways: working buttons */
+            .ways {
+                position: absolute;
+                left: 120px;
+                top: 560px;
+                display: grid;
+                grid-template-columns: repeat(3, 240px);
+                gap: 0;
+                z-index: 3;
+            }
+            .way {
+                border: 2px solid var(--paper);
+                margin-right: -2px;
+                padding: 22px 22px 24px;
+                display: flex;
+                flex-direction: column;
+                gap: 30px;
+                color: var(--paper);
+                cursor: pointer;
+            }
+            .way.primary {
+                background: var(--paper);
+                color: var(--dark);
+            }
+            [data-cw='mustard'] .way.primary {
+                color: #f2b92b;
+            }
+            .way .k {
+                font: 700 14px/1 'Archivo Narrow';
+                letter-spacing: 0.16em;
+                text-transform: uppercase;
+            }
+            .way .v {
+                font: 700 40px/1 'Familjen Grotesk';
+                letter-spacing: -0.02em;
+            }
+            .way .v small {
+                font-size: 18px;
+                font-weight: 500;
+            }
+            .note {
+                position: absolute;
+                left: 120px;
+                top: 790px;
+                font: 500 20px/1.4 'Familjen Grotesk';
+                max-width: 720px;
+                opacity: 0.9;
+                z-index: 3;
+            }
+            .synthetic {
+                position: absolute;
+                right: 24px;
+                bottom: 16px;
+                font: 500 12px 'Archivo Narrow';
+                letter-spacing: 0.1em;
+                text-transform: uppercase;
+                opacity: 0.6;
+                z-index: 3;
+            }
+        </style>
+    </head>
+    <body data-cw="cobalt">
+        <div class="repeat">
+            <div class="s s1"></div>
+            <div class="s s2"></div>
+            <div class="s s3"></div>
+        </div>
+
+        <aside class="selvedge" aria-label="Colourway">
+            <span class="txt">Pesoprint · Original model No. 014 · Tikka vase · PETG</span>
+            <div class="reg" role="group" aria-label="Choose colourway">
+                <button aria-pressed="true" style="background: #2b44c7" data-c="cobalt" aria-label="Cobalt"></button>
+                <button aria-pressed="false" style="background: #1f5b45" data-c="spruce" aria-label="Spruce"></button>
+                <button aria-pressed="false" style="background: #e2482e" data-c="tomato" aria-label="Tomato"></button>
+                <button aria-pressed="false" style="background: #f2b92b" data-c="mustard" aria-label="Mustard"></button>
+            </div>
+        </aside>
+
+        <nav aria-label="Main">
+            <span class="mark">pesoprint</span>
+            <a href="#">Models</a><a href="#">Free</a><a href="#">Print service</a>
+            <span class="sp"></span>
+            <div class="search" role="search">⌕ Search models</div>
+            <span class="cart">Cart (0)</span>
+        </nav>
+
+        <h1>Download it. Buy&nbsp;it. Or&nbsp;<em>we print&nbsp;it.</em></h1>
+
+        <div class="object" aria-hidden="true">
+            <!-- stand-in for a real photo of the printed vase, shot on a matching backdrop -->
+            <svg viewBox="0 0 520 600">
+                <path
+                    d="M200 40 h120 c0 60 -30 80 -30 120 c0 70 110 110 110 250 c0 110 -70 170 -140 170 s-140 -60 -140 -170 c0 -140 110 -180 110 -250 c0 -40 -30 -60 -30 -120z"
+                    fill="var(--ink)"
+                    style="transition: fill 0.6s"
+                />
+                <g stroke="var(--deep)" stroke-width="3" opacity=".35" style="transition: stroke 0.6s">
+                    <line x1="120" y1="380" x2="400" y2="380" />
+                    <line x1="112" y1="420" x2="408" y2="420" />
+                    <line x1="112" y1="460" x2="408" y2="460" />
+                    <line x1="118" y1="500" x2="402" y2="500" />
+                </g>
+            </svg>
+        </div>
+        <div class="tag">No. 014 · Tikka vase<b>Printed in PETG, cobalt</b></div>
+
+        <div class="ways" role="group" aria-label="Three ways to get a model">
+            <div class="way"><span class="k">Free models</span><span class="v">Download</span></div>
+            <div class="way"><span class="k">Model files</span><span class="v">Buy file</span></div>
+            <div class="way primary"><span class="k">Print service</span><span class="v">We print it</span></div>
+        </div>
+        <p class="note">
+            A one-person studio in Finland. Every model can be downloaded, bought as a file, or printed in the colour
+            and material you pick and posted to you.
+        </p>
+        <span class="synthetic">Sketch · placeholder object and model number</span>
+
+        <script>
+            document.querySelectorAll('.reg button').forEach((b) =>
+                b.addEventListener('click', () => {
+                    document.body.dataset.cw = b.dataset.c;
+                    document.querySelectorAll('.reg button').forEach((x) => x.setAttribute('aria-pressed', x === b));
+                    document.querySelector('.tag b').textContent =
+                        'Printed in PETG, ' + b.getAttribute('aria-label').toLowerCase();
+                }),
+            );
+        </script>
+    </body>
+</html>

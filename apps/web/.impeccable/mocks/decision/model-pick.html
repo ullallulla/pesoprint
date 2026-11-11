@@ -1,0 +1,185 @@
+<!doctype html>
+<html lang="en">
+    <head>
+        <meta charset="utf-8" />
+        <title>Swatch Deck — Pesoprint first viewport sketch</title>
+        <link
+            href="https://fonts.googleapis.com/css2?family=Schibsted+Grotesk:wght@500;700;800&display=swap"
+            rel="stylesheet"
+        />
+        <style>
+            * {
+                box-sizing: border-box;
+                margin: 0;
+                padding: 0;
+            }
+            html,
+            body {
+                width: 1440px;
+                height: 900px;
+                overflow: hidden;
+            }
+            body {
+                background: #ededea;
+                color: #1c1e22;
+                font-family: 'Schibsted Grotesk', sans-serif;
+                position: relative;
+            }
+            nav {
+                height: 80px;
+                display: flex;
+                align-items: center;
+                padding: 0 64px;
+                gap: 36px;
+                border-bottom: 2px solid #1c1e22;
+            }
+            .mark {
+                font: 800 28px/1 'Schibsted Grotesk';
+                letter-spacing: -0.03em;
+            }
+            nav a {
+                font: 500 18px 'Schibsted Grotesk';
+            }
+            nav .sp {
+                flex: 1;
+            }
+            .left {
+                position: absolute;
+                left: 64px;
+                top: 150px;
+                width: 520px;
+            }
+            h1 {
+                font: 800 92px/0.95 'Schibsted Grotesk';
+                letter-spacing: -0.04em;
+            }
+            .search {
+                margin-top: 44px;
+                height: 64px;
+                background: #fff;
+                border: 2px solid #1c1e22;
+                border-radius: 32px;
+                display: flex;
+                align-items: center;
+                padding: 0 26px;
+                font-size: 20px;
+            }
+            .ways {
+                margin-top: 28px;
+                display: flex;
+                gap: 12px;
+            }
+            .ways span {
+                padding: 16px 22px;
+                border-radius: 24px;
+                border: 2px solid #1c1e22;
+                font: 700 22px 'Schibsted Grotesk';
+            }
+            .ways span.on {
+                background: #1c1e22;
+                color: #ededea;
+            }
+            .fan {
+                position: absolute;
+                left: 700px;
+                top: 870px;
+            }
+            .tab {
+                position: absolute;
+                left: 0;
+                bottom: 0;
+                width: 250px;
+                height: 640px;
+                transform-origin: 30px 610px;
+                border-radius: 22px 22px 22px 22px;
+                background: #fff;
+                box-shadow: 0 1px 0 #0002;
+                padding: 20px;
+                display: flex;
+                flex-direction: column;
+                gap: 16px;
+                border: 2px solid #1c1e22;
+            }
+            .tab .chip {
+                height: 300px;
+                border-radius: 12px;
+            }
+            .tab .hole {
+                width: 26px;
+                height: 26px;
+                border-radius: 50%;
+                border: 2px solid #1c1e22;
+                background: #ededea;
+                position: absolute;
+                left: 17px;
+                bottom: 17px;
+            }
+            .tab .n {
+                font: 800 30px/1 'Schibsted Grotesk';
+                letter-spacing: -0.02em;
+            }
+            .tab .row {
+                display: flex;
+                gap: 8px;
+            }
+            .tab .row i {
+                width: 30px;
+                height: 30px;
+                border-radius: 50%;
+                border: 2px solid #1c1e22;
+            }
+            .tab .m {
+                font: 700 15px 'Schibsted Grotesk';
+                letter-spacing: 0.06em;
+                text-transform: uppercase;
+            }
+        </style>
+    </head>
+    <body>
+        <nav>
+            <span class="mark">pesoprint</span><a>Models</a><a>Free</a><a>Print service</a><span class="sp"></span
+            ><a>Sign in</a><a>Cart (0)</a>
+        </nav>
+        <div class="left">
+            <h1>Every model, three ways.</h1>
+            <div class="search">Search models</div>
+            <div class="ways">
+                <span>Download free</span><span>Buy file</span><span class="on">Print it for me</span>
+            </div>
+        </div>
+        <div class="fan" aria-hidden="true">
+            <div class="tab" style="transform: rotate(-12deg)">
+                <div class="chip" style="background: #3bb273"></div>
+                <span class="n">Hex bins</span><span class="m">PLA · PETG</span>
+                <div class="row">
+                    <i style="background: #3bb273"></i><i style="background: #111"></i><i style="background: #fff"></i>
+                </div>
+                <span class="hole"></span>
+            </div>
+            <div class="tab" style="transform: rotate(4deg)">
+                <div class="chip" style="background: #2e86ab"></div>
+                <span class="n">Cable clip</span><span class="m">PETG</span>
+                <div class="row"><i style="background: #2e86ab"></i><i style="background: #111"></i></div>
+                <span class="hole"></span>
+            </div>
+            <div class="tab" style="transform: rotate(20deg)">
+                <div class="chip" style="background: #f6c90e"></div>
+                <span class="n">Desk fox</span><span class="m">PLA</span>
+                <div class="row">
+                    <i style="background: #f6c90e"></i><i style="background: #e94f37"></i
+                    ><i style="background: #fff"></i>
+                </div>
+                <span class="hole"></span>
+            </div>
+            <div class="tab" style="transform: rotate(36deg)">
+                <div class="chip" style="background: #e94f37"></div>
+                <span class="n">Tikka vase</span><span class="m">PLA · PETG</span>
+                <div class="row">
+                    <i style="background: #e94f37"></i><i style="background: #2e86ab"></i
+                    ><i style="background: #3bb273"></i><i style="background: #f6c90e"></i>
+                </div>
+                <span class="hole"></span>
+            </div>
+        </div>
+    </body>
+</html>

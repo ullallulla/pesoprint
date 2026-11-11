@@ -1,0 +1,176 @@
+{
+    "title": "Choose Pesoprint's visual world: full steampunk",
+    "question": "Round 3, steered to brass, gears, gauges, rivets and machinery. The roll assigned The Locomotive Works. Keep it, take my pick, or re-roll.",
+    "options": [
+        {
+            "id": "assigned-loco",
+            "kind": "assigned",
+            "label": "The Locomotive Works",
+            "kicker": "THE ROLL",
+            "lineage": "Victorian locomotive works: riveted boiler plate, lined-out livery panels, cast brass works plates, and the brass gauges of the cab",
+            "thesis": "Every model leaves the works with its own number plate, and the cab gauges read out its price and print time.",
+            "palette": ["#121212", "#7A1E24", "#C69C3C", "#E3C25B", "#2B2F2E", "#EEF0EA"],
+            "materials": [
+                "riveted boiler plate",
+                "crimson-lake livery with black-and-straw lining",
+                "cast brass works plates and gauges",
+                "gear trains"
+            ],
+            "viewport": "A riveted crimson livery panel with brass beading. The headline sits left, with three cast-brass levers (Free / File / Print). On the right is a porthole holding the object, a meshing gear train, and two brass gauges reading price and print time.",
+            "risk": "Plenty of steampunk, so the danger is clutter. The buying panel must stay calm and legible, and the gauges must show real values, not ornament.",
+            "raised": [
+                {
+                    "from": "challenger-festival",
+                    "raise": "One calm panel: among the brass and rivets, the buying panel is a plain enamel-white plate with nothing decorative inside it."
+                },
+                {
+                    "from": "challenger-quote",
+                    "raise": "Buffer-beam stripes only on actions: the red-and-black hazard stripe marks the primary action and nothing else."
+                },
+                {
+                    "from": "challenger-teletext",
+                    "raise": "Works numbers: every model has a number plate and can be found by it (Works No. 014)."
+                },
+                {
+                    "from": "challenger-quarry",
+                    "raise": "One active edge: a single bright brass line marks the selected option. Everything else stays dull brass."
+                },
+                {
+                    "from": "challenger-movida",
+                    "raise": "Crop hard: product photos fill their porthole or plate edge to edge."
+                },
+                {
+                    "from": "challenger-risoweb",
+                    "raise": "A fixed livery: four paint colours plus brass, with no tints or in-between shades."
+                }
+            ],
+            "html": ".impeccable/mocks/decision/assigned-loco.html",
+            "comp": ".impeccable/mocks/decision/assigned-loco.webp"
+        },
+        {
+            "id": "pick-engineroom",
+            "kind": "pick",
+            "label": "The Engine Room",
+            "kicker": "IMPECCABLE’S PICK",
+            "lineage": "steamship engine rooms: brass pressure gauges, valve wheels, copper pipework, and the engine-order telegraph",
+            "thesis": "You set the order on a brass engine-order telegraph (Free, File or Print), and the engine room answers.",
+            "palette": ["#0E1A1A", "#B87333", "#D4A84B", "#1E3A3A", "#9E2B25", "#F0EEE6"],
+            "materials": ["engine-order telegraph dial", "copper pipework", "pressure gauges", "valve wheels"],
+            "viewport": "A large brass engine-order telegraph dominates the right, its lever set to PRINT. Copper pipes run along the top with gauges, and the headline and search sit left on dark teal steel.",
+            "risk": "Familiar: gauges and copper pipes are steampunk's stock image, so it may read as a theme park more than a shop.",
+            "html": ".impeccable/mocks/decision/pick-engineroom.html",
+            "comp": ".impeccable/mocks/decision/pick-engineroom.webp"
+        },
+        {
+            "id": "challenger-quote",
+            "kind": "challenger",
+            "catalogId": "textiles-weave-drape-fashion-industrial-quote-grammar",
+            "label": "Industrial Quote Streetwear",
+            "verdict": "declined",
+            "lineage": "industrial streetwear labels",
+            "thesis": "Ordinary words in quotes, hazard stripes, zip-tie tags.",
+            "palette": ["#FFFFFF", "#111111", "#FF5A1F"],
+            "materials": ["nylon", "zip ties"],
+            "viewport": "\"MODEL\" in giant quotes.",
+            "case": "Modern streetwear, not steampunk.",
+            "risk": "Fashion pastiche.",
+            "kept": "Hazard stripes only on actions.",
+            "hero": "https://impeccable.style/worlds/cards/textiles-weave-drape-fashion-industrial-quote-grammar-hero.webp"
+        },
+        {
+            "id": "challenger-quarry",
+            "kind": "challenger",
+            "catalogId": "dream-surreal-impossible-worlds-cloud-quarry",
+            "label": "Cloud Quarry",
+            "verdict": "declined",
+            "lineage": "surreal dream worlds",
+            "thesis": "Blocks of weather cut and assembled.",
+            "palette": ["#F4F6F8", "#6FA8DC", "#7A7F87"],
+            "materials": ["cloud mass"],
+            "viewport": "A cloud cliff being sawn.",
+            "case": "No link to machinery or objects.",
+            "risk": "Pure mood.",
+            "kept": "One active edge marks selection.",
+            "hero": "https://impeccable.style/worlds/cards/dream-surreal-impossible-worlds-cloud-quarry-hero.webp"
+        },
+        {
+            "id": "challenger-teletext",
+            "kind": "challenger",
+            "catalogId": "broadcast-programming-teletext-service",
+            "label": "Teletext",
+            "verdict": "declined",
+            "lineage": "broadcast teletext",
+            "thesis": "The catalogue as numbered teletext pages.",
+            "palette": ["#000000", "#FFFF00", "#00FFFF", "#FF0000"],
+            "materials": ["block mosaic"],
+            "viewport": "P100 index of models.",
+            "case": "Retro, but electronic, not steampunk, and it can't show objects.",
+            "risk": "Novelty.",
+            "kept": "Every model findable by number.",
+            "hero": "https://impeccable.style/worlds/cards/broadcast-programming-teletext-service-hero.webp"
+        },
+        {
+            "id": "challenger-risoweb",
+            "kind": "challenger",
+            "catalogId": "risograph-web-system",
+            "label": "Riso Web System",
+            "verdict": "declined",
+            "lineage": "risograph printing",
+            "thesis": "Spot inks misregistered on paper.",
+            "palette": ["#F3EDE0", "#FF48B0", "#0078BF", "#FFE800"],
+            "materials": ["spot ink", "grain"],
+            "viewport": "Overlapping ink cards.",
+            "case": "Already declined once; it hides true colour.",
+            "risk": "Common look.",
+            "kept": "A fixed palette with no tints.",
+            "hero": "https://impeccable.style/worlds/cards/risograph-web-system-hero.webp"
+        },
+        {
+            "id": "challenger-festival",
+            "kind": "challenger",
+            "catalogId": "fly-posted-festival-hoarding-built",
+            "label": "Festival Hoarding",
+            "verdict": "declined",
+            "lineage": "fly-posted street-fair flyers",
+            "thesis": "Layered flyers, one calm white panel.",
+            "palette": ["#F3EDE0", "#111111", "#FF6A00", "#EE1F8A"],
+            "materials": ["gouache", "torn paper"],
+            "viewport": "Busy collage with one ticket panel.",
+            "case": "Loud but not steampunk; no photography.",
+            "risk": "Chaos.",
+            "kept": "One calm panel amid the noise.",
+            "hero": "https://impeccable.style/worlds/cards/fly-posted-festival-hoarding-built-hero.webp"
+        },
+        {
+            "id": "challenger-movida",
+            "kind": "challenger",
+            "catalogId": "posters-covers-sleeves-movida-scene-magazine",
+            "label": "Movida Magazine",
+            "verdict": "declined",
+            "lineage": "1980s Madrid scene magazines",
+            "thesis": "Flash portrait, hand-inked masthead.",
+            "palette": ["#FFFFFF", "#FF3EA5", "#B6FF00", "#000000"],
+            "materials": ["fluoro ink"],
+            "viewport": "Hard-cropped cover.",
+            "case": "Wrong era and mood.",
+            "risk": "Gimmicky.",
+            "kept": "Crop product photos hard.",
+            "hero": "https://impeccable.style/worlds/cards/posters-covers-sleeves-movida-scene-magazine-hero.webp"
+        }
+    ],
+    "reroll": { "registers": ["safer", "bolder"] },
+    "buildPath": { "value": "code" },
+    "canon": true,
+    "canonCard": {
+        "kind": "canon",
+        "label": "The category standard",
+        "thesis": "A 3D-model site like the big repositories, done very well.",
+        "palette": ["#FFFFFF", "#111827", "#F26B1D", "#F3F4F6"],
+        "materials": ["clean card grid", "product photography", "top search bar"],
+        "viewport": "A search-led header, category chips, and rows of model cards with price and download badges.",
+        "risk": "Looks like every other model repository by design.",
+        "html": ".impeccable/mocks/decision/canon.html",
+        "comp": ".impeccable/mocks/decision/canon.webp"
+    },
+    "steer": true
+}

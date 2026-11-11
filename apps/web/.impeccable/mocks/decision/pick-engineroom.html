@@ -1,0 +1,133 @@
+<!doctype html>
+<html lang="en">
+    <head>
+        <meta charset="utf-8" />
+        <title>The Engine Room — Pesoprint first viewport sketch</title>
+        <link
+            href="https://fonts.googleapis.com/css2?family=Big+Shoulders+Display:wght@800;900&family=Source+Sans+3:wght@500;700&display=swap"
+            rel="stylesheet"
+        />
+        <style>
+            * {
+                box-sizing: border-box;
+                margin: 0;
+                padding: 0;
+            }
+            html,
+            body {
+                width: 1440px;
+                height: 900px;
+                overflow: hidden;
+            }
+            body {
+                background: #0e1a1a;
+                color: #f0eee6;
+                font-family: 'Source Sans 3', sans-serif;
+                position: relative;
+            }
+            nav {
+                height: 72px;
+                display: flex;
+                align-items: center;
+                gap: 34px;
+                padding: 0 48px;
+                font: 800 20px 'Big Shoulders Display';
+                letter-spacing: 0.12em;
+                text-transform: uppercase;
+                color: #d4a84b;
+            }
+            nav .mark {
+                font: 900 32px 'Big Shoulders Display';
+            }
+            nav .sp {
+                flex: 1;
+            }
+            .pipe {
+                position: absolute;
+                left: 0;
+                right: 0;
+                top: 84px;
+                height: 30px;
+                background: #b87333;
+                border-top: 3px solid #6e4420;
+                border-bottom: 3px solid #6e4420;
+            }
+            .flange {
+                position: absolute;
+                top: 76px;
+                width: 22px;
+                height: 46px;
+                background: #8a5526;
+            }
+            h1 {
+                position: absolute;
+                left: 48px;
+                top: 190px;
+                width: 620px;
+                font: 900 110px/0.9 'Big Shoulders Display';
+                text-transform: uppercase;
+            }
+            h1 span {
+                color: #d4a84b;
+            }
+            .search {
+                position: absolute;
+                left: 48px;
+                top: 600px;
+                width: 600px;
+                height: 60px;
+                background: #f0eee6;
+                color: #0e1a1a;
+                border: 4px solid #d4a84b;
+                display: flex;
+                align-items: center;
+                padding: 0 20px;
+                font: 500 20px 'Source Sans 3';
+            }
+            .telegraph {
+                position: absolute;
+                right: 90px;
+                top: 150px;
+                width: 640px;
+                height: 640px;
+            }
+        </style>
+    </head>
+    <body>
+        <nav>
+            <span class="mark">PESOPRINT</span><span>Models</span><span>Free</span><span>Print service</span
+            ><span class="sp"></span><span>Cart (0)</span>
+        </nav>
+        <div class="pipe"></div>
+        <div class="flange" style="left: 300px"></div>
+        <div class="flange" style="left: 900px"></div>
+        <h1>Set the order. <span>Full ahead.</span></h1>
+        <div class="search">Search models</div>
+        <svg class="telegraph" viewBox="0 0 640 640" aria-hidden="true">
+            <circle cx="320" cy="320" r="300" fill="#D4A84B" stroke="#6e4420" stroke-width="8" />
+            <circle cx="320" cy="320" r="250" fill="#F0EEE6" />
+            <path d="M320 320 L110 190 A250 250 0 0 1 250 80 Z" fill="#1E3A3A" />
+            <path d="M320 320 L250 80 A250 250 0 0 1 390 80 Z" fill="#B87333" />
+            <path d="M320 320 L390 80 A250 250 0 0 1 530 190 Z" fill="#9E2B25" />
+            <g font-family="Big Shoulders Display" font-weight="900" font-size="34" fill="#F0EEE6" text-anchor="middle">
+                <text x="195" y="175" transform="rotate(-38 195 175)">FREE</text>
+                <text x="320" y="135">FILE</text>
+                <text x="445" y="175" transform="rotate(38 445 175)">PRINT</text>
+            </g>
+            <line x1="320" y1="320" x2="470" y2="140" stroke="#0E1A1A" stroke-width="22" stroke-linecap="round" />
+            <circle cx="320" cy="320" r="46" fill="#0E1A1A" />
+            <circle cx="320" cy="320" r="18" fill="#D4A84B" />
+            <text
+                x="320"
+                y="480"
+                text-anchor="middle"
+                font-family="Big Shoulders Display"
+                font-weight="900"
+                font-size="40"
+                fill="#0E1A1A"
+            >
+                PRINT · FROM €18
+            </text>
+        </svg>
+    </body>
+</html>

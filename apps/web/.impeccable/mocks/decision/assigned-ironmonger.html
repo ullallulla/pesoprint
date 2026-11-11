@@ -1,0 +1,284 @@
+<!doctype html>
+<html lang="en">
+    <head>
+        <meta charset="utf-8" />
+        <title>The Ironmonger's Window — Pesoprint first viewport sketch</title>
+        <link
+            href="https://fonts.googleapis.com/css2?family=Ultra&family=Oswald:wght@500;600&family=Source+Sans+3:wght@500;700&display=swap"
+            rel="stylesheet"
+        />
+        <style>
+            :root {
+                --glass: #0f1412;
+                --gold: #d4af5a;
+                --shade: #6b4f1d;
+                --green: #1f3d2b;
+                --brass: #b08d3c;
+                --enamel: #eef0ea;
+                --free: #2c6e49;
+                --files: #23395b;
+                --print: #8c2a22;
+            }
+            * {
+                box-sizing: border-box;
+                margin: 0;
+                padding: 0;
+            }
+            html,
+            body {
+                width: 1440px;
+                height: 900px;
+                overflow: hidden;
+            }
+            body {
+                background: var(--glass);
+                color: var(--enamel);
+                font-family: 'Source Sans 3', sans-serif;
+            }
+            .util {
+                height: 52px;
+                display: flex;
+                align-items: center;
+                gap: 32px;
+                padding: 0 48px;
+                font: 600 16px 'Oswald';
+                letter-spacing: 0.14em;
+                text-transform: uppercase;
+                color: var(--gold);
+            }
+            .util .sp {
+                flex: 1;
+            }
+            .fascia {
+                margin: 0 48px;
+                height: 176px;
+                border: 3px solid var(--gold);
+                outline: 1px solid var(--gold);
+                outline-offset: 6px;
+                display: flex;
+                flex-direction: column;
+                align-items: center;
+                justify-content: center;
+                gap: 10px;
+            }
+            .fascia h1 {
+                font: 400 104px/1 'Ultra';
+                letter-spacing: 0.06em;
+                color: var(--gold);
+                -webkit-text-stroke: 2px var(--shade);
+                text-shadow: 4px 4px 0 var(--shade);
+            }
+            .fascia p {
+                font: 500 20px 'Oswald';
+                letter-spacing: 0.32em;
+                text-transform: uppercase;
+                color: var(--gold);
+            }
+            .window {
+                margin: 30px 48px 0;
+                height: 560px;
+                display: grid;
+                grid-template-columns: 1fr 18px 1fr 18px 1fr;
+                background: var(--green);
+                padding: 18px;
+                gap: 0;
+            }
+            .mullion {
+                background: var(--green);
+            }
+            .bay {
+                background: #141b18;
+                position: relative;
+                display: flex;
+                flex-direction: column;
+                align-items: center;
+                padding-top: 22px;
+            }
+            .sign {
+                padding: 12px 26px;
+                border-radius: 10px;
+                border: 3px solid var(--enamel);
+                box-shadow: 0 0 0 4px currentColor;
+                font: 600 24px 'Oswald';
+                letter-spacing: 0.18em;
+                text-transform: uppercase;
+                color: var(--enamel);
+            }
+            .sign.free {
+                background: var(--free);
+                color: var(--free);
+            }
+            .sign.files {
+                background: var(--files);
+                color: var(--files);
+            }
+            .sign.print {
+                background: var(--print);
+                color: var(--print);
+            }
+            .sign span {
+                color: var(--enamel);
+            }
+            .objs {
+                position: absolute;
+                left: 0;
+                right: 0;
+                bottom: 120px;
+                display: flex;
+                justify-content: center;
+                align-items: flex-end;
+                gap: 26px;
+            }
+            .shelf {
+                position: absolute;
+                left: 0;
+                right: 0;
+                bottom: 104px;
+                height: 16px;
+                background: var(--brass);
+            }
+            .tickets {
+                position: absolute;
+                left: 0;
+                right: 0;
+                bottom: 44px;
+                display: flex;
+                justify-content: center;
+                gap: 26px;
+            }
+            .ticket {
+                width: 96px;
+                height: 46px;
+                background: var(--enamel);
+                color: #141b18;
+                border: 3px solid var(--brass);
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                font: 700 22px 'Oswald';
+            }
+            .ticket.est {
+                background: transparent;
+                color: var(--enamel);
+                border-style: dashed;
+                font-weight: 500;
+            }
+            .ticket small {
+                font-size: 13px;
+                margin-right: 4px;
+                letter-spacing: 0.08em;
+            }
+            .sill {
+                margin: 0 48px;
+                height: 76px;
+                background: var(--brass);
+                display: flex;
+                align-items: center;
+                padding: 0 24px;
+                gap: 20px;
+            }
+            .sill .field {
+                flex: 1;
+                height: 46px;
+                background: var(--glass);
+                color: var(--gold);
+                display: flex;
+                align-items: center;
+                padding: 0 18px;
+                font: 500 20px 'Source Sans 3';
+            }
+            .sill .btn {
+                height: 46px;
+                padding: 0 26px;
+                background: var(--glass);
+                color: var(--gold);
+                border: 2px solid var(--gold);
+                display: flex;
+                align-items: center;
+                font: 600 20px 'Oswald';
+                letter-spacing: 0.14em;
+                text-transform: uppercase;
+            }
+            .synthetic {
+                position: absolute;
+                right: 56px;
+                top: 62px;
+                font: 500 11px 'Oswald';
+                letter-spacing: 0.12em;
+                color: var(--gold);
+                opacity: 0.6;
+                text-transform: uppercase;
+            }
+        </style>
+    </head>
+    <body>
+        <div class="util">
+            <span>Models</span><span>Free</span><span>Files</span><span>Print service</span><span class="sp"></span
+            ><span>Sign in</span><span>Cart (0)</span>
+        </div>
+        <span class="synthetic">Sketch · placeholder objects &amp; prices</span>
+        <header class="fascia">
+            <h1>PESOPRINT</h1>
+            <p>3D models · files · prints made to order</p>
+        </header>
+        <section class="window" aria-label="The shop window">
+            <div class="bay">
+                <div class="sign free"><span>Free</span></div>
+                <div class="objs" aria-hidden="true">
+                    <svg width="90" height="150" viewBox="0 0 90 150">
+                        <path
+                            d="M30 0h30v30c0 15 30 30 30 70 0 30-20 50-45 50S0 130 0 100c0-40 30-55 30-70z"
+                            fill="#E87A2E"
+                        />
+                    </svg>
+                    <svg width="120" height="80" viewBox="0 0 120 80">
+                        <path d="M0 80V30h30V0h30v30h30V0h30v80z" fill="#3FA7A0" />
+                    </svg>
+                </div>
+                <div class="shelf"></div>
+                <div class="tickets">
+                    <div class="ticket">FREE</div>
+                    <div class="ticket">FREE</div>
+                </div>
+            </div>
+            <div class="mullion"></div>
+            <div class="bay">
+                <div class="sign files"><span>Files</span></div>
+                <div class="objs" aria-hidden="true">
+                    <svg width="110" height="200" viewBox="0 0 110 200">
+                        <path d="M20 200 L40 40 Q55 0 70 40 L90 200z" fill="#EDEDED" />
+                    </svg>
+                    <svg width="140" height="110" viewBox="0 0 140 110">
+                        <circle cx="70" cy="60" r="50" fill="#C9C33B" />
+                        <circle cx="70" cy="60" r="20" fill="#141B18" />
+                    </svg>
+                </div>
+                <div class="shelf"></div>
+                <div class="tickets">
+                    <div class="ticket"><small>€</small>4</div>
+                    <div class="ticket"><small>€</small>6</div>
+                </div>
+            </div>
+            <div class="mullion"></div>
+            <div class="bay">
+                <div class="sign print"><span>Printed to order</span></div>
+                <div class="objs" aria-hidden="true">
+                    <svg width="170" height="230" viewBox="0 0 170 230">
+                        <path
+                            d="M65 0h40v40c0 20 65 50 65 110 0 50-35 80-85 80S0 200 0 150C0 90 65 60 65 40z"
+                            fill="#3366D6"
+                        />
+                    </svg>
+                </div>
+                <div class="shelf"></div>
+                <div class="tickets">
+                    <div class="ticket est"><small>from</small>€18</div>
+                </div>
+            </div>
+        </section>
+        <div class="sill" role="search">
+            <div class="field">Search the shop: vases, cable clips, organisers…</div>
+            <div class="btn">Browse all models</div>
+        </div>
+    </body>
+</html>
