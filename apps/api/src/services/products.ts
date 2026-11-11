@@ -15,6 +15,8 @@ import { isPgError, PgErrorCode } from '../db/errors.ts';
 import { productFiles, productImages, products, type Product } from '../db/schema.ts';
 import { conflict, invalidField, notFound } from '../lib/errors.ts';
 import { definedFields } from '../lib/patch.ts';
+import { deleteStoredFiles, type Storage } from '../lib/storage.ts';
+import { fileRef, imageRef, toAdminFile, toAdminImage } from './product-media.ts';
 
 export interface ProductsService {
     /** Products of every status, most recently updated first. */
@@ -34,7 +36,7 @@ export interface ProductsService {
 }
 
 /** A database handle or an open transaction. */
-type Executor = Pick<Database, 'select'>;
+export type Executor = Pick<Database, 'select'>;
 
 const iso = (date: Date | null) => date?.toISOString() ?? null;
 
@@ -60,36 +62,27 @@ function toSummary(row: Product): AdminProductSummary {
     };
 }
 
-async function toDetail(tx: Executor, row: Product): Promise<AdminProduct> {
+async function toDetail(tx: Executor, row: Product, storage: Storage | null): Promise<AdminProduct> {
     const images = await tx
-        .select({
-            id: productImages.id,
-            alt: productImages.alt,
-            width: productImages.width,
-            height: productImages.height,
-            sizeBytes: productImages.sizeBytes,
-            position: productImages.position,
-        })
+        .select()
         .from(productImages)
         .where(eq(productImages.productId, row.id))
         .orderBy(asc(productImages.position), asc(productImages.id));
     const files = await tx
-        .select({
-            id: productFiles.id,
-            kind: productFiles.kind,
-            format: productFiles.format,
-            filename: productFiles.filename,
-            sizeBytes: productFiles.sizeBytes,
-            position: productFiles.position,
-        })
+        .select()
         .from(productFiles)
         .where(eq(productFiles.productId, row.id))
         .orderBy(asc(productFiles.position), asc(productFiles.id));
-    return { ...toSummary(row), description: row.description, images, files };
+    return {
+        ...toSummary(row),
+        description: row.description,
+        images: images.map((image) => toAdminImage(image, storage)),
+        files: files.map((file) => toAdminFile(file, storage)),
+    };
 }
 
 /** Reads the product and locks it until the transaction ends, so checks and writes can't interleave. */
-async function lockProduct(tx: Executor, id: string): Promise<Product> {
+export async function lockProduct(tx: Executor, id: string): Promise<Product> {
     const [row] = await tx.select().from(products).where(eq(products.id, id)).for('update');
     if (!row) {
         throw notFound('Product not found.');
@@ -97,7 +90,7 @@ async function lockProduct(tx: Executor, id: string): Promise<Product> {
     return row;
 }
 
-async function contentCounts(tx: Executor, productId: string) {
+export async function contentCounts(tx: Executor, productId: string) {
     const [images] = await tx
         .select({ value: count() })
         .from(productImages)
@@ -136,7 +129,10 @@ function rethrowWriteError(error: unknown, slug: string | undefined): never {
 /** Escapes `%`, `_` and `\` so user input matches literally inside an ILIKE pattern. */
 const escapeLike = (value: string) => value.replace(/[\\%_]/g, '\\$&');
 
-export function createProductsService(db: Database): ProductsService {
+/** `storage` is `null` when file storage isn't configured: URLs are then `null` and nothing is deleted from storage. */
+export function createProductsService(db: Database, storage: Storage | null): ProductsService {
+    const detail = (tx: Executor, row: Product) => toDetail(tx, row, storage);
+
     return {
         async list({ status, categoryId, q, page, pageSize }) {
             const conditions: SQL[] = [];
@@ -165,7 +161,7 @@ export function createProductsService(db: Database): ProductsService {
             if (!row) {
                 throw notFound('Product not found.');
             }
-            return toDetail(db, row);
+            return detail(db, row);
         },
 
         async create(creatorId, input) {
@@ -179,7 +175,7 @@ export function createProductsService(db: Database): ProductsService {
                         .insert(products)
                         .values({ ...input, creatorId })
                         .returning();
-                    return await toDetail(tx, row!);
+                    return await detail(tx, row!);
                 } catch (error) {
                     rethrowWriteError(error, input.slug);
                 }
@@ -208,11 +204,11 @@ export function createProductsService(db: Database): ProductsService {
                 }
 
                 if (Object.keys(changes).length === 0) {
-                    return toDetail(tx, current);
+                    return detail(tx, current);
                 }
                 try {
                     const [row] = await tx.update(products).set(changes).where(eq(products.id, id)).returning();
-                    return await toDetail(tx, row!);
+                    return await detail(tx, row!);
                 } catch (error) {
                     rethrowWriteError(error, changes.slug);
                 }
@@ -223,7 +219,7 @@ export function createProductsService(db: Database): ProductsService {
             return db.transaction(async (tx) => {
                 const current = await lockProduct(tx, id);
                 if (current.status === 'published') {
-                    return toDetail(tx, current);
+                    return detail(tx, current);
                 }
 
                 const problems = publishProblems({ ...current, ...(await contentCounts(tx, id)) });
@@ -237,7 +233,7 @@ export function createProductsService(db: Database): ProductsService {
                     .set({ status: 'published', publishedAt: current.publishedAt ?? new Date() })
                     .where(eq(products.id, id))
                     .returning();
-                return toDetail(tx, row!);
+                return detail(tx, row!);
             });
         },
 
@@ -245,7 +241,7 @@ export function createProductsService(db: Database): ProductsService {
             return db.transaction(async (tx) => {
                 const current = await lockProduct(tx, id);
                 if (current.status === 'archived') {
-                    return toDetail(tx, current);
+                    return detail(tx, current);
                 }
                 if (current.status !== 'published') {
                     throw conflict('Only published products can be archived. Delete the draft instead.');
@@ -256,7 +252,7 @@ export function createProductsService(db: Database): ProductsService {
                     .set({ status: 'archived', featuredAt: null })
                     .where(eq(products.id, id))
                     .returning();
-                return toDetail(tx, row!);
+                return detail(tx, row!);
             });
         },
 
@@ -272,19 +268,24 @@ export function createProductsService(db: Database): ProductsService {
                     .set({ featuredAt: featured ? new Date() : null })
                     .where(eq(products.id, id))
                     .returning();
-                return toDetail(tx, row!);
+                return detail(tx, row!);
             });
         },
 
         async remove(id) {
-            await db.transaction(async (tx) => {
+            const stored = await db.transaction(async (tx) => {
                 const current = await lockProduct(tx, id);
                 if (current.publishedAt !== null) {
                     throw conflict('Products that have been published cannot be deleted. Archive it instead.');
                 }
-                // Images and files rows cascade. Their storage objects are deleted here once uploads exist (step 5).
+                const images = await tx.select().from(productImages).where(eq(productImages.productId, id));
+                const files = await tx.select().from(productFiles).where(eq(productFiles.productId, id));
+                // The image and file rows cascade with the product.
                 await tx.delete(products).where(eq(products.id, id));
+                return [...images.map(imageRef), ...files.map(fileRef)];
             });
+            // Only after the commit: if the delete had rolled back, the files would still be needed.
+            await deleteStoredFiles(storage, stored);
         },
     };
 }

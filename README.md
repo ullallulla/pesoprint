@@ -60,6 +60,36 @@ One-time setup in the [Clerk Dashboard](https://dashboard.clerk.com):
 | `GET /api/admin/overview`  | Admins only (`metadata.role = "admin"`) |
 | `POST /api/webhooks/clerk` | Clerk only (signature-verified)         |
 
+## File storage (Cloudflare R2)
+
+Product images, 3D previews and model files are stored in two S3-compatible buckets. Browsers upload straight to storage with presigned URLs, so large files never pass through the API. Without the `S3_*` settings the API still runs, and the upload endpoints answer 503.
+
+| Bucket  | Holds                                 | Access                                                     |
+| ------- | ------------------------------------- | ---------------------------------------------------------- |
+| public  | Images and 3D previews (`.glb`)       | Public reads, served from `PUBLIC_ASSETS_URL`              |
+| private | Model downloads (STL, 3MF, STEP, OBJ) | Never public; downloads go through short-lived signed URLs |
+
+3D previews are public, so they must be decimated (low-poly) versions, never the full-resolution model.
+
+Setup in the Cloudflare dashboard (R2 Object Storage):
+
+1. Create two buckets, e.g. `pesoprint-dev-public` and `pesoprint-dev-private`.
+2. Public bucket → Settings → Public access: enable the `r2.dev` URL (fine for development) or connect a custom domain. That URL is `PUBLIC_ASSETS_URL`.
+3. On **both** buckets → Settings → CORS policy, allow uploads from the web app (add your production origin later). The public bucket also needs `GET` so the 3D viewer can load previews:
+
+    ```json
+    [
+        {
+            "AllowedOrigins": ["http://localhost:5173"],
+            "AllowedMethods": ["GET", "PUT"],
+            "AllowedHeaders": ["content-type"],
+            "MaxAgeSeconds": 3600
+        }
+    ]
+    ```
+
+4. R2 → Manage API tokens → Create an **Object Read & Write** token limited to the two buckets. Copy the access key id and secret into `apps/api/.env`, and the S3 endpoint (`https://<account id>.r2.cloudflarestorage.com`) into `S3_ENDPOINT`.
+
 ## Everyday commands
 
 | Command                                     | What it does                                                    |

@@ -47,7 +47,7 @@ const url = process.env.TEST_DATABASE_URL;
 // Runs against a real Postgres. Start it with `vp run db:up` (local) — CI provides one as a service.
 describe.skipIf(!url)('admin product routes (integration)', () => {
     const { db, pool } = createDatabase(url ?? '');
-    const app = buildApp({ products: createProductsService(db) });
+    const app = buildApp({ products: createProductsService(db, null) });
     /** The user id the fake verifier returns for `tokens.admin`. */
     const ADMIN_ID = 'user_admin';
     let categoryId: string;

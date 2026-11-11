@@ -2,7 +2,9 @@ import type { NewUser } from '../src/db/schema.ts';
 import type { AppOptions } from '../src/app.ts';
 import { createApp } from '../src/app.ts';
 import type { AuthContext } from '../src/lib/auth.ts';
+import type { Bucket, Storage } from '../src/lib/storage.ts';
 import type { CategoriesService } from '../src/services/categories.ts';
+import type { ProductMediaService } from '../src/services/product-media.ts';
 import type { ProductsService } from '../src/services/products.ts';
 import type { UsersService } from '../src/services/users.ts';
 
@@ -57,6 +59,7 @@ export function buildApp(overrides: Partial<AppOptions> = {}) {
         users: createFakeUsers(),
         categories: unusedService<CategoriesService>('categories'),
         products: unusedService<ProductsService>('products'),
+        productMedia: unusedService<ProductMediaService>('productMedia'),
         version: '1.2.3',
         startedAt: new Date(Date.now() - 5_000),
         logRequests: false,
@@ -65,3 +68,50 @@ export function buildApp(overrides: Partial<AppOptions> = {}) {
 }
 
 export const bearer = (token: string) => ({ headers: { authorization: `Bearer ${token}` } });
+
+/**
+ * In-memory storage. `simulateUpload()` stands in for the browser's PUT to the presigned URL;
+ * `puts` and `deleted` record what the API uploaded and removed.
+ */
+export function createFakeStorage() {
+    const objects = new Map<string, { sizeBytes: number; contentType: string }>();
+    const deleted: string[] = [];
+    const puts: string[] = [];
+    const id = (bucket: Bucket, key: string) => `${bucket}:${key}`;
+
+    const storage: Storage & {
+        simulateUpload(bucket: Bucket, key: string, sizeBytes: number, contentType: string): void;
+        has(bucket: Bucket, key: string): boolean;
+        deleted: string[];
+        puts: string[];
+    } = {
+        deleted,
+        puts,
+        async presignUpload({ bucket, key, contentType }) {
+            return {
+                url: `https://storage.test/${bucket}/${key}?signature=fake`,
+                headers: { 'content-type': contentType },
+                expiresAt: new Date(Date.now() + 15 * 60_000),
+            };
+        },
+        async head(bucket, key) {
+            return objects.get(id(bucket, key)) ?? null;
+        },
+        async put(bucket, key, body, contentType) {
+            objects.set(id(bucket, key), { sizeBytes: body.byteLength, contentType });
+            puts.push(id(bucket, key));
+        },
+        async delete(bucket, keys) {
+            for (const key of keys) {
+                objects.delete(id(bucket, key));
+                deleted.push(id(bucket, key));
+            }
+        },
+        publicUrl: (key) => `https://assets.test/${key}`,
+        simulateUpload(bucket, key, sizeBytes, contentType) {
+            objects.set(id(bucket, key), { sizeBytes, contentType });
+        },
+        has: (bucket, key) => objects.has(id(bucket, key)),
+    };
+    return storage;
+}

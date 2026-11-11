@@ -96,6 +96,8 @@ export type AdminProductSummary = z.infer<typeof adminProductSummarySchema>;
 export const adminProductImageSchema = z
     .object({
         id: z.uuid(),
+        /** Public URL, or `null` while file storage isn't configured. */
+        url: z.url().nullable(),
         alt: z.string(),
         width: z.int(),
         height: z.int(),
@@ -109,6 +111,8 @@ export const adminProductFileSchema = z
     .object({
         id: z.uuid(),
         kind: productFileKindSchema,
+        /** Public URL of a preview. Always `null` for downloads, which are private (and while storage isn't configured). */
+        url: z.url().nullable(),
         format: productFileFormatSchema,
         filename: z.string(),
         sizeBytes: z.int(),

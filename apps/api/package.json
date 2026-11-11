@@ -16,6 +16,8 @@
     },
     "dependencies": {
         "@app/shared": "workspace:*",
+        "@aws-sdk/client-s3": "catalog:",
+        "@aws-sdk/s3-request-presigner": "catalog:",
         "@clerk/backend": "catalog:",
         "@hono/node-server": "catalog:",
         "@hono/swagger-ui": "catalog:",
@@ -29,6 +31,7 @@
         "@types/node": "catalog:",
         "@types/pg": "catalog:",
         "drizzle-kit": "catalog:",
+        "image-size": "catalog:",
         "typescript": "catalog:",
         "vite-plus": "catalog:"
     }

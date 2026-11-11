@@ -5,8 +5,10 @@ import packageJson from '../package.json' with { type: 'json' };
 import { createApp } from './app.ts';
 import { createDatabase, pingDatabase } from './db/client.ts';
 import { loadEnv } from './env.ts';
+import { createStorageFromEnv } from './integrations/s3.ts';
 import { createClerkTokenVerifier } from './lib/auth.ts';
 import { createCategoriesService } from './services/categories.ts';
+import { createProductMediaService } from './services/product-media.ts';
 import { createProductsService } from './services/products.ts';
 import { createUsersService } from './services/users.ts';
 
@@ -18,6 +20,11 @@ if (!signingSecret) {
     console.warn('CLERK_WEBHOOK_SIGNING_SECRET is not set: POST /api/webhooks/clerk will answer 503.');
 }
 
+const storage = createStorageFromEnv(env);
+if (!storage) {
+    console.warn('S3_* storage settings are not set: the upload endpoints will answer 503.');
+}
+
 const app = createApp({
     checkDatabase: () => pingDatabase(db),
     verifySessionToken: createClerkTokenVerifier({
@@ -27,7 +34,8 @@ const app = createApp({
     verifyClerkWebhook: signingSecret ? (request) => verifyWebhook(request, { signingSecret }) : null,
     users: createUsersService(db),
     categories: createCategoriesService(db),
-    products: createProductsService(db),
+    products: createProductsService(db, storage),
+    productMedia: createProductMediaService(db, storage),
     version: packageJson.version,
     startedAt: new Date(),
     logRequests: env.LOG_REQUESTS,

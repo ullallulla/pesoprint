@@ -3,32 +3,66 @@ import { fileURLToPath } from 'node:url';
 
 import { z } from 'zod';
 
-const envSchema = z.object({
-    NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
-    PORT: z.coerce.number().int().positive().default(3001),
-    DATABASE_URL: z.url({ protocol: /^postgres(ql)?$/, error: 'DATABASE_URL must be a postgres:// URL' }),
-    LOG_REQUESTS: z
-        .enum(['true', 'false'])
-        .default('true')
-        .transform((value) => value === 'true'),
-    /** Clerk secret key, used to verify session tokens sent by the web app. */
-    CLERK_SECRET_KEY: z.string().startsWith('sk_', 'CLERK_SECRET_KEY must start with sk_'),
-    /** Signing secret of the Clerk webhook endpoint. Without it, POST /api/webhooks/clerk answers 503. */
-    CLERK_WEBHOOK_SIGNING_SECRET: z.string().startsWith('whsec_').optional(),
-    /**
-     * Comma-separated origins of the web app. Session tokens issued for any other origin are rejected
-     * (Clerk "authorized parties" check).
-     */
-    WEB_ORIGINS: z
-        .string()
-        .default('http://localhost:5173')
-        .transform((value) =>
-            value
-                .split(',')
-                .map((origin) => origin.trim())
-                .filter(Boolean),
-        ),
-});
+/** S3-compatible file storage (Cloudflare R2). All or none: without them, the upload endpoints answer 503. */
+const STORAGE_KEYS = [
+    'S3_ENDPOINT',
+    'S3_ACCESS_KEY_ID',
+    'S3_SECRET_ACCESS_KEY',
+    'S3_PUBLIC_BUCKET',
+    'S3_PRIVATE_BUCKET',
+    'PUBLIC_ASSETS_URL',
+] as const;
+
+const envSchema = z
+    .object({
+        NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
+        PORT: z.coerce.number().int().positive().default(3001),
+        DATABASE_URL: z.url({ protocol: /^postgres(ql)?$/, error: 'DATABASE_URL must be a postgres:// URL' }),
+        LOG_REQUESTS: z
+            .enum(['true', 'false'])
+            .default('true')
+            .transform((value) => value === 'true'),
+        /** Clerk secret key, used to verify session tokens sent by the web app. */
+        CLERK_SECRET_KEY: z.string().startsWith('sk_', 'CLERK_SECRET_KEY must start with sk_'),
+        /** Signing secret of the Clerk webhook endpoint. Without it, POST /api/webhooks/clerk answers 503. */
+        CLERK_WEBHOOK_SIGNING_SECRET: z.string().startsWith('whsec_').optional(),
+        /**
+         * Comma-separated origins of the web app. Session tokens issued for any other origin are rejected
+         * (Clerk "authorized parties" check).
+         */
+        WEB_ORIGINS: z
+            .string()
+            .default('http://localhost:5173')
+            .transform((value) =>
+                value
+                    .split(',')
+                    .map((origin) => origin.trim())
+                    .filter(Boolean),
+            ),
+        /** e.g. `https://<account id>.r2.cloudflarestorage.com`. */
+        S3_ENDPOINT: z.url().optional(),
+        /** `auto` for R2. */
+        S3_REGION: z.string().default('auto'),
+        S3_ACCESS_KEY_ID: z.string().min(1).optional(),
+        S3_SECRET_ACCESS_KEY: z.string().min(1).optional(),
+        /** Images and 3D previews; must allow public reads. */
+        S3_PUBLIC_BUCKET: z.string().min(1).optional(),
+        /** Model downloads; must not be public. */
+        S3_PRIVATE_BUCKET: z.string().min(1).optional(),
+        /** Where the public bucket is served from: a custom domain or the bucket's r2.dev URL. */
+        PUBLIC_ASSETS_URL: z.url().optional(),
+    })
+    .superRefine((env, ctx) => {
+        const set = STORAGE_KEYS.filter((key) => env[key] !== undefined);
+        if (set.length > 0 && set.length < STORAGE_KEYS.length) {
+            const missing = STORAGE_KEYS.filter((key) => env[key] === undefined);
+            ctx.addIssue({
+                code: 'custom',
+                path: [missing[0]!],
+                message: `File storage is partly configured. Also set: ${missing.join(', ')} (or remove the S3_* settings).`,
+            });
+        }
+    });
 
 export type Env = z.infer<typeof envSchema>;
 
