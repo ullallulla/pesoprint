@@ -4,14 +4,15 @@ import { logger } from 'hono/logger';
 import { requestId } from 'hono/request-id';
 import { secureHeaders } from 'hono/secure-headers';
 
-import { errorCodeForStatus, sendError } from './lib/errors.ts';
+import { AppError, errorCodeForStatus, sendError } from './lib/errors.ts';
 import { createRouter } from './lib/router.ts';
+import { adminCategoryRoutes, type AdminCategoryDeps } from './routes/admin-categories.ts';
 import { adminRoutes, type AdminDeps } from './routes/admin.ts';
 import { healthRoutes, type HealthDeps } from './routes/health.ts';
 import { meRoutes } from './routes/me.ts';
 import { webhookRoutes, type WebhookDeps } from './routes/webhooks.ts';
 
-export interface AppOptions extends HealthDeps, AdminDeps, WebhookDeps {
+export interface AppOptions extends HealthDeps, AdminDeps, AdminCategoryDeps, WebhookDeps {
     logRequests: boolean;
 }
 
@@ -31,6 +32,7 @@ export function createApp(options: AppOptions) {
     app.route('/api', healthRoutes(options));
     app.route('/api', meRoutes(options));
     app.route('/api', adminRoutes(options));
+    app.route('/api', adminCategoryRoutes(options));
     app.route('/api', webhookRoutes(options));
 
     // OpenAPI document + interactive docs
@@ -53,6 +55,9 @@ export function createApp(options: AppOptions) {
     app.notFound((c) => sendError(c, 404, 'not_found', `No route for ${c.req.method} ${c.req.path}`));
 
     app.onError((error, c) => {
+        if (error instanceof AppError) {
+            return sendError(c, error.status, error.code, error.message, error.issues);
+        }
         if (error instanceof HTTPException) {
             return sendError(c, error.status, errorCodeForStatus(error.status), error.message);
         }

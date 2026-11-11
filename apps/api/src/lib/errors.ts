@@ -37,3 +37,29 @@ export function sendError<TStatus extends ContentfulStatusCode>(
     };
     return c.json(body, status);
 }
+
+type ErrorIssues = NonNullable<ApiError['error']['issues']>;
+
+/**
+ * An expected failure (not found, conflict, invalid input) thrown by a service.
+ * The app's error handler turns it into an `ApiError` response, so services don't need the request context.
+ */
+export class AppError extends Error {
+    readonly status: ContentfulStatusCode;
+    readonly code: ApiErrorCode;
+    readonly issues: ErrorIssues | undefined;
+
+    constructor(status: ContentfulStatusCode, code: ApiErrorCode, message: string, issues?: ErrorIssues) {
+        super(message);
+        this.name = 'AppError';
+        this.status = status;
+        this.code = code;
+        this.issues = issues;
+    }
+}
+
+export const notFound = (message: string) => new AppError(404, 'not_found', message);
+export const conflict = (message: string) => new AppError(409, 'conflict', message);
+/** Input that passes the schema but breaks a business rule, reported against one field. */
+export const invalidField = (path: string, message: string) =>
+    new AppError(400, 'validation_failed', message, [{ path, message }]);

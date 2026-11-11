@@ -2,6 +2,7 @@ import type { NewUser } from '../src/db/schema.ts';
 import type { AppOptions } from '../src/app.ts';
 import { createApp } from '../src/app.ts';
 import type { AuthContext } from '../src/lib/auth.ts';
+import type { CategoriesService } from '../src/services/categories.ts';
 import type { UsersService } from '../src/services/users.ts';
 
 /** Tokens the fake verifier accepts. Anything else is rejected like an invalid Clerk token. */
@@ -30,6 +31,14 @@ export function createFakeUsers(): UsersService & { rows: Map<string, NewUser> }
     };
 }
 
+/** A categories service for tests that never reach it (auth, validation). Any call fails the test. */
+const unusedCategories: CategoriesService = {
+    list: () => Promise.reject(new Error('categories service not provided to buildApp')),
+    create: () => Promise.reject(new Error('categories service not provided to buildApp')),
+    update: () => Promise.reject(new Error('categories service not provided to buildApp')),
+    remove: () => Promise.reject(new Error('categories service not provided to buildApp')),
+};
+
 export function buildApp(overrides: Partial<AppOptions> = {}) {
     return createApp({
         checkDatabase: async () => true,
@@ -42,6 +51,7 @@ export function buildApp(overrides: Partial<AppOptions> = {}) {
         },
         verifyClerkWebhook: null,
         users: createFakeUsers(),
+        categories: unusedCategories,
         version: '1.2.3',
         startedAt: new Date(Date.now() - 5_000),
         logRequests: false,
