@@ -1,4 +1,4 @@
-import { LICENSE_IDS, OWN_LICENSES } from '@app/shared';
+import { LICENSE_IDS, OWN_LICENSES, SLUG_PATTERN } from '@app/shared';
 import { sql } from 'drizzle-orm';
 import {
     bigint,
@@ -27,9 +27,6 @@ const id = () =>
     uuid('id')
         .primaryKey()
         .default(sql`uuidv7()`);
-
-/** Lowercase words joined by single hyphens, e.g. `articulated-dragon`. */
-const SLUG_PATTERN = '^[a-z0-9]+(-[a-z0-9]+)*$';
 
 export const userRole = pgEnum('user_role', ['customer', 'creator', 'admin']);
 
