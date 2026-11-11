@@ -10,12 +10,20 @@ import { adminCategoryRoutes, type AdminCategoryDeps } from './routes/admin-cate
 import { adminProductMediaRoutes, type AdminProductMediaDeps } from './routes/admin-product-media.ts';
 import { adminProductRoutes, type AdminProductDeps } from './routes/admin-products.ts';
 import { adminRoutes, type AdminDeps } from './routes/admin.ts';
+import { catalogRoutes, type CatalogDeps } from './routes/catalog.ts';
 import { healthRoutes, type HealthDeps } from './routes/health.ts';
 import { meRoutes } from './routes/me.ts';
 import { webhookRoutes, type WebhookDeps } from './routes/webhooks.ts';
 
 export interface AppOptions
-    extends HealthDeps, AdminDeps, AdminCategoryDeps, AdminProductDeps, AdminProductMediaDeps, WebhookDeps {
+    extends
+        HealthDeps,
+        AdminDeps,
+        AdminCategoryDeps,
+        AdminProductDeps,
+        AdminProductMediaDeps,
+        CatalogDeps,
+        WebhookDeps {
     logRequests: boolean;
 }
 
@@ -34,6 +42,7 @@ export function createApp(options: AppOptions) {
 
     app.route('/api', healthRoutes(options));
     app.route('/api', meRoutes(options));
+    app.route('/api', catalogRoutes(options));
     app.route('/api', adminRoutes(options));
     app.route('/api', adminCategoryRoutes(options));
     app.route('/api', adminProductRoutes(options));

@@ -1,4 +1,5 @@
 export * from './auth.ts';
+export * from './catalog.ts';
 export * from './categories.ts';
 export * from './errors.ts';
 export * from './health.ts';

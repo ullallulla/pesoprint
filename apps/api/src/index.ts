@@ -7,6 +7,7 @@ import { createDatabase, pingDatabase } from './db/client.ts';
 import { loadEnv } from './env.ts';
 import { createStorageFromEnv } from './integrations/s3.ts';
 import { createClerkTokenVerifier } from './lib/auth.ts';
+import { createCatalogService } from './services/catalog.ts';
 import { createCategoriesService } from './services/categories.ts';
 import { createProductMediaService } from './services/product-media.ts';
 import { createProductsService } from './services/products.ts';
@@ -36,6 +37,7 @@ const app = createApp({
     categories: createCategoriesService(db),
     products: createProductsService(db, storage),
     productMedia: createProductMediaService(db, storage),
+    catalog: createCatalogService(db, storage),
     version: packageJson.version,
     startedAt: new Date(),
     logRequests: env.LOG_REQUESTS,
