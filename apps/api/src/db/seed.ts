@@ -1,7 +1,10 @@
-import type { License, ProductFileFormat, ProductStatus } from '@app/shared';
+import { publishProblems, type License, type ProductFileFormat, type ProductStatus } from '@app/shared';
 import { eq, inArray } from 'drizzle-orm';
 
+import { bucketForFileKind } from '../services/product-media.ts';
+import type { Storage } from '../lib/storage.ts';
 import type { Database } from './client.ts';
+import type { SeedAsset } from './seed-assets.ts';
 import { categories, productFiles, productImages, products, users, type NewProduct } from './schema.ts';
 
 /**
@@ -55,6 +58,7 @@ const SEED_CATEGORIES: SeedCategory[] = [
         ],
     },
     { slug: 'miniatures', name: 'Miniatures', description: 'Small-scale figures and scenery.' },
+    { slug: 'ham-radio', name: 'Ham radio', description: 'Stands, mounts and adapters for amateur radio gear.' },
 ];
 
 interface SeedProduct {
@@ -297,10 +301,87 @@ export interface SeedResult {
     products: number;
     images: number;
     files: number;
+    /** Asset files uploaded to storage this run (files already there with the same size are skipped). */
+    uploaded: number;
+}
+
+export interface SeedOptions {
+    /** Real models from `seed-assets/`, see `loadSeedAssets()`. */
+    assets?: SeedAsset[];
+    /** Where asset files are uploaded. Without it the rows are still written, pointing at files that don't exist. */
+    storage?: Storage | null;
+    now?: Date;
+}
+
+const assetKey = (slug: string, filename: string) => `seed/products/${slug}/${filename}`;
+
+function assetDescription(asset: SeedAsset): string {
+    const { description, designer, url } = asset.source;
+    if (!designer) return description;
+    const credit = url ? `Design by ${designer} ([original](${url})).` : `Design by ${designer}.`;
+    return [description, credit].filter(Boolean).join('\n\n');
+}
+
+function imageAlt(title: string, filename: string, index: number): string {
+    const view = index > 0 ? `, view ${index + 1}` : '';
+    return filename.toLowerCase().startsWith('render')
+        ? `3D render of the ${title}${view}`
+        : `${title}, photo ${index + 1}`;
+}
+
+/** Fails early, naming the folder, if an asset could never be published (so the seed doesn't write half a catalogue). */
+function assertAssetsPublishable(assets: SeedAsset[]): void {
+    const categorySlugs = new Set(
+        SEED_CATEGORIES.flatMap((c) => [c.slug, ...(c.children ?? []).map((child) => child.slug)]),
+    );
+    for (const asset of assets) {
+        const { source } = asset;
+        if (!categorySlugs.has(source.category)) {
+            throw new Error(
+                `seed-assets/${asset.slug}: unknown category "${source.category}". Use one from src/db/seed.ts.`,
+            );
+        }
+        const problems = publishProblems({
+            categoryId: source.category,
+            digitalPriceCents: source.digitalPriceCents ?? null,
+            printBasePriceCents: source.printBasePriceCents ?? null,
+            license: source.license ?? null,
+            imageCount: asset.images.length,
+            downloadFileCount: asset.files.filter((file) => file.kind === 'download').length,
+        });
+        if (problems.length > 0) {
+            throw new Error(
+                `seed-assets/${asset.slug} can't be published: ${problems.map((p) => p.message).join(' ')}`,
+            );
+        }
+    }
+}
+
+/** Uploads asset files that aren't in storage yet. Runs before the database transaction, so no transaction waits on the network. */
+async function uploadAssets(storage: Storage, assets: SeedAsset[]): Promise<number> {
+    let uploaded = 0;
+    for (const asset of assets) {
+        const objects = [
+            ...asset.images.map((image) => ({ ...image, bucket: 'public' as const })),
+            ...asset.files.map((file) => ({ ...file, bucket: bucketForFileKind(file.kind) })),
+        ];
+        for (const object of objects) {
+            const key = assetKey(asset.slug, object.filename);
+            const existing = await storage.head(object.bucket, key);
+            if (existing?.sizeBytes === object.body.byteLength) continue;
+            await storage.put(object.bucket, key, object.body, object.contentType);
+            uploaded++;
+        }
+    }
+    return uploaded;
 }
 
 /** Writes the sample catalogue. Safe to run again: it replaces the previous seed products. */
-export async function seedDatabase(db: Database, now = new Date()): Promise<SeedResult> {
+export async function seedDatabase(db: Database, options: SeedOptions = {}): Promise<SeedResult> {
+    const { assets = [], storage = null, now = new Date() } = options;
+    assertAssetsPublishable(assets);
+    const uploaded = storage ? await uploadAssets(storage, assets) : 0;
+
     return db.transaction(async (tx) => {
         await tx
             .insert(users)
@@ -341,12 +422,75 @@ export async function seedDatabase(db: Database, now = new Date()): Promise<Seed
         // Products: replace every product owned by the seed creator (images and files cascade).
         await tx.delete(products).where(eq(products.creatorId, SEED_CREATOR.id));
         // A product of yours could hold a seed slug; free them so the inserts below don't collide.
-        const seedSlugs = SEED_PRODUCTS.map((product) => product.slug);
+        const seedSlugs = [...SEED_PRODUCTS.map((product) => product.slug), ...assets.map((asset) => asset.slug)];
         const taken = await tx.select({ slug: products.slug }).from(products).where(inArray(products.slug, seedSlugs));
         const takenSlugs = new Set(taken.map((row) => row.slug));
 
-        const result: SeedResult = { categories: categoryIds.size, products: 0, images: 0, files: 0 };
+        const result: SeedResult = { categories: categoryIds.size, products: 0, images: 0, files: 0, uploaded };
         let featuredRank = 0;
+
+        // Real models first: published most recently and featured most recently, so they lead the home page.
+        for (const [index, asset] of assets.entries()) {
+            if (takenSlugs.has(asset.slug)) continue;
+            const { source } = asset;
+            const publishedAt = new Date(now.getTime() - (index + 1) * 60 * 60 * 1000);
+            const [width, depth, height] = source.size ?? [null, null, null];
+
+            const [product] = await tx
+                .insert(products)
+                .values({
+                    slug: asset.slug,
+                    title: source.title,
+                    description: assetDescription(asset),
+                    creatorId: SEED_CREATOR.id,
+                    categoryId: categoryIds.get(source.category)!,
+                    status: 'published',
+                    digitalPriceCents: source.digitalPriceCents ?? null,
+                    printBasePriceCents: source.printBasePriceCents ?? null,
+                    license: source.license ?? null,
+                    sizeXMm: width,
+                    sizeYMm: depth,
+                    sizeZMm: height,
+                    printWeightG: source.printWeightG ?? null,
+                    featuredAt: source.featured ? new Date(now.getTime() - featuredRank++ * 60_000) : null,
+                    publishedAt,
+                    createdAt: new Date(publishedAt.getTime() - DAY_MS),
+                })
+                .returning({ id: products.id });
+            const productId = product!.id;
+            result.products++;
+
+            if (asset.images.length > 0) {
+                await tx.insert(productImages).values(
+                    asset.images.map((image, position) => ({
+                        productId,
+                        storageKey: assetKey(asset.slug, image.filename),
+                        alt: imageAlt(source.title, image.filename, position),
+                        width: image.width,
+                        height: image.height,
+                        sizeBytes: image.body.byteLength,
+                        position,
+                    })),
+                );
+                result.images += asset.images.length;
+            }
+            if (asset.files.length > 0) {
+                await tx.insert(productFiles).values(
+                    asset.files.map((file, position) => ({
+                        productId,
+                        kind: file.kind,
+                        format: file.format,
+                        filename: file.filename,
+                        storageKey: assetKey(asset.slug, file.filename),
+                        sizeBytes: file.body.byteLength,
+                        position,
+                    })),
+                );
+                result.files += asset.files.length;
+            }
+        }
+        // Placeholder products are featured a day earlier, so they come after the real models.
+        const placeholderFeaturedBase = now.getTime() - (assets.length > 0 ? DAY_MS : 0);
 
         for (const [index, seed] of SEED_PRODUCTS.entries()) {
             if (takenSlugs.has(seed.slug)) continue;
@@ -369,7 +513,7 @@ export async function seedDatabase(db: Database, now = new Date()): Promise<Seed
                 sizeZMm: height,
                 printWeightG: weight,
                 // Featured products keep the list order: the first one is the most recently featured.
-                featuredAt: seed.featured ? new Date(now.getTime() - featuredRank++ * 60_000) : null,
+                featuredAt: seed.featured ? new Date(placeholderFeaturedBase - featuredRank++ * 60_000) : null,
                 publishedAt,
                 createdAt: new Date((publishedAt ?? now).getTime() - DAY_MS),
             };

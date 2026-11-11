@@ -9,3 +9,4 @@
 !**/.env.example
 **/coverage
 docs
+apps/api/seed-assets

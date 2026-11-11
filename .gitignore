@@ -31,3 +31,7 @@ dist-ssr
 
 # AI agent worktrees
 .claude/worktrees/
+
+# Seed models and images: may be paid or third-party files, so never committed (see the README inside)
+apps/api/seed-assets/*
+!apps/api/seed-assets/README.md

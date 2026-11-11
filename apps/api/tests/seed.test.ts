@@ -4,9 +4,16 @@ import { publishProblems } from '@app/shared';
 import { and, count, eq, sql } from 'drizzle-orm';
 import { afterAll, beforeAll, describe, expect, test } from 'vite-plus/test';
 
+import { mkdtemp, rm } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+
 import { createDatabase, runMigrations } from '../src/db/client.ts';
+import { loadSeedAssets } from '../src/db/seed-assets.ts';
 import { categories, productFiles, productImages, products, users } from '../src/db/schema.ts';
 import { SEED_CREATOR, seedDatabase } from '../src/db/seed.ts';
+import { createFakeStorage } from './helpers.ts';
+import { TINY_PNG, tinyStl, validSource, writeAsset } from './seed-fixtures.ts';
 
 const url = process.env.TEST_DATABASE_URL;
 
@@ -106,5 +113,88 @@ describe.skipIf(!url)('seedDatabase (integration)', () => {
             .from(products)
             .where(eq(products.creatorId, SEED_CREATOR.id));
         expect(seeded?.value).toBe(result.products);
+    });
+
+    describe('with real models from seed-assets/', () => {
+        let dir: string;
+
+        beforeAll(async () => {
+            dir = await mkdtemp(join(tmpdir(), 'seed-assets-'));
+            await writeAsset(
+                dir,
+                'real-cable-clip',
+                { ...validSource, printBasePriceCents: 990, featured: true, size: [20, 15, 12] },
+                {
+                    'render-1.png': TINY_PNG,
+                    'cable-clip.stl': tinyStl(),
+                },
+            );
+        });
+
+        afterAll(async () => {
+            await rm(dir, { recursive: true, force: true });
+        });
+
+        test('publishes them first, uploads their files once, and leads the featured list', async () => {
+            const storage = createFakeStorage();
+            const assets = await loadSeedAssets(dir);
+
+            const first = await seedDatabase(db, { assets, storage });
+            expect(first.uploaded).toBe(2);
+            expect(storage.puts.sort()).toEqual([
+                'private:seed/products/real-cable-clip/cable-clip.stl',
+                'public:seed/products/real-cable-clip/render-1.png',
+            ]);
+
+            const [product] = await db.select().from(products).where(eq(products.slug, 'real-cable-clip'));
+            expect(product).toMatchObject({
+                status: 'published',
+                title: 'Cable Clip',
+                sizeXMm: 20,
+                printBasePriceCents: 990,
+            });
+
+            const [newest] = await db
+                .select({ slug: products.slug })
+                .from(products)
+                .orderBy(sql`${products.publishedAt} DESC NULLS LAST`)
+                .limit(1);
+            expect(newest?.slug).toBe('real-cable-clip');
+            const [topFeatured] = await db
+                .select({ slug: products.slug })
+                .from(products)
+                .orderBy(sql`${products.featuredAt} DESC NULLS LAST`)
+                .limit(1);
+            expect(topFeatured?.slug).toBe('real-cable-clip');
+
+            const images = await db.select().from(productImages).where(eq(productImages.productId, product!.id));
+            expect(images).toEqual([
+                expect.objectContaining({
+                    storageKey: 'seed/products/real-cable-clip/render-1.png',
+                    alt: '3D render of the Cable Clip',
+                    width: 1,
+                    height: 1,
+                }),
+            ]);
+
+            // Unchanged files are not uploaded again.
+            const second = await seedDatabase(db, { assets, storage });
+            expect(second.uploaded).toBe(0);
+            expect(storage.puts).toHaveLength(2);
+        });
+
+        test('refuses, before writing anything, a model that could not be published', async () => {
+            const assets = await loadSeedAssets(dir);
+            const broken = assets.map((asset) => ({
+                ...asset,
+                source: { ...asset.source, category: 'no-such-category' },
+            }));
+            await expect(seedDatabase(db, { assets: broken })).rejects.toThrow(/unknown category "no-such-category"/);
+
+            const noImages = assets.map((asset) => ({ ...asset, images: [] }));
+            await expect(seedDatabase(db, { assets: noImages })).rejects.toThrow(
+                /can't be published: Add at least one image/,
+            );
+        });
     });
 });
