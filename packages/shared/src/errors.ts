@@ -13,21 +13,24 @@ export const apiErrorCodeSchema = z.enum([
 ]);
 export type ApiErrorCode = z.infer<typeof apiErrorCodeSchema>;
 
+/** A problem with one field (or one part of a resource, e.g. `images`). */
+export const apiErrorIssueSchema = z.object({
+    path: z.string(),
+    message: z.string(),
+});
+export type ApiErrorIssue = z.infer<typeof apiErrorIssueSchema>;
+
 /** Every error response from the API has this shape. */
 export const apiErrorSchema = z
     .object({
         error: z.object({
             code: apiErrorCodeSchema,
             message: z.string(),
-            /** Field-level problems, present when code is `validation_failed`. */
-            issues: z
-                .array(
-                    z.object({
-                        path: z.string(),
-                        message: z.string(),
-                    }),
-                )
-                .optional(),
+            /**
+             * Field-level problems. Present for `validation_failed`, and for a `conflict` that lists
+             * what has to change first (e.g. why a product can't be published yet).
+             */
+            issues: z.array(apiErrorIssueSchema).optional(),
             requestId: z.string().optional(),
         }),
     })

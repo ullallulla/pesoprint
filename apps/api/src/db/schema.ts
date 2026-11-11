@@ -1,4 +1,11 @@
-import { LICENSE_IDS, OWN_LICENSES, SLUG_PATTERN } from '@app/shared';
+import {
+    LICENSE_IDS,
+    OWN_LICENSES,
+    PRODUCT_FILE_FORMATS,
+    PRODUCT_FILE_KINDS,
+    PRODUCT_STATUSES,
+    SLUG_PATTERN,
+} from '@app/shared';
 import { sql } from 'drizzle-orm';
 import {
     bigint,
@@ -76,7 +83,7 @@ export const categories = pgTable(
 export type Category = typeof categories.$inferSelect;
 export type NewCategory = typeof categories.$inferInsert;
 
-export const productStatus = pgEnum('product_status', ['draft', 'published', 'archived']);
+export const productStatus = pgEnum('product_status', PRODUCT_STATUSES);
 export const license = pgEnum('license', LICENSE_IDS);
 
 const tsvector = customType<{ data: string }>({
@@ -188,8 +195,8 @@ export const productImages = pgTable(
 export type ProductImage = typeof productImages.$inferSelect;
 export type NewProductImage = typeof productImages.$inferInsert;
 
-export const productFileKind = pgEnum('product_file_kind', ['download', 'preview']);
-export const productFileFormat = pgEnum('product_file_format', ['stl', '3mf', 'step', 'obj', 'glb']);
+export const productFileKind = pgEnum('product_file_kind', PRODUCT_FILE_KINDS);
+export const productFileFormat = pgEnum('product_file_format', PRODUCT_FILE_FORMATS);
 
 /**
  * Model files. `download` files live in the private bucket and are served through signed URLs.

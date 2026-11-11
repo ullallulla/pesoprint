@@ -5,6 +5,7 @@ import type { Database } from '../db/client.ts';
 import { isPgError, PgErrorCode } from '../db/errors.ts';
 import { categories, products } from '../db/schema.ts';
 import { conflict, invalidField, notFound } from '../lib/errors.ts';
+import { definedFields } from '../lib/patch.ts';
 
 export interface CategoriesService {
     /** Every category, ordered by position then name. Clients build the two-level tree from `parentId`. */
@@ -106,7 +107,7 @@ export function createCategoriesService(db: Database): CategoriesService {
                     await assertCanNest(tx, id, input.parentId);
                 }
 
-                const changes = Object.fromEntries(Object.entries(input).filter(([, value]) => value !== undefined));
+                const changes = definedFields(input);
                 if (Object.keys(changes).length === 0) {
                     return current;
                 }

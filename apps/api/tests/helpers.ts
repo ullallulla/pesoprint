@@ -3,6 +3,7 @@ import type { AppOptions } from '../src/app.ts';
 import { createApp } from '../src/app.ts';
 import type { AuthContext } from '../src/lib/auth.ts';
 import type { CategoriesService } from '../src/services/categories.ts';
+import type { ProductsService } from '../src/services/products.ts';
 import type { UsersService } from '../src/services/users.ts';
 
 /** Tokens the fake verifier accepts. Anything else is rejected like an invalid Clerk token. */
@@ -31,13 +32,16 @@ export function createFakeUsers(): UsersService & { rows: Map<string, NewUser> }
     };
 }
 
-/** A categories service for tests that never reach it (auth, validation). Any call fails the test. */
-const unusedCategories: CategoriesService = {
-    list: () => Promise.reject(new Error('categories service not provided to buildApp')),
-    create: () => Promise.reject(new Error('categories service not provided to buildApp')),
-    update: () => Promise.reject(new Error('categories service not provided to buildApp')),
-    remove: () => Promise.reject(new Error('categories service not provided to buildApp')),
-};
+/**
+ * A stand-in for a service the test never reaches (auth and validation tests stop before it).
+ * Any call fails loudly, so a test that does reach it has to pass a real or fake service.
+ */
+function unusedService<T extends object>(name: string): T {
+    return new Proxy({} as T, {
+        get: (_, method) => () =>
+            Promise.reject(new Error(`${name}.${String(method)}() called, but buildApp got no ${name} service`)),
+    });
+}
 
 export function buildApp(overrides: Partial<AppOptions> = {}) {
     return createApp({
@@ -51,7 +55,8 @@ export function buildApp(overrides: Partial<AppOptions> = {}) {
         },
         verifyClerkWebhook: null,
         users: createFakeUsers(),
-        categories: unusedCategories,
+        categories: unusedService<CategoriesService>('categories'),
+        products: unusedService<ProductsService>('products'),
         version: '1.2.3',
         startedAt: new Date(Date.now() - 5_000),
         logRequests: false,

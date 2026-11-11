@@ -7,6 +7,7 @@ import { createDatabase, pingDatabase } from './db/client.ts';
 import { loadEnv } from './env.ts';
 import { createClerkTokenVerifier } from './lib/auth.ts';
 import { createCategoriesService } from './services/categories.ts';
+import { createProductsService } from './services/products.ts';
 import { createUsersService } from './services/users.ts';
 
 const env = loadEnv();
@@ -26,6 +27,7 @@ const app = createApp({
     verifyClerkWebhook: signingSecret ? (request) => verifyWebhook(request, { signingSecret }) : null,
     users: createUsersService(db),
     categories: createCategoriesService(db),
+    products: createProductsService(db),
     version: packageJson.version,
     startedAt: new Date(),
     logRequests: env.LOG_REQUESTS,

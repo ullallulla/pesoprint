@@ -59,7 +59,8 @@ export class AppError extends Error {
 }
 
 export const notFound = (message: string) => new AppError(404, 'not_found', message);
-export const conflict = (message: string) => new AppError(409, 'conflict', message);
+/** The request clashes with the current state. `issues` can list what has to change first. */
+export const conflict = (message: string, issues?: ErrorIssues) => new AppError(409, 'conflict', message, issues);
 /** Input that passes the schema but breaks a business rule, reported against one field. */
 export const invalidField = (path: string, message: string) =>
     new AppError(400, 'validation_failed', message, [{ path, message }]);

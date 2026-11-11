@@ -7,12 +7,13 @@ import { secureHeaders } from 'hono/secure-headers';
 import { AppError, errorCodeForStatus, sendError } from './lib/errors.ts';
 import { createRouter } from './lib/router.ts';
 import { adminCategoryRoutes, type AdminCategoryDeps } from './routes/admin-categories.ts';
+import { adminProductRoutes, type AdminProductDeps } from './routes/admin-products.ts';
 import { adminRoutes, type AdminDeps } from './routes/admin.ts';
 import { healthRoutes, type HealthDeps } from './routes/health.ts';
 import { meRoutes } from './routes/me.ts';
 import { webhookRoutes, type WebhookDeps } from './routes/webhooks.ts';
 
-export interface AppOptions extends HealthDeps, AdminDeps, AdminCategoryDeps, WebhookDeps {
+export interface AppOptions extends HealthDeps, AdminDeps, AdminCategoryDeps, AdminProductDeps, WebhookDeps {
     logRequests: boolean;
 }
 
@@ -33,6 +34,7 @@ export function createApp(options: AppOptions) {
     app.route('/api', meRoutes(options));
     app.route('/api', adminRoutes(options));
     app.route('/api', adminCategoryRoutes(options));
+    app.route('/api', adminProductRoutes(options));
     app.route('/api', webhookRoutes(options));
 
     // OpenAPI document + interactive docs

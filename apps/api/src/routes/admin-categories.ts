@@ -1,13 +1,8 @@
-import {
-    adminCategoryListSchema,
-    apiErrorSchema,
-    categorySchema,
-    createCategorySchema,
-    updateCategorySchema,
-} from '@app/shared';
-import { createRoute, z } from '@hono/zod-openapi';
+import { adminCategoryListSchema, categorySchema, createCategorySchema, updateCategorySchema } from '@app/shared';
+import { createRoute } from '@hono/zod-openapi';
 
 import type { VerifySessionToken } from '../lib/auth.ts';
+import { adminAuthResponses, errorResponse, idParams } from '../lib/openapi.ts';
 import { createRouter } from '../lib/router.ts';
 import { requireAdmin } from '../middleware/auth.ts';
 import type { CategoriesService } from '../services/categories.ts';
@@ -16,18 +11,6 @@ export interface AdminCategoryDeps {
     verifySessionToken: VerifySessionToken;
     categories: CategoriesService;
 }
-
-const errorResponse = (description: string) => ({
-    description,
-    content: { 'application/json': { schema: apiErrorSchema } },
-});
-
-const authResponses = {
-    401: errorResponse('Missing, invalid or expired session token.'),
-    403: errorResponse('The caller is not an admin.'),
-};
-
-const idParams = z.object({ id: z.uuid().openapi({ param: { name: 'id', in: 'path' } }) });
 
 export function adminCategoryRoutes(deps: AdminCategoryDeps) {
     const adminOnly = requireAdmin(deps.verifySessionToken);
@@ -45,7 +28,7 @@ export function adminCategoryRoutes(deps: AdminCategoryDeps) {
                 description: 'All categories.',
                 content: { 'application/json': { schema: adminCategoryListSchema } },
             },
-            ...authResponses,
+            ...adminAuthResponses,
         },
     });
 
@@ -63,7 +46,7 @@ export function adminCategoryRoutes(deps: AdminCategoryDeps) {
         responses: {
             201: { description: 'The new category.', content: { 'application/json': { schema: categorySchema } } },
             400: errorResponse('Invalid input, or the parent breaks the two-level rule.'),
-            ...authResponses,
+            ...adminAuthResponses,
             409: errorResponse('The slug is already taken.'),
         },
     });
@@ -86,7 +69,7 @@ export function adminCategoryRoutes(deps: AdminCategoryDeps) {
                 content: { 'application/json': { schema: categorySchema } },
             },
             400: errorResponse('Invalid input, or the move breaks the two-level rule.'),
-            ...authResponses,
+            ...adminAuthResponses,
             404: errorResponse('No category with this id.'),
             409: errorResponse('The slug is already taken.'),
         },
@@ -104,7 +87,7 @@ export function adminCategoryRoutes(deps: AdminCategoryDeps) {
         responses: {
             204: { description: 'Deleted.' },
             400: errorResponse('The id is not a UUID.'),
-            ...authResponses,
+            ...adminAuthResponses,
             404: errorResponse('No category with this id.'),
             409: errorResponse('The category still has subcategories or products.'),
         },
