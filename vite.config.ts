@@ -42,6 +42,14 @@ export default defineConfig({
             },
         ],
     },
+    test: {
+        // `vp test` at the root runs every package as its own Vitest project, using that package's
+        // vite.config.ts (path aliases, setup files). Without this, packages are tested with the root config.
+        projects: ['apps/*', 'packages/*'],
+        // API integration tests share one Postgres database. This option only works at the root,
+        // so it applies to every project here (apps/api/vite.config.ts sets it for `vp test` inside the package).
+        fileParallelism: false,
+    },
     // package.json scripts are not cached (db:migrate, dev, etc. must always run).
     run: {
         cache: { scripts: false, tasks: true },
