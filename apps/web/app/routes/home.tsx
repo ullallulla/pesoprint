@@ -1,76 +1,93 @@
-import { healthResponseSchema, type HealthResponse } from '@app/shared';
-import { CheckCircle2, CircleAlert } from 'lucide-react';
+import type { CatalogProductCard } from '@app/shared';
+import { ArrowRight } from 'lucide-react';
+import { Link } from 'react-router';
 
+import { ProductGrid } from '~/components/catalog/product-grid';
 import { Button } from '~/components/ui/button';
-import { apiFetch } from '~/lib/api.server';
+import { getCategoryTree, getHome } from '~/lib/catalog.server';
+import { pageMeta, SITE_NAME } from '~/lib/seo';
+import { absoluteUrl } from '~/lib/site.server';
 
 import type { Route } from './+types/home';
 
-export const meta: Route.MetaFunction = () => {
-    return [
-        { title: 'Pesoprint – 3D models and prints' },
-        {
-            name: 'description',
-            content: 'Download free 3D models, buy model files, or order them printed in your colour and material.',
-        },
-    ];
-};
+const DESCRIPTION = 'Download free 3D models, buy model files, or order them printed in your colour and material.';
 
 export async function loader() {
-    let health: HealthResponse | null = null;
-    try {
-        health = await apiFetch('/api/health', healthResponseSchema, { acceptStatuses: [503] });
-    } catch {
-        // API unreachable: the page still renders, the status card shows it as offline.
-    }
-    return { health };
+    const [home, categories] = await Promise.all([getHome(), getCategoryTree()]);
+    return {
+        ...home,
+        categories: categories.filter((category) => category.productCount > 0),
+        url: absoluteUrl('/'),
+        image: home.featured[0]?.cover?.url ?? null,
+    };
 }
 
+export const meta: Route.MetaFunction = ({ loaderData }) =>
+    pageMeta({ title: SITE_NAME, description: DESCRIPTION, url: loaderData?.url ?? '/', image: loaderData?.image });
+
 export default function Home({ loaderData }: Route.ComponentProps) {
-    const { health } = loaderData;
+    const { featured, newest, categories } = loaderData;
 
     return (
-        <main className='mx-auto flex w-full max-w-7xl flex-1 flex-col gap-12 px-4 py-16'>
+        <main className='mx-auto flex w-full max-w-7xl flex-1 flex-col gap-16 px-4 py-12 md:py-16'>
             <section className='max-w-2xl space-y-6'>
                 <h1 className='text-4xl font-bold tracking-tight md:text-5xl'>3D models, ready to print.</h1>
                 <p className='text-lg text-muted-foreground'>
                     Download free models, buy files for your own printer, or let us print and ship them in the colour
                     and material you choose.
                 </p>
-                <div className='flex gap-3'>
-                    <Button size='lg' disabled>
-                        Browse models (coming soon)
-                    </Button>
-                </div>
+                <Button asChild size='lg'>
+                    <Link to='/models'>
+                        Browse models <ArrowRight aria-hidden />
+                    </Link>
+                </Button>
             </section>
 
-            <section aria-labelledby='status-heading' className='max-w-md rounded-lg border p-4'>
-                <h2 id='status-heading' className='mb-2 text-sm font-medium text-muted-foreground'>
-                    System status
-                </h2>
-                <ApiStatus health={health} />
-            </section>
+            <ProductSection id='featured' title='Featured' products={featured} />
+            <ProductSection id='newest' title='New models' products={newest} />
+
+            {categories.length > 0 && (
+                <section aria-labelledby='categories-heading' className='space-y-6'>
+                    <h2 id='categories-heading' className='text-2xl font-semibold tracking-tight'>
+                        Categories
+                    </h2>
+                    <ul className='grid gap-4 sm:grid-cols-2 lg:grid-cols-3'>
+                        {categories.map((category) => (
+                            <li key={category.slug}>
+                                <Link
+                                    to={`/categories/${category.slug}`}
+                                    className='flex h-full flex-col gap-1 rounded-lg border p-5 transition-colors hover:bg-muted'
+                                >
+                                    <span className='font-medium'>{category.name}</span>
+                                    {category.description && (
+                                        <span className='text-sm text-muted-foreground'>{category.description}</span>
+                                    )}
+                                    <span className='mt-2 text-sm text-muted-foreground'>
+                                        {category.productCount === 1 ? '1 model' : `${category.productCount} models`}
+                                    </span>
+                                </Link>
+                            </li>
+                        ))}
+                    </ul>
+                </section>
+            )}
         </main>
     );
 }
 
-function ApiStatus({ health }: { health: HealthResponse | null }) {
-    if (!health) {
-        return (
-            <p className='flex items-center gap-2 text-destructive'>
-                <CircleAlert className='size-4' aria-hidden /> API offline
-            </p>
-        );
-    }
-    const ok = health.status === 'ok';
+function ProductSection({ id, title, products }: { id: string; title: string; products: CatalogProductCard[] }) {
+    if (products.length === 0) return null;
     return (
-        <p className={ok ? 'flex items-center gap-2' : 'flex items-center gap-2 text-destructive'}>
-            {ok ? (
-                <CheckCircle2 className='size-4 text-green-600' aria-hidden />
-            ) : (
-                <CircleAlert className='size-4' aria-hidden />
-            )}
-            API {ok ? 'online' : 'degraded'} · database {health.database} · v{health.version}
-        </p>
+        <section aria-labelledby={`${id}-heading`} className='space-y-6'>
+            <div className='flex items-end justify-between gap-4'>
+                <h2 id={`${id}-heading`} className='text-2xl font-semibold tracking-tight'>
+                    {title}
+                </h2>
+                <Link to='/models' className='text-sm font-medium text-muted-foreground hover:text-foreground'>
+                    See all models
+                </Link>
+            </div>
+            <ProductGrid products={products} />
+        </section>
     );
 }

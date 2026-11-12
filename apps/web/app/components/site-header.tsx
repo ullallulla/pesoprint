@@ -1,10 +1,11 @@
-import { Box } from 'lucide-react';
-import { Link, NavLink } from 'react-router';
+import { Box, Search } from 'lucide-react';
+import { Form, Link, NavLink } from 'react-router';
 
+import { Input } from '~/components/ui/input';
 import { cn } from '~/lib/utils';
 
-// Only routes that exist are linked. More arrive with each milestone (catalogue in M1).
-const navItems = [{ to: '/', label: 'Home' }];
+// Only routes that exist are linked. More arrive with each milestone.
+const navItems = [{ to: '/models', label: 'Models' }];
 
 /** `children` is the right-hand side (sign-in / user menu). Error pages render the header without it. */
 export function SiteHeader({ children }: { children?: React.ReactNode }) {
@@ -16,12 +17,11 @@ export function SiteHeader({ children }: { children?: React.ReactNode }) {
                         <Box className='size-6' aria-hidden />
                         <span>Pesoprint</span>
                     </Link>
-                    <nav aria-label='Main' className='hidden items-center gap-1 md:flex'>
+                    <nav aria-label='Main' className='flex items-center gap-1'>
                         {navItems.map((item) => (
                             <NavLink
                                 key={item.to}
                                 to={item.to}
-                                end
                                 className={({ isActive }) =>
                                     cn(
                                         'rounded-md px-3 py-2 text-sm font-medium text-muted-foreground transition-colors hover:text-foreground',
@@ -34,7 +34,31 @@ export function SiteHeader({ children }: { children?: React.ReactNode }) {
                         ))}
                     </nav>
                 </div>
-                <div className='flex items-center gap-2'>{children}</div>
+                <div className='flex items-center gap-2'>
+                    <search className='relative hidden sm:block'>
+                        <Form method='get' action='/models'>
+                            <Search
+                                className='pointer-events-none absolute top-1/2 left-2.5 size-4 -translate-y-1/2 text-muted-foreground'
+                                aria-hidden
+                            />
+                            <Input
+                                type='search'
+                                name='q'
+                                placeholder='Search models'
+                                aria-label='Search models'
+                                className='h-9 w-56 pl-8'
+                            />
+                        </Form>
+                    </search>
+                    <Link
+                        to='/models'
+                        className='rounded-md p-2 text-muted-foreground hover:text-foreground sm:hidden'
+                        aria-label='Search models'
+                    >
+                        <Search className='size-5' aria-hidden />
+                    </Link>
+                    {children}
+                </div>
             </div>
         </header>
     );

@@ -22,6 +22,7 @@
         "radix-ui": "catalog:",
         "react": "catalog:",
         "react-dom": "catalog:",
+        "react-markdown": "catalog:",
         "react-router": "^8.5.1",
         "zod": "catalog:"
     },

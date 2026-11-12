@@ -5,6 +5,11 @@ import { z } from 'zod';
 const envSchema = z.object({
     /** Base URL the web server uses to reach the API, e.g. http://localhost:3001 */
     API_URL: z.url().default('http://localhost:3001'),
+    /** Public address of the site, used for canonical URLs, Open Graph tags and the sitemap. No trailing slash. */
+    SITE_URL: z
+        .url()
+        .default('http://localhost:5173')
+        .transform((url) => url.replace(/\/+$/, '')),
 });
 
 export type WebEnv = z.infer<typeof envSchema>;

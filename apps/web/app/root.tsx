@@ -1,6 +1,15 @@
 import { ClerkProvider } from '@clerk/react-router';
 import { clerkMiddleware, rootAuthLoader } from '@clerk/react-router/server';
-import { isRouteErrorResponse, Link, Links, Meta, Outlet, Scripts, ScrollRestoration } from 'react-router';
+import {
+    isRouteErrorResponse,
+    Link,
+    Links,
+    Meta,
+    Outlet,
+    Scripts,
+    ScrollRestoration,
+    useNavigation,
+} from 'react-router';
 
 import { HeaderAuth } from '~/components/header-auth';
 import { SiteFooter } from '~/components/site-footer';
@@ -44,6 +53,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
 export default function App({ loaderData }: Route.ComponentProps) {
     return (
         <ClerkProvider loaderData={loaderData}>
+            <NavigationProgress />
             <SiteHeader>
                 <HeaderAuth />
             </SiteHeader>
@@ -52,6 +62,17 @@ export default function App({ loaderData }: Route.ComponentProps) {
             </div>
             <SiteFooter />
         </ClerkProvider>
+    );
+}
+
+/** A thin bar at the top of the page while the next page loads. */
+function NavigationProgress() {
+    const navigation = useNavigation();
+    if (navigation.state === 'idle') return null;
+    return (
+        <div className='fixed inset-x-0 top-0 z-[60] h-0.5 overflow-hidden bg-primary/20' aria-hidden>
+            <div className='nav-progress h-full w-1/3 bg-primary' />
+        </div>
     );
 }
 
