@@ -69,12 +69,18 @@ export type Env = z.infer<typeof envSchema>;
 /**
  * Loads apps/api/.env (if present) and validates the environment.
  * Fails fast with a readable message instead of crashing later on a missing variable.
+ *
+ * `envFile` loads that file instead of apps/api/.env (it must exist), e.g. `.env.staging` for the
+ * seed script, so settings from two environments are never mixed.
  */
-export function loadEnv(source: NodeJS.ProcessEnv = process.env): Env {
+export function loadEnv(source: NodeJS.ProcessEnv = process.env, { envFile }: { envFile?: string } = {}): Env {
+    if (envFile !== undefined && !existsSync(envFile)) {
+        throw new Error(`The settings file ${envFile} does not exist.`);
+    }
     // src/env.ts and the bundled dist/*.mjs both sit one level below the package root.
-    const envFile = fileURLToPath(new URL('../.env', import.meta.url));
-    if (source === process.env && existsSync(envFile)) {
-        process.loadEnvFile(envFile);
+    const file = envFile ?? fileURLToPath(new URL('../.env', import.meta.url));
+    if (source === process.env && existsSync(file)) {
+        process.loadEnvFile(file);
     }
 
     const result = envSchema.safeParse(source);

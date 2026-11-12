@@ -1,6 +1,6 @@
 # Pesoprint – Rebuild Plan (working name)
 
-_Drafted 2026-11-09 from the [prototype review](./prototype-review.md) and the planning questions. M0 (foundation) is in progress in this repo._
+_Drafted 2026-11-09 from the [prototype review](./prototype-review.md) and the planning questions. M0 and M1 are done (2026-11-12) and running on staging; M2 is next._
 
 ## 1. What we're building
 
@@ -41,19 +41,20 @@ At first you are the only seller. The data model is designed so other creators c
 **Architecture: option B.** A standalone API plus a separate web frontend, in one pnpm-workspaces monorepo.
 
 ```
-Browser ──► web (React Router v7, SSR) ──HTTP + Clerk token──► api (Hono) ──► Postgres
-                                                                  ▲   ├────► R2 (files)
-Mollie / Clerk webhooks, file downloads ──────────────────────────┘   └────► Mollie, Resend
+Browser ──► web (React Router v8, SSR) ──HTTP + Clerk token──► api (Hono) ──► Postgres
+   │                                                              ▲   ├────► R2 (files)
+   └── uploads (presigned PUT), images, 3D previews ──► R2        │   └────► Mollie, Resend
+Mollie / Clerk webhooks, file downloads ──────────────────────────┘
 ```
 
 - **The API owns all data and business rules.** It is the only thing that talks to Postgres, R2 and Mollie.
 - **The web app is a server-rendered frontend.** Its loaders and actions call the API over HTTP using a typed client. It has no database access, so the API boundary stays real.
-- **The two run on the same domain** behind a reverse proxy (`pesoprint.fi` → web, `pesoprint.fi/api` → api), so there's no CORS. They can still be split onto separate hosts later.
+- **The browser never calls the API directly.** Pages, forms and even the upload steps go through the web server, which calls the API with the user's token. So the two can run on separate hosts (as on staging) without CORS. The browser only talks to R2: uploads through presigned URLs, and public images and previews.
 
 | Layer              | Choice                                                                                   | Why                                                                                                                                                                                                                                                                                                                                                                                                    |
 | ------------------ | ---------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | API                | **Hono** on Node + `@hono/zod-openapi`                                                   | A small, modern, fast framework that runs on any host. Routes are defined with zod schemas, which gives request validation, **generated OpenAPI docs** (a Swagger UI at `/api/docs`) and a typed client for the web app, all from one definition. That's a strong backend portfolio piece.                                                                                                             |
-| Web                | **React Router v7 in framework mode** (Vite, SSR)                                        | The next step from the `react-router-dom` + Vite setup you already used. Server-side rendering gives search engines and link previews real HTML for product pages. Loaders call the API from the server, so the browser never needs the API's internals.                                                                                                                                               |
+| Web                | **React Router v8 in framework mode** (Vite, SSR)                                        | The next step from the `react-router-dom` + Vite setup you already used. Server-side rendering gives search engines and link previews real HTML for product pages. Loaders call the API from the server, so the browser never needs the API's internals.                                                                                                                                               |
 | Database           | **PostgreSQL + Drizzle ORM** (inside `apps/api`)                                         | The schema is written in TypeScript and the types come from it. Migrations are generated from the schema. It works the same on Neon (free tier) and on a self-hosted Postgres.                                                                                                                                                                                                                         |
 | Validation         | **zod**, in `packages/shared`                                                            | Request and response schemas are shared by the API and the web app: one source for validation and types.                                                                                                                                                                                                                                                                                               |
 | Auth               | **Clerk**: `@clerk/react-router` in web, Clerk token verification in the API             | The web app gets the user's session token and sends it as `Authorization: Bearer …`. The API verifies it and checks roles (admin role in Clerk `publicMetadata`). Users are mirrored to the database with a Clerk webhook to the API.                                                                                                                                                                  |
@@ -61,7 +62,7 @@ Mollie / Clerk webhooks, file downloads ─────────────�
 | Payments           | **Mollie** (Payments API, `@mollie/api-client`) + webhooks                               | An EU-based provider (Netherlands) with no monthly fee. Its hosted payment page offers cards, MobilePay, Klarna, Apple Pay and more. Mollie Connect leaves a path to paying out to creators later. **Unlike Stripe Checkout, Mollie doesn't collect shipping addresses or calculate VAT,** so our own checkout page handles the address, shipping rate and VAT, then sends the buyer to Mollie to pay. |
 | Email              | **Resend** (free tier) + React Email                                                     | Order confirmations, download links and shipping notifications.                                                                                                                                                                                                                                                                                                                                        |
 | Search             | **Postgres full-text search** (`tsvector`)                                               | No extra service to run. Enough for the first few thousand models.                                                                                                                                                                                                                                                                                                                                     |
-| 3D viewer          | react-three-fiber + drei                                                                 | Kept from the old code. Each model gets a GLB preview file for the viewer.                                                                                                                                                                                                                                                                                                                             |
+| 3D viewer          | react-three-fiber + drei                                                                 | The preview GLB is generated from the first STL upload (meshoptimizer, at most 100k triangles), and three.js only loads when someone opens the 3D view.                                                                                                                                                                                                                                                |
 | UI                 | Tailwind v4 + shadcn/ui                                                                  | Kept from the old code: reuse the theme and the page layouts you already designed.                                                                                                                                                                                                                                                                                                                     |
 | Analytics / errors | PostHog + Sentry (both have free tiers)                                                  | PostHog only loads after cookie consent.                                                                                                                                                                                                                                                                                                                                                               |
 | Testing            | Vitest via `vp test` (unit + integration against real Postgres), Playwright (end-to-end) |                                                                                                                                                                                                                                                                                                                                                                                                        |
@@ -84,12 +85,12 @@ pesoprint/
 │  │  ├─ drizzle/              # generated SQL migrations
 │  │  ├─ tests/                # unit + integration tests (real Postgres)
 │  │  └─ Dockerfile
-│  └─ web/                     # React Router v7 SSR frontend, with no database access
+│  └─ web/                     # React Router v8 SSR frontend, with no database access
 │     ├─ app/
 │     │  ├─ routes/            # pages (loaders/actions call the API)
-│     │  ├─ features/          # catalog/, cart/, checkout/, orders/, admin/, reviews/
-│     │  ├─ components/ui/     # shadcn components
-│     │  └─ lib/api.server.ts  # typed API client (server-side only)
+│     │  ├─ components/        # catalog/, admin/ (one folder per feature), ui/ (shadcn)
+│     │  └─ lib/               # api.server.ts (API client), forms, formatting, SEO helpers
+│     ├─ server.ts             # production server (Express + the React Router adapter, trusts the host's proxy)
 │     ├─ tests/e2e/            # Playwright (runs against api + web together)
 │     └─ Dockerfile
 ├─ packages/
@@ -172,7 +173,7 @@ favourites       user_id, product_id, created_at
 - **Featured products:** pick any product by setting `featured_at`; the home page shows published ones, most recently featured first.
 - **File access:**
     - Images and the preview GLB are in the **public** bucket and served directly. The 3D viewer is public on every product, including paid ones.
-    - The **preview GLB is always a decimated (low-poly) mesh**, good for judging the shape but not for printing. Anything the viewer shows can be saved from the browser, so decimation, not access control, is what protects paid models.
+    - The **preview GLB is reduced to at most 100k triangles**. Anything the viewer shows can be saved from the browser, so reduction, not access control, is what protects paid models. Simple CAD parts are already under the limit and are shown in full detail, which is fine for free models; decide how to handle paid ones before M3 (§9).
     - Download files are in the **private** bucket. A single `canDownload(product, file, user)` check decides access: admins and the creator always; free + published for anyone; paid + published/archived with an entitlement (buyers keep access after archiving); otherwise `404`. Allowed requests are redirected to a ~5-minute signed URL.
 - **Getting ready for creators:** `products.creator_id` exists from day one. In the MVP it always points to you.
 
@@ -182,24 +183,24 @@ favourites       user_id, product_id, created_at
 
 Each milestone ends with: CI green, deployed to staging, and a short demo you could show someone.
 
-### M0 – Foundation
+### M0 – Foundation ✅
 
 - Tag the old code as `v0-prototype`, then start fresh on `master`
 - Vite+ monorepo with `apps/api`, `apps/web`, `packages/shared`, plus local Postgres in Docker Compose
 - **API:** Hono app with a `/api/health` route, a central error handler (consistent JSON errors), request logging, OpenAPI docs at `/api/docs`, Drizzle set up with a first migration
-- **Web:** React Router v7 app with Tailwind + shadcn, your old theme, and the header/footer layout ported over. Typed API client.
+- **Web:** React Router app (v8) with Tailwind + shadcn, your old theme, and the header/footer layout ported over. Typed API client.
 - Clerk sign-in in the web app. `requireUser` / `requireAdmin` middleware in the API that verifies the Clerk token. A Clerk webhook to the API that syncs users to the database.
 - Environment variables validated with zod at startup in both apps, plus an `.env.example` for each
 - CI: install (frozen lockfile) → lint → typecheck → test → build, on every PR. Postgres runs as a service container for API tests.
 - Dockerfiles for both apps, deployed to a free staging host
 - **Done when:** a signed-in admin sees an admin page whose data comes from an admin-only API endpoint on staging, the OpenAPI docs load, and CI blocks a failing PR
 
-### M1 – Catalogue
+### M1 – Catalogue ✅ (2026-11-12)
 
 - Schema: categories, products, images, files
 - Admin: create, edit, publish and archive products; upload images and model files straight to R2 with presigned URLs; manage categories
 - Public: home page (featured + newest), category pages, search, sorting, pagination
-- Product page: image gallery, 3D viewer (GLB preview), SEO meta + Open Graph tags, sitemap.xml
+- Product page: image gallery, 3D viewer (GLB preview, generated from the STL), SEO meta + Open Graph tags, sitemap.xml
 - 404 page, loading and error states
 - A seed script with sample data
 - **Done when:** you can upload a real model in the admin and find it through search on staging
@@ -256,7 +257,6 @@ Each milestone ends with: CI green, deployed to staging, and a short demo you co
 - Finnish/English language versions, multiple currencies
 - Discount codes, bundles
 - Customers uploading their own files for a print quote
-- Automatic GLB preview generation from STL uploads
 
 ---
 
@@ -278,7 +278,7 @@ Each milestone ends with: CI green, deployed to staging, and a short demo you co
 2. **Only the API touches the database.** The web app gets all its data through the API.
 3. **The API is the only source of truth** for prices, permissions and order status.
 4. **Mollie webhooks are verified by fetching the payment from the Mollie API** (the webhook body contains only an id), and handling them is idempotent. Paid status comes only from that check, never from the browser redirect.
-5. **No secrets in the client bundle.** Only `PUBLIC_`-prefixed environment variables reach the browser.
+5. **No secrets in the client bundle.** Only `VITE_`-prefixed environment variables reach the browser; server-only settings live in `env.server.ts`.
 6. **Every PR passes `vp check` (format, lint, types), tests and build.**
 7. **Database changes only through Drizzle migrations.** Never `sync`.
 8. **Small PRs**, one feature each. Commit messages follow Conventional Commits.
@@ -295,7 +295,7 @@ Each milestone ends with: CI green, deployed to staging, and a short demo you co
 | Stage           | Setup                                                                                                                                                                                                  | Cost |
 | --------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ---- |
 | Local           | Docker Compose: Postgres. File storage uses a separate R2 dev bucket (decided in M1; MinIO no longer ships prebuilt images). A tunnel (cloudflared or ngrok) so Mollie's webhooks can reach localhost. | 0 €  |
-| Staging (M0–M5) | App on a free/hobby container host (e.g. Render, Fly.io or Railway), Neon Postgres, R2, Clerk/Resend/Mollie test mode                                                                                  | ~0 € |
+| Staging (M0–M5) | Render (two Docker web services, free plan; the API runs `node dist/start.mjs` to migrate on start), Neon Postgres (Frankfurt), R2 staging buckets with their own token, Clerk/Resend/Mollie test mode | ~0 € |
 | Production (M6) | **Option A:** the same managed setup on paid tiers (~10–25 €/mo). **Option B:** a Hetzner VPS (~5 €/mo) with Docker Compose (app + Postgres + Caddy for HTTPS) and nightly backups to R2.              |      |
 | Later           | The same Docker image runs on AWS ECS/App Runner, Azure Container Apps or Google Cloud Run if you want cloud experience on your CV                                                                     |      |
 
@@ -307,8 +307,9 @@ These don't block M0–M2. Decide them before M3 or M4.
 
 1. **Market & language:** Finland only, or the EU from the start? English, Finnish, or both? This affects shipping rates and the UI copy.
 2. **Business & VAT:** sole trader (toiminimi) or company? Selling digital goods to EU consumers means charging VAT at the buyer's country's rate (via OSS, the EU's One-Stop Shop) once you're VAT-registered. Mollie doesn't calculate VAT, so our code does, using the `vat_rates` table. Check the current Finnish VAT registration threshold with an accountant. Selling to Finland only at first keeps VAT simple.
-3. **File formats:** which formats you offer (STL only, or STL + 3MF + STEP?), and how GLB previews get made (by hand for now?).
+3. **File formats:** which formats you offer (STL only, or STL + 3MF + STEP?). GLB previews are made automatically from STLs; other formats need a hand-made `.glb`.
 4. **Model licence:** personal use only, or also a commercial-use licence at a higher price?
 5. **Print pricing formula:** a fixed base price per model plus a material surcharge (the plan's default), or a calculation from grams and print time?
 6. **Shipping:** carriers (Posti, Matkahuolto, DHL…), flat rates vs weight-based, and which countries.
 7. **Returns for printed items:** policy for misprints and damage in transit.
+8. **3D previews of paid models:** the public preview keeps up to 100k triangles, so a simple paid model is shown in full detail and could be saved and printed. Before M3: a much lower limit for paid models, a deliberately rough preview, or no 3D view for paid models.
