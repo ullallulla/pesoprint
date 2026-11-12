@@ -114,15 +114,16 @@ export function adminProductRoutes(deps: AdminProductDeps) {
         middleware: [adminOnly] as const,
         method: 'delete',
         path: '/admin/products/{id}',
-        summary: 'Delete a draft',
-        description: 'Only drafts that were never published can be deleted. Archive published products instead.',
+        summary: 'Delete a product',
+        description:
+            'Deletes a draft or an archived product, with its images and stored files. Published products must be archived first.',
         request: { params: idParams },
         responses: {
             204: { description: 'Deleted.' },
             400: invalidIdResponse,
             ...adminAuthResponses,
             404: notFoundResponse,
-            409: errorResponse('The product has been published.'),
+            409: errorResponse('The product is published; archive it first.'),
         },
     });
 

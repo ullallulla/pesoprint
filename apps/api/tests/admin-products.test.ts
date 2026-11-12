@@ -365,12 +365,21 @@ describe.skipIf(!url)('admin product routes (integration)', () => {
             expect(await db.select().from(productFiles).where(eq(productFiles.productId, id))).toEqual([]);
         });
 
-        test('409 once published, even after archiving', async () => {
+        test('409 while published', async () => {
+            const { id } = await createPublished();
+
+            const error = await expectError(await call('DELETE', `/${id}`), 409, 'conflict');
+            expect(error.message).toBe('Archive the product before deleting it.');
+            expect(await db.select().from(products).where(eq(products.id, id))).toHaveLength(1);
+        });
+
+        test('deletes an archived product with its images and files', async () => {
             const { id } = await createPublished();
             await call('POST', `/${id}/archive`);
 
-            const error = await expectError(await call('DELETE', `/${id}`), 409, 'conflict');
-            expect(error.message).toMatch(/Archive it instead/);
+            expect((await call('DELETE', `/${id}`)).status).toBe(204);
+            expect(await db.select().from(products).where(eq(products.id, id))).toEqual([]);
+            expect(await db.select().from(productImages).where(eq(productImages.productId, id))).toEqual([]);
         });
 
         test('404 for an unknown id', async () => {

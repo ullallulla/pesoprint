@@ -31,7 +31,10 @@ export interface ProductsService {
     archive(id: string): Promise<AdminProduct>;
     /** `true` puts the product first in the featured section (again, if it already was). */
     setFeatured(id: string, featured: boolean): Promise<AdminProduct>;
-    /** Only drafts that were never published can be deleted; published products are archived instead. */
+    /**
+     * Deletes a draft or an archived product, with its images and files. A published product must be
+     * archived first, so it can't disappear from the site by one wrong click.
+     */
     remove(id: string): Promise<void>;
 }
 
@@ -275,9 +278,11 @@ export function createProductsService(db: Database, storage: Storage | null): Pr
         async remove(id) {
             const stored = await db.transaction(async (tx) => {
                 const current = await lockProduct(tx, id);
-                if (current.publishedAt !== null) {
-                    throw conflict('Products that have been published cannot be deleted. Archive it instead.');
+                if (current.status === 'published') {
+                    throw conflict('Archive the product before deleting it.');
                 }
+                // TODO(M2): refuse when the product has orders, so buyers keep their downloads and order history.
+                // Until orders exist, nothing else depends on a product.
                 const images = await tx.select().from(productImages).where(eq(productImages.productId, id));
                 const files = await tx.select().from(productFiles).where(eq(productFiles.productId, id));
                 // The image and file rows cascade with the product.
