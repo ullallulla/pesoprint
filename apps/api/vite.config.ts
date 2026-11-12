@@ -3,7 +3,7 @@ import { defineConfig } from 'vite-plus';
 export default defineConfig({
     // `vp pack` (tsdown) bundles the API into dist/ for production.
     pack: {
-        entry: ['src/index.ts', 'src/migrate.ts'],
+        entry: ['src/index.ts', 'src/migrate.ts', 'src/start.ts'],
         platform: 'node',
         format: 'esm',
         sourcemap: true,

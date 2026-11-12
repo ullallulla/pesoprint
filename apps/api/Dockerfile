@@ -1,7 +1,7 @@
 # syntax=docker/dockerfile:1
 # Build from the repository root:
 #   docker build -f apps/api/Dockerfile -t pesoprint-api .
-# Run migrations, then the server:
+# Run migrations, then the server (or both in one: `node dist/start.mjs`):
 #   docker run --rm -e DATABASE_URL=... pesoprint-api node dist/migrate.mjs
 #   docker run -p 3001:3001 -e DATABASE_URL=... pesoprint-api
 

@@ -123,6 +123,10 @@ docker run -p 3000:3000 -e API_URL=http://<api-host>:3001 \
     -e VITE_CLERK_PUBLISHABLE_KEY=pk_... -e CLERK_SECRET_KEY=sk_... pesoprint-web
 ```
 
+On hosts that start a container with a single command and have no pre-deploy step (e.g. Render's free plan), use
+`node dist/start.mjs` as the API's command: it applies pending migrations, then starts the server. Run only one API
+instance that way.
+
 ## CI
 
 GitHub Actions (`.github/workflows/ci.yml`) runs on every push to `master` and every pull request: `vp check`, all tests (with a Postgres service for the database tests), the production builds, and both Docker image builds.
