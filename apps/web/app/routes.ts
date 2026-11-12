@@ -4,6 +4,8 @@ export default [
     index('routes/home.tsx'),
     route('models', 'routes/models.tsx'),
     route('models/:slug', 'routes/product.tsx'),
+    // Download buttons link here; it redirects to a short-lived file link.
+    route('models/:slug/download/:fileId', 'routes/download.tsx'),
     route('categories/:slug', 'routes/category.tsx'),
     ...prefix('admin', [
         layout('routes/admin/layout.tsx', [

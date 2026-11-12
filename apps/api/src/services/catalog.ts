@@ -251,7 +251,13 @@ export function createCatalogService(db: Database, storage: Storage | null): Cat
                 preview: preview && storage ? { url: storage.publicUrl(preview.storageKey) } : null,
                 files: files
                     .filter((file) => file.kind === 'download')
-                    .map((file) => ({ format: file.format, filename: file.filename, sizeBytes: file.sizeBytes })),
+                    .map((file) => ({
+                        id: file.id,
+                        format: file.format,
+                        filename: file.filename,
+                        sizeBytes: file.sizeBytes,
+                    })),
+                downloadCount: product.downloadCount,
                 digitalPriceCents: product.digitalPriceCents,
                 printBasePriceCents: product.printBasePriceCents,
                 license: product.license,

@@ -5,6 +5,7 @@ import type { AuthContext } from '../src/lib/auth.ts';
 import type { Bucket, Storage } from '../src/lib/storage.ts';
 import type { CatalogService } from '../src/services/catalog.ts';
 import type { CategoriesService } from '../src/services/categories.ts';
+import type { DownloadsService } from '../src/services/downloads.ts';
 import type { ProductMediaService } from '../src/services/product-media.ts';
 import type { ProductsService } from '../src/services/products.ts';
 import type { UsersService } from '../src/services/users.ts';
@@ -62,6 +63,8 @@ export function buildApp(overrides: Partial<AppOptions> = {}) {
         products: unusedService<ProductsService>('products'),
         productMedia: unusedService<ProductMediaService>('productMedia'),
         catalog: unusedService<CatalogService>('catalog'),
+        downloads: unusedService<DownloadsService>('downloads'),
+        internalApiSecret: undefined,
         version: '1.2.3',
         startedAt: new Date(Date.now() - 5_000),
         logRequests: false,
@@ -101,6 +104,10 @@ export function createFakeStorage() {
             const object = objects.get(id(bucket, key));
             if (!object) return null;
             return object.body ?? new Uint8Array(object.sizeBytes);
+        },
+        async presignDownload({ bucket, key, filename, expiresInSeconds }) {
+            const query = new URLSearchParams({ filename, expires: String(expiresInSeconds) });
+            return `https://storage.test/${bucket}/${key}?${query.toString()}`;
         },
         async head(bucket, key) {
             const object = objects.get(id(bucket, key));

@@ -11,6 +11,7 @@ import { adminProductMediaRoutes, type AdminProductMediaDeps } from './routes/ad
 import { adminProductRoutes, type AdminProductDeps } from './routes/admin-products.ts';
 import { adminRoutes, type AdminDeps } from './routes/admin.ts';
 import { catalogRoutes, type CatalogDeps } from './routes/catalog.ts';
+import { downloadRoutes, type DownloadDeps } from './routes/downloads.ts';
 import { healthRoutes, type HealthDeps } from './routes/health.ts';
 import { meRoutes } from './routes/me.ts';
 import { webhookRoutes, type WebhookDeps } from './routes/webhooks.ts';
@@ -23,6 +24,7 @@ export interface AppOptions
         AdminProductDeps,
         AdminProductMediaDeps,
         CatalogDeps,
+        DownloadDeps,
         WebhookDeps {
     logRequests: boolean;
 }
@@ -43,6 +45,7 @@ export function createApp(options: AppOptions) {
     app.route('/api', healthRoutes(options));
     app.route('/api', meRoutes(options));
     app.route('/api', catalogRoutes(options));
+    app.route('/api', downloadRoutes(options));
     app.route('/api', adminRoutes(options));
     app.route('/api', adminCategoryRoutes(options));
     app.route('/api', adminProductRoutes(options));

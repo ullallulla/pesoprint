@@ -24,6 +24,6 @@ test('sitemap escapes XML special characters', () => {
 
 test('robots.txt keeps crawlers out of the admin and points at the sitemap', () => {
     expect(buildRobots('https://pesoprint.test')).toBe(
-        'User-agent: *\nDisallow: /admin\n\nSitemap: https://pesoprint.test/sitemap.xml\n',
+        'User-agent: *\nDisallow: /admin\nDisallow: /models/*/download/\n\nSitemap: https://pesoprint.test/sitemap.xml\n',
     );
 });

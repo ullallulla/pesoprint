@@ -45,3 +45,35 @@ export function requireAuth(verify: VerifySessionToken, role?: UserRole) {
 
 export const requireUser = (verify: VerifySessionToken) => requireAuth(verify);
 export const requireAdmin = (verify: VerifySessionToken) => requireAuth(verify, 'admin');
+
+/** Context variables behind `optionalAuth`: `auth` is `null` for anonymous callers. */
+export type OptionalAuthEnv = {
+    Variables: RequestIdVariables & { auth: AuthContext | null };
+};
+
+/**
+ * For routes open to everyone that do more for signed-in users (e.g. downloads: admins can download
+ * drafts). No token means anonymous; a token that doesn't verify is still a 401, so an expired session
+ * isn't silently treated as a visitor.
+ */
+export function optionalAuth(verify: VerifySessionToken) {
+    return createMiddleware<OptionalAuthEnv>(async (c, next) => {
+        const header = c.req.header('authorization');
+        if (header === undefined) {
+            c.set('auth', null);
+            await next();
+            return undefined;
+        }
+        const token = bearerToken(header);
+        if (!token) {
+            return sendError(c, 401, 'unauthorized', 'The Authorization header must be "Bearer <token>".');
+        }
+        try {
+            c.set('auth', await verify(token));
+        } catch {
+            return sendError(c, 401, 'unauthorized', 'Your session is invalid or has expired.');
+        }
+        await next();
+        return undefined;
+    });
+}

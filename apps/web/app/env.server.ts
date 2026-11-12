@@ -10,6 +10,11 @@ const envSchema = z.object({
         .url()
         .default('http://localhost:5173')
         .transform((url) => url.replace(/\/+$/, '')),
+    /**
+     * Same value as the API's INTERNAL_API_SECRET. With it, download requests tell the API the visitor's
+     * IP (for rate limits); without it the API only sees this server's IP.
+     */
+    INTERNAL_API_SECRET: z.string().min(32, 'INTERNAL_API_SECRET must be at least 32 characters').optional(),
 });
 
 export type WebEnv = z.infer<typeof envSchema>;

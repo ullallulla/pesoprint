@@ -26,6 +26,17 @@ export interface Storage {
         contentType: string;
         sizeBytes: number;
     }): Promise<PresignedUpload>;
+    /**
+     * A URL the browser can GET the object from for a few minutes, even from the private bucket.
+     * The response makes the browser save it as `filename`.
+     */
+    presignDownload(input: {
+        bucket: Bucket;
+        key: string;
+        filename: string;
+        contentType: string;
+        expiresInSeconds: number;
+    }): Promise<string>;
     /** Uploads from the server (seed script, generated files). Browser uploads use `presignUpload`. */
     put(bucket: Bucket, key: string, body: Uint8Array, contentType: string): Promise<void>;
     /** The object's contents, or `null` if it doesn't exist. Reads it all into memory: check the size first. */
@@ -58,4 +69,17 @@ export async function deleteStoredFiles(storage: Storage | null, files: StoredFi
             console.error(`Could not delete ${keys.length} object(s) from the ${bucket} bucket:`, keys, error);
         }
     }
+}
+
+/**
+ * `Content-Disposition` that makes the browser save the file as `filename`. The plain `filename=` is an
+ * ASCII fallback; `filename*=` carries the exact name (accents, spaces) for browsers, which all support it.
+ */
+export function attachmentDisposition(filename: string): string {
+    const fallback = filename.replace(/[^\x20-\x7e]/g, '_').replace(/["\\]/g, '_');
+    const encoded = encodeURIComponent(filename).replace(
+        /['()*]/g,
+        (c) => `%${c.charCodeAt(0).toString(16).toUpperCase()}`,
+    );
+    return `attachment; filename="${fallback}"; filename*=UTF-8''${encoded}`;
 }

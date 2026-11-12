@@ -10,7 +10,7 @@ import {
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 
 import type { Env } from '../env.ts';
-import type { Bucket, Storage } from '../lib/storage.ts';
+import { attachmentDisposition, type Bucket, type Storage } from '../lib/storage.ts';
 
 export interface S3StorageConfig {
     /** e.g. `https://<account id>.r2.cloudflarestorage.com` for R2. */
@@ -60,6 +60,17 @@ export function createS3Storage(config: S3StorageConfig): Storage {
             });
             // The browser sets Content-Length itself from the file; Content-Type must be sent as given.
             return { url, headers: { 'content-type': contentType }, expiresAt: new Date(Date.now() + ttl * 1000) };
+        },
+
+        async presignDownload({ bucket, key, filename, contentType, expiresInSeconds }) {
+            const command = new GetObjectCommand({
+                Bucket: config.buckets[bucket],
+                Key: key,
+                // Override the stored headers in the response, so the file is saved under its original name.
+                ResponseContentDisposition: attachmentDisposition(filename),
+                ResponseContentType: contentType,
+            });
+            return getSignedUrl(client, command, { expiresIn: expiresInSeconds });
         },
 
         async put(bucket, key, body, contentType) {

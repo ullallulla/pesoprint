@@ -12,6 +12,7 @@ import {
 import { ArrowLeft, ArrowRight, Box, ExternalLink, ImageOff, Star, Trash2 } from 'lucide-react';
 import { data, Link, redirect, useFetcher } from 'react-router';
 import { z } from 'zod';
+import { cn } from 'cn';
 
 import { confirmSubmit, Field, FormStatus, Select } from '~/components/admin/form';
 import { LICENSE_GROUPS, licenseName } from '~/components/admin/licenses';
@@ -19,7 +20,7 @@ import { FeaturedBadge, StatusBadge } from '~/components/admin/product-status';
 import { UploadButton } from '~/components/admin/upload-button';
 import { LazyModelViewer } from '~/components/catalog/lazy-model-viewer';
 import { Badge } from '~/components/ui/badge';
-import { Button } from '~/components/ui/button';
+import { Button, buttonVariants } from '~/components/ui/button';
 import { Input } from '~/components/ui/input';
 import { Textarea } from '~/components/ui/textarea';
 import {
@@ -578,7 +579,11 @@ function Files({ product }: { product: AdminProduct }) {
                 ) : (
                     <ul className='divide-y rounded-lg border'>
                         {downloads.map((file) => (
-                            <FileItem key={file.id} file={file} />
+                            <FileItem
+                                key={file.id}
+                                file={file}
+                                downloadHref={`/models/${product.slug}/download/${file.id}`}
+                            />
                         ))}
                     </ul>
                 )}
@@ -639,7 +644,8 @@ function GeneratePreviewButton({ again }: { again: boolean }) {
     );
 }
 
-function FileItem({ file }: { file: AdminProductFile }) {
+/** `downloadHref`: where an admin can download the file (downloads only; drafts and paid files too). */
+function FileItem({ file, downloadHref }: { file: AdminProductFile; downloadHref?: string }) {
     const fetcher = useFetcher<ActionResult>();
 
     return (
@@ -648,9 +654,18 @@ function FileItem({ file }: { file: AdminProductFile }) {
                 <span className='min-w-0 truncate font-medium'>{file.filename}</span>
                 <span className='text-sm text-muted-foreground uppercase'>{file.format}</span>
                 <span className='text-sm text-muted-foreground'>{formatBytes(file.sizeBytes)}</span>
+                {downloadHref && (
+                    <a
+                        href={downloadHref}
+                        className={cn(buttonVariants({ size: 'sm', variant: 'ghost' }), 'ml-auto')}
+                        aria-label={`Download ${file.filename}`}
+                    >
+                        Download
+                    </a>
+                )}
                 <fetcher.Form
                     method='post'
-                    className='ml-auto'
+                    className={downloadHref ? undefined : 'ml-auto'}
                     onSubmit={confirmSubmit(`Delete ${file.filename}? The stored file is deleted too.`)}
                 >
                     <input type='hidden' name='fileId' value={file.id} />

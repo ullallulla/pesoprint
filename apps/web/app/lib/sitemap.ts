@@ -29,5 +29,12 @@ export function buildSitemap(siteUrl: string, entries: CatalogSitemap): string {
 }
 
 export function buildRobots(siteUrl: string): string {
-    return ['User-agent: *', 'Disallow: /admin', '', `Sitemap: ${siteUrl}/sitemap.xml`, ''].join('\n');
+    return [
+        'User-agent: *',
+        'Disallow: /admin',
+        'Disallow: /models/*/download/',
+        '',
+        `Sitemap: ${siteUrl}/sitemap.xml`,
+        '',
+    ].join('\n');
 }

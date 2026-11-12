@@ -15,6 +15,13 @@
       "when": 1794408490633,
       "tag": "0001_catalog",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1794500293307,
+      "tag": "0002_downloads",
+      "breakpoints": true
     }
   ]
 }

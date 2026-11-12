@@ -4,7 +4,7 @@ import { Download, FileBox, Printer } from 'lucide-react';
 import { Breadcrumbs, type Crumb } from '~/components/catalog/breadcrumbs';
 import { Markdown } from '~/components/catalog/markdown';
 import { ProductGallery } from '~/components/catalog/product-gallery';
-import { Button } from '~/components/ui/button';
+import { Button, buttonVariants } from '~/components/ui/button';
 import { getProduct } from '~/lib/catalog.server';
 import { formatBytes, formatPrice, plainExcerpt } from '~/lib/format';
 import { pageMeta } from '~/lib/seo';
@@ -69,21 +69,14 @@ export default function Product({ loaderData }: Route.ComponentProps) {
     );
 }
 
-/** The ways to get the model. Downloads, checkout and print orders arrive in M2–M4, so the buttons are disabled for now. */
+/** The ways to get the model. Free downloads work; checkout and print orders arrive in M3–M4, so those buttons are disabled. */
 function GetThisModel({ product }: { product: CatalogProduct }) {
     return (
         <section aria-labelledby='get-heading' className='flex flex-col gap-3 rounded-lg border p-5'>
             <h2 id='get-heading' className='text-sm font-medium text-muted-foreground'>
                 Get this model
             </h2>
-            {isFreeDownload(product) && (
-                <Offer
-                    icon={<Download aria-hidden />}
-                    label='Free download'
-                    action='Download'
-                    note='Free downloads open soon.'
-                />
-            )}
+            {isFreeDownload(product) && <FreeDownload product={product} />}
             {isPaidFile(product) && (
                 <Offer
                     icon={<FileBox aria-hidden />}
@@ -102,6 +95,46 @@ function GetThisModel({ product }: { product: CatalogProduct }) {
             )}
             <p className='text-xs text-muted-foreground'>Prices include VAT.</p>
         </section>
+    );
+}
+
+/** One download button per file. Plain links: the download route redirects to the file, and the page stays. */
+function FreeDownload({ product }: { product: CatalogProduct }) {
+    const count = product.downloadCount;
+    return (
+        <div className='flex flex-col gap-2'>
+            <div>
+                <p className='flex items-center gap-2 font-medium [&_svg]:size-4'>
+                    <Download aria-hidden />
+                    Free download
+                </p>
+                <p className='text-sm text-muted-foreground'>
+                    No account needed.
+                    {count > 0 && ` Downloaded ${count.toLocaleString('en-IE')} ${count === 1 ? 'time' : 'times'}.`}
+                </p>
+            </div>
+            <ul className='flex flex-col gap-2'>
+                {product.files.map((file) => (
+                    <li key={file.id} className='flex flex-wrap items-center justify-between gap-2'>
+                        <span className='min-w-0 truncate text-sm'>
+                            {file.filename}{' '}
+                            <span className='text-muted-foreground'>
+                                ({file.format.toUpperCase()}, {formatBytes(file.sizeBytes)})
+                            </span>
+                        </span>
+                        <a
+                            href={`/models/${product.slug}/download/${file.id}`}
+                            rel='nofollow'
+                            className={buttonVariants({ size: 'sm' })}
+                            aria-label={`Download ${file.filename}`}
+                        >
+                            <Download aria-hidden />
+                            Download
+                        </a>
+                    </li>
+                ))}
+            </ul>
+        </div>
     );
 }
 

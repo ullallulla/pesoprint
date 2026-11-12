@@ -134,6 +134,8 @@ export const products = pgTable(
         ),
         /** First publication. Kept when a product is archived. */
         publishedAt: timestamp('published_at', { withTimezone: true }),
+        /** Downloads by visitors and customers (not by admins or the creator). Kept up to date with `download_events`. */
+        downloadCount: integer('download_count').notNull().default(0),
         createdAt: createdAt(),
         updatedAt: updatedAt(),
     },
@@ -145,6 +147,7 @@ export const products = pgTable(
             'products_paid_file_own_license',
             sql`${t.digitalPriceCents} = 0 OR ${t.license} IS NULL OR ${t.license} IN (${ownLicenseList})`,
         ),
+        check('products_download_count_non_negative', sql`${t.downloadCount} >= 0`),
         check(
             'products_dimensions_positive',
             sql`${t.sizeXMm} > 0 AND ${t.sizeYMm} > 0 AND ${t.sizeZMm} > 0 AND ${t.printWeightG} > 0`,
@@ -235,3 +238,34 @@ export const productFiles = pgTable(
 
 export type ProductFile = typeof productFiles.$inferSelect;
 export type NewProductFile = typeof productFiles.$inferInsert;
+
+/**
+ * One row per download link handed out. Used for download counts, rate limiting and (M5) to let people
+ * who downloaded a free model review it.
+ */
+export const downloadEvents = pgTable(
+    'download_events',
+    {
+        id: id(),
+        productId: uuid('product_id')
+            .notNull()
+            .references(() => products.id, { onDelete: 'cascade' }),
+        /** `null` once the file is deleted; the event still counts for the product. */
+        fileId: uuid('file_id').references(() => productFiles.id, { onDelete: 'set null' }),
+        /** The signed-in downloader, if any. */
+        userId: text('user_id').references(() => users.id, { onDelete: 'set null' }),
+        /**
+         * HMAC of the IP address with a secret and the date, never the address itself: enough to rate-limit
+         * one visitor within a day, but it can't be turned back into an IP or followed across days.
+         */
+        ipHash: text('ip_hash'),
+        createdAt: createdAt(),
+    },
+    (t) => [
+        index('download_events_product_id_idx').on(t.productId),
+        index('download_events_ip_hash_created_at_idx').on(t.ipHash, t.createdAt),
+        index('download_events_user_id_idx').on(t.userId),
+    ],
+);
+
+export type DownloadEvent = typeof downloadEvents.$inferSelect;

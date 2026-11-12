@@ -78,7 +78,11 @@ export const catalogProductSchema = catalogProductCardSchema
         /** The decimated GLB for the 3D viewer. */
         preview: z.object({ url: z.url() }).nullable(),
         /** What the download contains. The files themselves are only served through the download endpoint. */
-        files: z.array(z.object({ format: productFileFormatSchema, filename: z.string(), sizeBytes: z.int() })),
+        files: z.array(
+            z.object({ id: z.uuid(), format: productFileFormatSchema, filename: z.string(), sizeBytes: z.int() }),
+        ),
+        /** How many times the model was downloaded. */
+        downloadCount: z.int().nonnegative(),
         updatedAt: z.iso.datetime(),
     })
     .meta({ id: 'CatalogProduct' });
