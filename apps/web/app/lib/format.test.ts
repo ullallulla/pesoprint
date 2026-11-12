@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'vite-plus/test';
 
-import { formatBytes, formatPrice, offerLines, plainExcerpt } from './format';
+import { formatBytes, formatCount, formatPrice, offerLines, plainExcerpt } from './format';
 
 describe('formatPrice', () => {
     test.each([
@@ -58,4 +58,14 @@ describe('plainExcerpt', () => {
     test('keeps short text as it is', () => {
         expect(plainExcerpt('A desk stand.')).toBe('A desk stand.');
     });
+});
+
+test.each([
+    [0, '0'],
+    [950, '950'],
+    [1234, '1.2K'],
+    [15_000, '15K'],
+    [2_500_000, '2.5M'],
+])('formatCount(%i) → %s', (count, text) => {
+    expect(formatCount(count)).toBe(text);
 });

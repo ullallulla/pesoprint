@@ -52,6 +52,7 @@ const cardColumns = {
     title: products.title,
     digitalPriceCents: products.digitalPriceCents,
     printBasePriceCents: products.printBasePriceCents,
+    downloadCount: products.downloadCount,
     publishedAt: products.publishedAt,
     categorySlug: categories.slug,
     categoryName: categories.name,
@@ -63,6 +64,7 @@ type CardRow = {
     title: string;
     digitalPriceCents: number | null;
     printBasePriceCents: number | null;
+    downloadCount: number;
     publishedAt: Date | null;
     categorySlug: string | null;
     categoryName: string | null;
@@ -94,6 +96,7 @@ export function createCatalogService(db: Database, storage: Storage | null): Cat
                 cover: cover ? image(cover) : null,
                 digitalPriceCents: row.digitalPriceCents,
                 printBasePriceCents: row.printBasePriceCents,
+                downloadCount: row.downloadCount,
                 // Published products always have publishedAt (database CHECK).
                 publishedAt: row.publishedAt!.toISOString(),
             };
@@ -191,6 +194,7 @@ export function createCatalogService(db: Database, storage: Storage | null): Cat
             const orderBy: Record<CatalogSort, SQL[]> = {
                 relevance: [sql`ts_rank(${products.searchVector}, ${tsQuerySql}) DESC`, ...newestFirst],
                 newest: newestFirst,
+                downloads: [desc(products.downloadCount), ...newestFirst],
                 'price-asc': [sql`${lowestPrice} ASC NULLS LAST`, ...newestFirst],
                 'price-desc': [sql`${lowestPrice} DESC NULLS LAST`, ...newestFirst],
                 title: [asc(sql`lower(${products.title})`), asc(products.id)],

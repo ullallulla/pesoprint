@@ -1,9 +1,9 @@
 import type { CatalogProductCard } from '@app/shared';
-import { Box } from 'lucide-react';
+import { Box, Download } from 'lucide-react';
 import { Link } from 'react-router';
 
 import { Badge } from '~/components/ui/badge';
-import { offerLines } from '~/lib/format';
+import { formatCount, offerLines } from '~/lib/format';
 
 interface ProductCardProps {
     product: CatalogProductCard;
@@ -44,13 +44,24 @@ export function ProductCard({ product, eager = false }: ProductCardProps) {
                         {product.title}
                     </Link>
                 </h3>
-                <ul className='mt-auto flex flex-wrap gap-1.5' aria-label='Available as'>
-                    {offers.map((offer) => (
-                        <li key={offer.kind}>
-                            <Badge variant={offer.kind === 'free' ? 'default' : 'secondary'}>{offer.label}</Badge>
-                        </li>
-                    ))}
-                </ul>
+                <div className='mt-auto flex flex-wrap items-center justify-between gap-2'>
+                    <ul className='flex flex-wrap gap-1.5' aria-label='Available as'>
+                        {offers.map((offer) => (
+                            <li key={offer.kind}>
+                                <Badge variant={offer.kind === 'free' ? 'default' : 'secondary'}>{offer.label}</Badge>
+                            </li>
+                        ))}
+                    </ul>
+                    {product.downloadCount > 0 && (
+                        <p className='flex items-center gap-1 text-xs text-muted-foreground'>
+                            <Download className='size-3.5' aria-hidden />
+                            <span>
+                                {formatCount(product.downloadCount)}
+                                <span className='sr-only'> downloads</span>
+                            </span>
+                        </p>
+                    )}
+                </div>
             </div>
         </article>
     );

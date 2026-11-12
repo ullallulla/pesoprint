@@ -13,6 +13,7 @@ const card: CatalogProductCard = {
     cover: { url: 'https://assets.test/ft5.webp', alt: '3D render of the stand', width: 1200, height: 900 },
     digitalPriceCents: 0,
     printBasePriceCents: 1690,
+    downloadCount: 1234,
     publishedAt: '2026-11-10T08:30:00.000Z',
 };
 
@@ -38,6 +39,12 @@ describe('ProductCard', () => {
         expect(html).toContain('height="900"');
         expect(html).toContain('loading="lazy"');
         expect(html).toContain('alt="3D render of the stand"');
+    });
+
+    test('shows a short download count, read out in full', () => {
+        const html = render(card);
+        expect(html).toContain('1.2K<span class="sr-only"> downloads</span>');
+        expect(render({ ...card, downloadCount: 0 })).not.toContain('downloads');
     });
 
     test('shows a placeholder when there is no image', () => {

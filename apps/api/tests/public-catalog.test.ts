@@ -98,6 +98,7 @@ describe.skipIf(!url)('public catalogue (integration)', () => {
             sizeZMm: 25,
             publishedAt: new Date(now - 3 * DAY),
             featuredAt: new Date(now),
+            downloadCount: 120,
         });
         await insert({
             slug: 'cable-clip',
@@ -107,6 +108,7 @@ describe.skipIf(!url)('public catalogue (integration)', () => {
             digitalPriceCents: 450,
             license: 'standard_digital',
             publishedAt: new Date(now - 1 * DAY),
+            downloadCount: 7,
         });
         await insert({
             slug: 'wooden-look-yoyo',
@@ -189,6 +191,7 @@ describe.skipIf(!url)('public catalogue (integration)', () => {
             cover: { url: 'https://assets.test/p/dragon/front.webp', alt: 'Front', width: 1200, height: 900 },
             digitalPriceCents: 0,
             printBasePriceCents: 2490,
+            downloadCount: 120,
             publishedAt: expect.any(String),
         });
         expect(featured[1]?.cover).toBeNull();
@@ -210,6 +213,7 @@ describe.skipIf(!url)('public catalogue (integration)', () => {
             const page = await list();
             expect(page).toMatchObject({ sort: 'newest', total: 3, page: 1, pageSize: 24 });
             expect(slugs(page.products)).toEqual(['cable-clip', 'wooden-look-yoyo', 'articulated-dragon']);
+            expect(page.products.map((p) => p.downloadCount)).toEqual([7, 0, 120]);
         });
 
         test('a top-level category includes its subcategories', async () => {
@@ -235,7 +239,8 @@ describe.skipIf(!url)('public catalogue (integration)', () => {
             ['price-asc', ['articulated-dragon', 'cable-clip', 'wooden-look-yoyo']],
             ['price-desc', ['wooden-look-yoyo', 'cable-clip', 'articulated-dragon']],
             ['title', ['articulated-dragon', 'cable-clip', 'wooden-look-yoyo']],
-        ])('sort=%s (by the lowest price offered)', async (sort, expected) => {
+            ['downloads', ['articulated-dragon', 'cable-clip', 'wooden-look-yoyo']],
+        ])('sort=%s', async (sort, expected) => {
             expect(slugs((await list(`?sort=${sort}`)).products)).toEqual(expected);
         });
 

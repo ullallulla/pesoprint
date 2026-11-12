@@ -11,7 +11,7 @@ import { productFileFormatSchema } from './products.ts';
 // ---------------------------------------------------------------------------
 // Requests
 
-export const CATALOG_SORTS = ['relevance', 'newest', 'price-asc', 'price-desc', 'title'] as const;
+export const CATALOG_SORTS = ['relevance', 'newest', 'downloads', 'price-asc', 'price-desc', 'title'] as const;
 export const catalogSortSchema = z.enum(CATALOG_SORTS);
 export type CatalogSort = z.infer<typeof catalogSortSchema>;
 
@@ -59,6 +59,8 @@ export const catalogProductCardSchema = z
         digitalPriceCents: z.int().nullable(),
         /** Print price before the material surcharge (shown as "from"). `null` = not offered as a print. */
         printBasePriceCents: z.int().nullable(),
+        /** How many times visitors downloaded the model's files. */
+        downloadCount: z.int().nonnegative(),
         publishedAt: z.iso.datetime(),
     })
     .meta({ id: 'CatalogProductCard' });
@@ -81,8 +83,6 @@ export const catalogProductSchema = catalogProductCardSchema
         files: z.array(
             z.object({ id: z.uuid(), format: productFileFormatSchema, filename: z.string(), sizeBytes: z.int() }),
         ),
-        /** How many times the model was downloaded. */
-        downloadCount: z.int().nonnegative(),
         updatedAt: z.iso.datetime(),
     })
     .meta({ id: 'CatalogProduct' });

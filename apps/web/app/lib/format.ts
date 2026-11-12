@@ -22,6 +22,13 @@ export function offerLines(product: ProductOffers): OfferLine[] {
     return lines;
 }
 
+const compactCount = new Intl.NumberFormat('en-IE', { notation: 'compact', maximumFractionDigits: 1 });
+
+/** `950` → `950`, `1234` → `1.2K`, `2_500_000` → `2.5M`: short counts for cards. */
+export function formatCount(count: number): string {
+    return compactCount.format(count);
+}
+
 /** `5_000_000` → `4.8 MB`. */
 export function formatBytes(bytes: number): string {
     const units = ['B', 'KB', 'MB', 'GB'];

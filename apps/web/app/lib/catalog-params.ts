@@ -41,6 +41,7 @@ export function catalogSearch(params: Partial<CatalogParams>): string {
 export const SORT_LABELS: Record<CatalogSort, string> = {
     relevance: 'Best match',
     newest: 'Newest',
+    downloads: 'Most downloaded',
     'price-asc': 'Price: low to high',
     'price-desc': 'Price: high to low',
     title: 'Name',
