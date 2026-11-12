@@ -36,8 +36,31 @@ describe('loadSeedAssets', () => {
                 { filename: 'render-1.png', contentType: 'image/png', width: 1, height: 1 },
                 { filename: 'render-2.png', contentType: 'image/png', width: 1, height: 1 },
             ],
-            files: [{ filename: 'Cable Clip.STL', kind: 'download', format: 'stl', contentType: 'model/stl' }],
+            files: [
+                { filename: 'Cable Clip.STL', kind: 'download', format: 'stl', contentType: 'model/stl' },
+                // Made from the STL, for the 3D viewer.
+                {
+                    filename: 'Cable Clip-preview.glb',
+                    kind: 'preview',
+                    format: 'glb',
+                    contentType: 'model/gltf-binary',
+                },
+            ],
         });
+    });
+
+    test('keeps a hand-made preview, and makes none for a "no derivatives" licence', async () => {
+        const glb = Buffer.from('glTF hand-made');
+        await writeAsset(dir, 'own-preview', validSource, { 'clip.stl': tinyStl(), 'clip.glb': glb });
+        await writeAsset(dir, 'no-derivatives', { ...validSource, license: 'cc_by_nd' }, { 'clip.stl': tinyStl() });
+
+        const assets = await loadSeedAssets(dir);
+        const previews = (slug: string) =>
+            assets.find((asset) => asset.slug === slug)!.files.filter((file) => file.kind === 'preview');
+        expect(previews('own-preview')).toEqual([
+            expect.objectContaining({ filename: 'clip.glb', body: new Uint8Array(glb) }),
+        ]);
+        expect(previews('no-derivatives')).toEqual([]);
     });
 
     test.each([

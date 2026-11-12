@@ -19,6 +19,8 @@ import {
 import { imageSize } from 'image-size';
 import { z } from 'zod';
 
+import { ModelParseError, stlToPreview } from '../lib/model-preview.ts';
+
 /** `source.json` in each model folder. See `seed-assets/README.md`. */
 const sourceSchema = z
     .object({
@@ -133,6 +135,26 @@ export async function loadSeedAssets(dir: string): Promise<SeedAsset[]> {
         }
 
         if (files.filter((file) => file.kind === 'preview').length > 1) fail('only one .glb preview is allowed.');
+
+        // No hand-made preview: make one from the first STL, as the admin does when an STL is uploaded.
+        // Not for "no derivatives" licences: a reduced copy is a modified version of someone else's design.
+        const noDerivatives = parsed.data!.license === 'cc_by_nd' || parsed.data!.license === 'cc_by_nc_nd';
+        const stl = files.find((file) => file.format === 'stl');
+        if (stl && !noDerivatives && !files.some((file) => file.kind === 'preview')) {
+            try {
+                const { glb } = await stlToPreview(stl.body);
+                files.push({
+                    filename: `${stl.filename.replace(/\.[^.]+$/, '')}-preview.glb`,
+                    body: glb,
+                    kind: 'preview',
+                    format: 'glb',
+                    contentType: MODEL_CONTENT_TYPES.glb,
+                });
+            } catch (error) {
+                if (error instanceof ModelParseError) fail(`${stl.filename} could not be read: ${error.message}`);
+                throw error;
+            }
+        }
         assets.push({ slug, source: parsed.data!, images, files });
     }
 

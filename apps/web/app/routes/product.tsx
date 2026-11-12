@@ -46,7 +46,7 @@ export default function Product({ loaderData }: Route.ComponentProps) {
             <Breadcrumbs items={crumbs} />
 
             <div className='grid gap-10 lg:grid-cols-[minmax(0,3fr)_minmax(0,2fr)]'>
-                <ProductGallery images={product.images} title={product.title} />
+                <ProductGallery images={product.images} title={product.title} preview={product.preview} />
 
                 <div className='flex flex-col gap-6'>
                     <h1 className='text-3xl font-bold tracking-tight'>{product.title}</h1>

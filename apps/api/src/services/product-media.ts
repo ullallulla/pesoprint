@@ -18,7 +18,7 @@ import {
     type UploadTarget,
     type UploadTicket,
 } from '@app/shared';
-import { and, eq, max } from 'drizzle-orm';
+import { and, asc, eq, max } from 'drizzle-orm';
 
 import type { Database } from '../db/client.ts';
 import { isPgError, PgErrorCode } from '../db/errors.ts';
@@ -31,6 +31,7 @@ import {
     type ProductImage,
 } from '../db/schema.ts';
 import { AppError, conflict, invalidField, notFound } from '../lib/errors.ts';
+import { ModelParseError, PREVIEW_MAX_SOURCE_BYTES, stlToPreview } from '../lib/model-preview.ts';
 import { definedFields } from '../lib/patch.ts';
 import { deleteStoredFiles, type Bucket, type Storage, type StoredFileRef } from '../lib/storage.ts';
 import { contentCounts, lockProduct, type Executor } from './products.ts';
@@ -80,8 +81,13 @@ export interface ProductMediaService {
     createUpload(productId: string, input: CreateUpload): Promise<UploadTicket>;
     /** Step 3: check the uploaded image exists and attach it to the product (at the end of the gallery). */
     confirmImage(productId: string, input: ConfirmImage): Promise<AdminProductImage>;
-    /** Step 3: check the uploaded model file exists and attach it. A new preview replaces the old one. */
+    /**
+     * Step 3: check the uploaded model file exists and attach it. A new preview replaces the old one.
+     * The first STL of a product without a preview also gets a preview made from it.
+     */
     confirmFile(productId: string, input: ConfirmFile): Promise<AdminProductFile>;
+    /** Makes the 3D preview from the product's first STL download, replacing the current preview. */
+    generatePreview(productId: string): Promise<AdminProductFile>;
     updateImage(productId: string, imageId: string, input: UpdateImage): Promise<AdminProductImage>;
     removeImage(productId: string, imageId: string): Promise<void>;
     removeFile(productId: string, fileId: string): Promise<void>;
@@ -124,7 +130,67 @@ async function assertStillPublishable(
     }
 }
 
+/** `hook.stl` → `hook-preview.glb`. */
+const previewFilename = (filename: string) => `${filename.replace(/\.[^.]+$/, '') || 'model'}-preview.glb`;
+
 export function createProductMediaService(db: Database, storage: Storage | null): ProductMediaService {
+    /**
+     * Builds a preview GLB from an STL download and attaches it. With `replace: false` an existing
+     * preview wins (e.g. one the admin uploaded meanwhile) and `null` is returned.
+     */
+    async function previewFromStl(productId: string, source: ProductFile, replace: boolean) {
+        if (!storage) throw storageNotConfigured();
+        if (source.sizeBytes > PREVIEW_MAX_SOURCE_BYTES) {
+            throw conflict(`${source.filename} is too large to make a preview from. Upload a .glb preview instead.`);
+        }
+        const data = await storage.get('private', source.storageKey);
+        if (!data) throw conflict(`${source.filename} is missing from storage. Upload it again.`);
+
+        let glb: Uint8Array;
+        try {
+            ({ glb } = await stlToPreview(data));
+        } catch (error) {
+            if (error instanceof ModelParseError) {
+                throw conflict(`${source.filename} could not be read as an STL: ${error.message}`);
+            }
+            throw error;
+        }
+
+        const key = `products/${productId}/${FOLDERS.preview}/${randomUUID()}.glb`;
+        await storage.put('public', key, glb, MODEL_CONTENT_TYPES.glb);
+
+        const result = await db.transaction(async (tx) => {
+            await lockProduct(tx, productId);
+            const existing = await tx
+                .select()
+                .from(productFiles)
+                .where(and(eq(productFiles.productId, productId), eq(productFiles.kind, 'preview')));
+            if (existing.length > 0 && !replace) return null;
+            if (existing.length > 0) {
+                await tx
+                    .delete(productFiles)
+                    .where(and(eq(productFiles.productId, productId), eq(productFiles.kind, 'preview')));
+            }
+            const [row] = await tx
+                .insert(productFiles)
+                .values({
+                    productId,
+                    kind: 'preview',
+                    format: 'glb',
+                    filename: previewFilename(source.filename),
+                    storageKey: key,
+                    sizeBytes: glb.byteLength,
+                    position: 0,
+                })
+                .returning();
+            return { row: row!, replaced: existing };
+        });
+
+        // Only after the commit, as everywhere: the old preview, or the new one if it wasn't needed.
+        await deleteStoredFiles(storage, result ? result.replaced.map(fileRef) : [{ bucket: 'public', key }]);
+        return result?.row ?? null;
+    }
+
     /** Checks the object was uploaded and is within the limits; deletes it if it isn't acceptable. */
     async function verifyUpload(bucket: Bucket, key: string, target: UploadTarget, allowedTypes?: string[]) {
         if (!storage) throw storageNotConfigured();
@@ -263,7 +329,41 @@ export function createProductMediaService(db: Database, storage: Storage | null)
             });
 
             await deleteStoredFiles(storage, replaced.map(fileRef));
+
+            if (row.kind === 'download' && row.format === 'stl') {
+                const [preview] = await db
+                    .select({ id: productFiles.id })
+                    .from(productFiles)
+                    .where(and(eq(productFiles.productId, productId), eq(productFiles.kind, 'preview')));
+                if (!preview) {
+                    // A convenience: the upload itself succeeded, so a failed preview mustn't fail it.
+                    await previewFromStl(productId, row, false).catch((error: unknown) => {
+                        console.warn(`Could not make a preview for product ${productId}:`, error);
+                    });
+                }
+            }
             return toAdminFile(row, storage);
+        },
+
+        async generatePreview(productId) {
+            if (!storage) throw storageNotConfigured();
+            const [product] = await db.select({ id: products.id }).from(products).where(eq(products.id, productId));
+            if (!product) throw notFound('Product not found.');
+            const [source] = await db
+                .select()
+                .from(productFiles)
+                .where(
+                    and(
+                        eq(productFiles.productId, productId),
+                        eq(productFiles.kind, 'download'),
+                        eq(productFiles.format, 'stl'),
+                    ),
+                )
+                .orderBy(asc(productFiles.position), asc(productFiles.id))
+                .limit(1);
+            if (!source) throw conflict('Upload an STL file first: the preview is made from it.');
+            const row = await previewFromStl(productId, source, true);
+            return toAdminFile(row!, storage);
         },
 
         async updateImage(productId, imageId, input) {

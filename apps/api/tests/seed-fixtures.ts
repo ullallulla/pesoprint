@@ -29,3 +29,32 @@ export const validSource = {
     digitalPriceCents: 0,
     license: 'cc_by',
 };
+
+/**
+ * A binary STL of a wavy square surface: `cells`² squares of two triangles each. The waves keep the
+ * simplifier from flattening it to two triangles, so a reduced preview still has a predictable size.
+ */
+export function gridStl(cells: number): Buffer {
+    const triangles = cells * cells * 2;
+    const buffer = Buffer.alloc(84 + triangles * 50);
+    buffer.writeUInt32LE(triangles, 80);
+    const height = (x: number, y: number) => Math.sin(x / 3) * Math.cos(y / 4) * 2;
+    let offset = 84;
+    const corner = (x: number, y: number) => [x, y, height(x, y)];
+    for (let x = 0; x < cells; x++) {
+        for (let y = 0; y < cells; y++) {
+            for (const triangle of [
+                [corner(x, y), corner(x + 1, y), corner(x + 1, y + 1)],
+                [corner(x, y), corner(x + 1, y + 1), corner(x, y + 1)],
+            ]) {
+                offset += 12; // face normal left at zero, as many exporters do
+                for (const value of triangle.flat()) {
+                    buffer.writeFloatLE(value, offset);
+                    offset += 4;
+                }
+                offset += 2;
+            }
+        }
+    }
+    return buffer;
+}

@@ -1,36 +1,64 @@
 import type { CatalogImage } from '@app/shared';
-import { Box } from 'lucide-react';
+import { Box, Images } from 'lucide-react';
 import { useState } from 'react';
 
 import { cn } from '~/lib/utils';
 
-/** Main image with thumbnails. Without JavaScript the first image still shows. */
-export function ProductGallery({ images, title }: { images: CatalogImage[]; title: string }) {
-    const [selected, setSelected] = useState(0);
-    const current = images[selected] ?? images[0];
+import { LazyModelViewer, useIsClient } from './lazy-model-viewer';
 
-    if (!current) {
-        return (
-            <div className='flex aspect-[4/3] items-center justify-center rounded-lg border bg-muted text-muted-foreground'>
-                <Box className='size-16' aria-hidden />
-                <span className='sr-only'>No images of {title} yet</span>
-            </div>
-        );
-    }
+interface ProductGalleryProps {
+    images: CatalogImage[];
+    title: string;
+    /** The public 3D preview, if the product has one. */
+    preview?: { url: string } | null;
+}
+
+/** Photos with thumbnails, and the 3D view when there is a preview. Without JavaScript the first photo shows. */
+export function ProductGallery({ images, title, preview }: ProductGalleryProps) {
+    const [selected, setSelected] = useState(0);
+    const [view, setView] = useState<'photos' | '3d'>('photos');
+    // The 3D view needs JavaScript, so its button only appears once the page is interactive.
+    const interactive = useIsClient();
+
+    const current = images[selected] ?? images[0];
+    const show3d = view === '3d' && preview;
 
     return (
         <div className='flex flex-col gap-3'>
-            <div className='overflow-hidden rounded-lg border bg-muted'>
-                <img
-                    src={current.url}
-                    alt={current.alt}
-                    width={current.width}
-                    height={current.height}
-                    className='aspect-[4/3] size-full object-contain'
-                    fetchPriority='high'
-                />
+            <div className='relative aspect-[4/3] overflow-hidden rounded-lg border bg-muted'>
+                {show3d ? (
+                    <LazyModelViewer url={preview.url} title={title} />
+                ) : current ? (
+                    <img
+                        src={current.url}
+                        alt={current.alt}
+                        width={current.width}
+                        height={current.height}
+                        className='absolute inset-0 size-full object-contain'
+                        fetchPriority='high'
+                    />
+                ) : (
+                    <Centered>
+                        <Box className='size-16' aria-hidden />
+                        <span className='sr-only'>No images of {title} yet</span>
+                    </Centered>
+                )}
             </div>
-            {images.length > 1 && (
+
+            {preview && interactive && (
+                <div className='flex gap-2'>
+                    <ViewButton active={view === 'photos'} onClick={() => setView('photos')}>
+                        <Images className='size-4' aria-hidden />
+                        Photos
+                    </ViewButton>
+                    <ViewButton active={view === '3d'} onClick={() => setView('3d')}>
+                        <Box className='size-4' aria-hidden />
+                        3D view
+                    </ViewButton>
+                </div>
+            )}
+
+            {view === 'photos' && images.length > 1 && (
                 <ul className='flex gap-2 overflow-x-auto' aria-label='Images'>
                     {images.map((image, index) => (
                         <li key={image.url} className='shrink-0'>
@@ -57,6 +85,38 @@ export function ProductGallery({ images, title }: { images: CatalogImage[]; titl
                     ))}
                 </ul>
             )}
+        </div>
+    );
+}
+
+function ViewButton({
+    active,
+    onClick,
+    children,
+}: {
+    active: boolean;
+    onClick: () => void;
+    children: React.ReactNode;
+}) {
+    return (
+        <button
+            type='button'
+            onClick={onClick}
+            aria-pressed={active}
+            className={cn(
+                'inline-flex items-center gap-2 rounded-md border px-3 py-1.5 text-sm font-medium transition-colors focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none',
+                active ? 'border-primary bg-primary text-primary-foreground' : 'hover:bg-muted',
+            )}
+        >
+            {children}
+        </button>
+    );
+}
+
+function Centered({ children }: { children: React.ReactNode }) {
+    return (
+        <div className='absolute inset-0 flex items-center justify-center text-sm text-muted-foreground'>
+            {children}
         </div>
     );
 }

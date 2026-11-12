@@ -1,4 +1,12 @@
-import { DeleteObjectsCommand, HeadObjectCommand, NotFound, PutObjectCommand, S3Client } from '@aws-sdk/client-s3';
+import {
+    DeleteObjectsCommand,
+    GetObjectCommand,
+    HeadObjectCommand,
+    NoSuchKey,
+    NotFound,
+    PutObjectCommand,
+    S3Client,
+} from '@aws-sdk/client-s3';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 
 import type { Env } from '../env.ts';
@@ -17,6 +25,9 @@ export interface S3StorageConfig {
     /** How long a presigned upload URL stays valid. */
     uploadUrlTtlSeconds?: number;
 }
+
+const isNotFound = (error: unknown) =>
+    (error as { $metadata?: { httpStatusCode?: number } }).$metadata?.httpStatusCode === 404;
 
 /** Storage on any S3-compatible service: Cloudflare R2, AWS S3, MinIO. */
 export function createS3Storage(config: S3StorageConfig): Storage {
@@ -62,17 +73,22 @@ export function createS3Storage(config: S3StorageConfig): Storage {
             );
         },
 
+        async get(bucket, key) {
+            try {
+                const result = await client.send(new GetObjectCommand({ Bucket: config.buckets[bucket], Key: key }));
+                return result.Body ? await result.Body.transformToByteArray() : new Uint8Array();
+            } catch (error) {
+                if (error instanceof NoSuchKey || isNotFound(error)) return null;
+                throw error;
+            }
+        },
+
         async head(bucket, key) {
             try {
                 const result = await client.send(new HeadObjectCommand({ Bucket: config.buckets[bucket], Key: key }));
                 return { sizeBytes: result.ContentLength ?? 0, contentType: result.ContentType };
             } catch (error) {
-                if (
-                    error instanceof NotFound ||
-                    (error as { $metadata?: { httpStatusCode?: number } }).$metadata?.httpStatusCode === 404
-                ) {
-                    return null;
-                }
+                if (error instanceof NotFound || isNotFound(error)) return null;
                 throw error;
             }
         },

@@ -1,5 +1,6 @@
 import {
     adminCategoryListSchema,
+    adminProductFileSchema,
     adminProductImageSchema,
     adminProductSchema,
     publishProblems,
@@ -8,7 +9,7 @@ import {
     type AdminProductFile,
     type AdminProductImage,
 } from '@app/shared';
-import { ArrowLeft, ArrowRight, ExternalLink, ImageOff, Star, Trash2 } from 'lucide-react';
+import { ArrowLeft, ArrowRight, Box, ExternalLink, ImageOff, Star, Trash2 } from 'lucide-react';
 import { data, Link, redirect, useFetcher } from 'react-router';
 import { z } from 'zod';
 
@@ -16,6 +17,7 @@ import { confirmSubmit, Field, FormStatus, Select } from '~/components/admin/for
 import { LICENSE_GROUPS, licenseName } from '~/components/admin/licenses';
 import { FeaturedBadge, StatusBadge } from '~/components/admin/product-status';
 import { UploadButton } from '~/components/admin/upload-button';
+import { LazyModelViewer } from '~/components/catalog/lazy-model-viewer';
 import { Badge } from '~/components/ui/badge';
 import { Button } from '~/components/ui/button';
 import { Input } from '~/components/ui/input';
@@ -114,6 +116,11 @@ export async function action(args: Route.ActionArgs) {
             return runAction(async () => {
                 await adminApi(args, imagePath, noContent, { method: 'DELETE' });
                 return undefined;
+            });
+        case 'preview-generate':
+            return runAction(async () => {
+                await adminApi(args, `${base}/preview`, adminProductFileSchema, { method: 'POST' });
+                return 'Preview made from the STL.';
             });
         case 'file-delete':
             return runAction(async () => {
@@ -546,6 +553,7 @@ function ImageItem({ image, index, count }: { image: AdminProductImage; index: n
 function Files({ product }: { product: AdminProduct }) {
     const downloads = product.files.filter((file) => file.kind === 'download');
     const preview = product.files.find((file) => file.kind === 'preview');
+    const hasStl = downloads.some((file) => file.format === 'stl');
 
     return (
         <section aria-labelledby='files-heading' className='grid gap-6'>
@@ -581,22 +589,53 @@ function Files({ product }: { product: AdminProduct }) {
                     <div>
                         <h3 className='font-medium'>3D preview</h3>
                         <p className='text-sm text-muted-foreground'>
-                            A reduced .glb (up to 25 MB) for the public 3D viewer. Never the full-quality model.
+                            Shown in the public 3D viewer. Made automatically from the first STL you upload, or upload
+                            your own reduced .glb (up to 25 MB). Never the full-quality model.
                         </p>
                     </div>
-                    <UploadButton
-                        productId={product.id}
-                        target='preview'
-                        label={preview ? 'Replace preview' : 'Add preview'}
-                    />
+                    <div className='flex flex-wrap items-start gap-2'>
+                        {hasStl && <GeneratePreviewButton again={preview !== undefined} />}
+                        <UploadButton productId={product.id} target='preview' label='Upload a .glb' />
+                    </div>
                 </div>
-                {preview && (
-                    <ul className='rounded-lg border'>
-                        <FileItem file={preview} />
-                    </ul>
+                {preview ? (
+                    <div className='grid gap-2'>
+                        <div className='relative aspect-[4/3] max-w-xl overflow-hidden rounded-lg border bg-muted'>
+                            {preview.url ? (
+                                <LazyModelViewer url={preview.url} title={product.title} />
+                            ) : (
+                                <p className='absolute inset-0 flex items-center justify-center text-sm text-muted-foreground'>
+                                    No viewer: file storage is not configured.
+                                </p>
+                            )}
+                        </div>
+                        <ul className='max-w-xl rounded-lg border'>
+                            <FileItem file={preview} />
+                        </ul>
+                    </div>
+                ) : (
+                    <p className='rounded-lg border border-dashed p-4 text-center text-sm text-muted-foreground'>
+                        No preview yet.{' '}
+                        {hasStl ? 'Make one from the STL, or upload a .glb.' : 'Upload an STL to make one.'}
+                    </p>
                 )}
             </div>
         </section>
+    );
+}
+
+/** Makes the preview from the product's first STL (again), on the server. */
+function GeneratePreviewButton({ again }: { again: boolean }) {
+    const fetcher = useFetcher<ActionResult>();
+    const busy = fetcher.state !== 'idle';
+    return (
+        <fetcher.Form method='post' className='grid gap-2'>
+            <Button type='submit' name='intent' value='preview-generate' variant='outline' size='sm' disabled={busy}>
+                <Box aria-hidden />
+                {busy ? 'Making the preview…' : again ? 'Remake from STL' : 'Make from STL'}
+            </Button>
+            <FormStatus result={fetcher.data} />
+        </fetcher.Form>
     );
 }
 

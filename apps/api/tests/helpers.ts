@@ -76,13 +76,14 @@ export const bearer = (token: string) => ({ headers: { authorization: `Bearer ${
  * `puts` and `deleted` record what the API uploaded and removed.
  */
 export function createFakeStorage() {
-    const objects = new Map<string, { sizeBytes: number; contentType: string }>();
+    const objects = new Map<string, { sizeBytes: number; contentType: string; body?: Uint8Array }>();
     const deleted: string[] = [];
     const puts: string[] = [];
     const id = (bucket: Bucket, key: string) => `${bucket}:${key}`;
 
     const storage: Storage & {
-        simulateUpload(bucket: Bucket, key: string, sizeBytes: number, contentType: string): void;
+        /** Pretends the browser uploaded a file. Pass `body` when the server will read the file. */
+        simulateUpload(bucket: Bucket, key: string, sizeBytes: number, contentType: string, body?: Uint8Array): void;
         has(bucket: Bucket, key: string): boolean;
         deleted: string[];
         puts: string[];
@@ -96,11 +97,17 @@ export function createFakeStorage() {
                 expiresAt: new Date(Date.now() + 15 * 60_000),
             };
         },
+        async get(bucket, key) {
+            const object = objects.get(id(bucket, key));
+            if (!object) return null;
+            return object.body ?? new Uint8Array(object.sizeBytes);
+        },
         async head(bucket, key) {
-            return objects.get(id(bucket, key)) ?? null;
+            const object = objects.get(id(bucket, key));
+            return object ? { sizeBytes: object.sizeBytes, contentType: object.contentType } : null;
         },
         async put(bucket, key, body, contentType) {
-            objects.set(id(bucket, key), { sizeBytes: body.byteLength, contentType });
+            objects.set(id(bucket, key), { sizeBytes: body.byteLength, contentType, body });
             puts.push(id(bucket, key));
         },
         async delete(bucket, keys) {
@@ -110,8 +117,8 @@ export function createFakeStorage() {
             }
         },
         publicUrl: (key) => `https://assets.test/${key}`,
-        simulateUpload(bucket, key, sizeBytes, contentType) {
-            objects.set(id(bucket, key), { sizeBytes, contentType });
+        simulateUpload(bucket, key, sizeBytes, contentType, body) {
+            objects.set(id(bucket, key), { sizeBytes, contentType, body });
         },
         has: (bucket, key) => objects.has(id(bucket, key)),
     };

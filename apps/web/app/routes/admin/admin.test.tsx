@@ -105,6 +105,31 @@ function inputAttributes(html: string, name: string, value?: string): Record<str
 }
 
 describe('product editor', () => {
+    test('a preview is shown in the 3D viewer, which loads in the browser', () => {
+        const withPreview: AdminProduct = {
+            ...published,
+            files: [
+                ...published.files,
+                {
+                    id: '0190b6a0-0000-7000-8000-000000000202',
+                    kind: 'preview',
+                    url: 'https://assets.test/products/p/preview/1.glb',
+                    format: 'glb',
+                    filename: 'cable-clip-preview.glb',
+                    sizeBytes: 90_000,
+                    position: 0,
+                },
+            ],
+        };
+        const html = render('/admin/products/:id', EditProduct, { product: withPreview, categories });
+
+        // Server rendering only shows the placeholder; three.js never runs on the server.
+        expect(html).toContain('Loading the 3D viewer…');
+        expect(html).toContain('cable-clip-preview.glb');
+        expect(html).toContain('Remake from STL');
+        expect(html).not.toContain('No preview yet');
+    });
+
     test('a draft lists what is missing before it can be published', () => {
         const html = render('/admin/products/:id', EditProduct, { product: draft, categories });
 
@@ -114,6 +139,7 @@ describe('product editor', () => {
         expect(html).toContain('Upload the file to download, or stop offering it.');
         expect(html).toMatch(/<button[^>]*value="publish"[^>]*disabled/);
         expect(html).toContain('Delete product');
+        expect(html).not.toContain('Make from STL');
         // The form shows the saved values, prices in euros.
         expect(inputAttributes(html, 'fileOffer', 'paid')).toHaveProperty('checked');
         expect(html).toContain('value="4.50"');
@@ -132,6 +158,9 @@ describe('product editor', () => {
         expect(html).toContain('To delete it, archive it first.');
         expect(inputAttributes(html, 'fileOffer', 'free')).toHaveProperty('checked');
         expect(html).toContain('cable-clip.stl');
+        // An STL is there, so the preview can be made from it.
+        expect(html).toContain('Make from STL');
+        expect(html).toContain('No preview yet. Make one from the STL, or upload a .glb.');
         expect(html).toContain('2.4 MB');
     });
 });

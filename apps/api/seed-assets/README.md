@@ -47,6 +47,9 @@ seed-assets/
 The seed checks every model against the same publishing rules as the admin (category, an image, a licence and a
 download file when the file is offered) and stops with the folder name if one fails.
 
+Each model gets a 3D preview for the product page: a reduced `.glb` made from its first STL, unless the folder has
+its own `.glb` or the licence is CC BY-ND (no derivatives).
+
 With `S3_*` storage configured, `vp run db:seed` uploads the files to `seed/products/<slug>/` (images to the public
 bucket, model files to the private one). Files already there with the same size are skipped.
 

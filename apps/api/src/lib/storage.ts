@@ -28,6 +28,8 @@ export interface Storage {
     }): Promise<PresignedUpload>;
     /** Uploads from the server (seed script, generated files). Browser uploads use `presignUpload`. */
     put(bucket: Bucket, key: string, body: Uint8Array, contentType: string): Promise<void>;
+    /** The object's contents, or `null` if it doesn't exist. Reads it all into memory: check the size first. */
+    get(bucket: Bucket, key: string): Promise<Uint8Array | null>;
     /** The object's size and type, or `null` if it doesn't exist. */
     head(bucket: Bucket, key: string): Promise<StoredObject | null>;
     /** Deletes the objects. Keys that don't exist are ignored. */

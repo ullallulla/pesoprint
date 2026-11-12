@@ -136,7 +136,7 @@ export function adminProductMediaRoutes(deps: AdminProductMediaDeps) {
         path: '/admin/products/{id}/files',
         summary: 'Attach an uploaded model file',
         description:
-            'Attaches a download or a preview, depending on the upload. A new preview replaces the previous one.',
+            'Attaches a download or a preview, depending on the upload. A new preview replaces the previous one. The first STL of a product without a preview also gets a preview made from it.',
         request: {
             params: idParams,
             body: { required: true, content: { 'application/json': { schema: confirmFileSchema } } },
@@ -150,6 +150,29 @@ export function adminProductMediaRoutes(deps: AdminProductMediaDeps) {
             ...adminAuthResponses,
             404: productNotFound,
             409: errorResponse('The upload is already attached.'),
+            503: storageMissing,
+        },
+    });
+
+    const generatePreviewRoute = createRoute({
+        tags: ['Admin: product media'],
+        security: [{ bearerAuth: [] }],
+        middleware: [adminOnly] as const,
+        method: 'post',
+        path: '/admin/products/{id}/preview',
+        summary: 'Make the 3D preview from the STL',
+        description:
+            "Builds a reduced GLB from the product's first STL download and makes it the preview, replacing the current one.",
+        request: { params: idParams },
+        responses: {
+            201: {
+                description: 'The new preview.',
+                content: { 'application/json': { schema: adminProductFileSchema } },
+            },
+            400: errorResponse('The id is not a UUID.'),
+            ...adminAuthResponses,
+            404: productNotFound,
+            409: errorResponse('The product has no STL, or it could not be read.'),
             503: storageMissing,
         },
     });
@@ -191,6 +214,9 @@ export function adminProductMediaRoutes(deps: AdminProductMediaDeps) {
         })
         .openapi(confirmFileRoute, async (c) => {
             return c.json(await deps.productMedia.confirmFile(c.req.valid('param').id, c.req.valid('json')), 201);
+        })
+        .openapi(generatePreviewRoute, async (c) => {
+            return c.json(await deps.productMedia.generatePreview(c.req.valid('param').id), 201);
         })
         .openapi(deleteFileRoute, async (c) => {
             const { id, fileId } = c.req.valid('param');

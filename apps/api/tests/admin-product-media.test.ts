@@ -16,6 +16,7 @@ import { categories, productFiles, productImages, products, users } from '../src
 import { createProductMediaService } from '../src/services/product-media.ts';
 import { createProductsService } from '../src/services/products.ts';
 import { bearer, buildApp, createFakeStorage, tokens } from './helpers.ts';
+import { gridStl } from './seed-fixtures.ts';
 
 const UNKNOWN_ID = '0190a6d2-3b7e-7000-8000-000000000000';
 
@@ -78,13 +79,15 @@ describe.skipIf(!url)('admin product media routes (integration)', () => {
         return adminProductImageSchema.parse(await res.json());
     }
 
-    async function uploadFile(target: 'download' | 'preview', filename: string) {
+    /** `body` is what the server reads back, e.g. to make a preview from an STL. */
+    async function uploadFile(target: 'download' | 'preview', filename: string, body?: Uint8Array) {
         const ticket = await startUpload({ target, filename, sizeBytes: 9000 });
         storage.simulateUpload(
             target === 'download' ? 'private' : 'public',
             ticket.key,
             9000,
             ticket.headers['content-type']!,
+            body,
         );
         const res = await call('POST', `/${productId}/files`, { key: ticket.key, filename });
         expect(res.status).toBe(201);
@@ -276,6 +279,50 @@ describe.skipIf(!url)('admin product media routes (integration)', () => {
             const previews = await db.select().from(productFiles).where(eq(productFiles.kind, 'preview'));
             expect(previews.map((file) => file.id)).toEqual([second.id]);
             expect(storage.has('public', firstRow!.storageKey)).toBe(false);
+        });
+
+        test('the first STL also gets a public 3D preview made from it', async () => {
+            const download = await uploadFile('download', 'Dragon.stl', new Uint8Array(gridStl(10)));
+
+            const previews = await db.select().from(productFiles).where(eq(productFiles.kind, 'preview'));
+            expect(previews).toEqual([
+                expect.objectContaining({ productId, format: 'glb', filename: 'Dragon-preview.glb', position: 0 }),
+            ]);
+            expect(previews[0]!.storageKey).toMatch(new RegExp(`^products/${productId}/preview/.+\\.glb$`));
+            expect(storage.has('public', previews[0]!.storageKey)).toBe(true);
+            expect(download.kind).toBe('download');
+        });
+
+        test('an existing preview is kept, and an unreadable STL is still attached', async () => {
+            const handMade = await uploadFile('preview', 'hand-made.glb');
+            await uploadFile('download', 'second.stl', new Uint8Array(gridStl(10)));
+            const previews = await db.select().from(productFiles).where(eq(productFiles.kind, 'preview'));
+            expect(previews.map((file) => file.id)).toEqual([handMade.id]);
+
+            await db.delete(productFiles).where(eq(productFiles.id, handMade.id));
+            const broken = await uploadFile('download', 'broken.stl', new TextEncoder().encode('not a model'));
+            expect(broken.filename).toBe('broken.stl');
+            expect(await db.select().from(productFiles).where(eq(productFiles.kind, 'preview'))).toEqual([]);
+        });
+
+        test('the preview can be made again from the STL, replacing the current one', async () => {
+            const res409 = await call('POST', `/${productId}/preview`);
+            const error = await expectError(res409, 409, 'conflict');
+            expect(error.message).toMatch(/Upload an STL file first/);
+
+            const handMade = await uploadFile('preview', 'hand-made.glb');
+            const [handMadeRow] = await db.select().from(productFiles).where(eq(productFiles.id, handMade.id));
+            await uploadFile('download', 'Dragon.stl', new Uint8Array(gridStl(10)));
+
+            const res = await call('POST', `/${productId}/preview`);
+            expect(res.status).toBe(201);
+            const preview = adminProductFileSchema.parse(await res.json());
+            expect(preview).toMatchObject({ kind: 'preview', format: 'glb', filename: 'Dragon-preview.glb' });
+            expect(preview.url).toMatch(/^https:\/\/assets\.test\/products\//);
+
+            const previews = await db.select().from(productFiles).where(eq(productFiles.kind, 'preview'));
+            expect(previews.map((file) => file.id)).toEqual([preview.id]);
+            expect(storage.has('public', handMadeRow!.storageKey)).toBe(false);
         });
 
         test('several downloads are kept in upload order', async () => {

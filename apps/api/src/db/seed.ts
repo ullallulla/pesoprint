@@ -75,7 +75,6 @@ interface SeedProduct {
     /** Width × depth × height in mm, and filament weight in grams. */
     size?: [number, number, number, number];
     images?: number;
-    preview?: boolean;
     status?: ProductStatus;
     featured?: boolean;
 }
@@ -91,7 +90,6 @@ const SEED_PRODUCTS: SeedProduct[] = [
         license: 'cc_by_nc',
         size: [180, 60, 25, 38],
         images: 3,
-        preview: true,
         featured: true,
     },
     {
@@ -104,7 +102,6 @@ const SEED_PRODUCTS: SeedProduct[] = [
         format: '3mf',
         size: [140, 120, 30, 72],
         images: 2,
-        preview: true,
         featured: true,
     },
     {
@@ -127,7 +124,6 @@ const SEED_PRODUCTS: SeedProduct[] = [
         license: 'standard_digital',
         size: [110, 110, 95, 85],
         images: 3,
-        preview: true,
         featured: true,
     },
     {
@@ -139,7 +135,6 @@ const SEED_PRODUCTS: SeedProduct[] = [
         license: 'cc_by',
         size: [90, 90, 20, 22],
         images: 2,
-        preview: true,
     },
     {
         slug: 'headphone-stand',
@@ -181,7 +176,6 @@ const SEED_PRODUCTS: SeedProduct[] = [
         format: '3mf',
         size: [80, 80, 80, 110],
         images: 2,
-        preview: true,
     },
     {
         slug: 'dice-tower',
@@ -568,14 +562,6 @@ export async function seedDatabase(db: Database, options: SeedOptions = {}): Pro
                     format,
                     filename: `${seed.slug}.${format}`,
                     sizeBytes: 2_500_000,
-                });
-            }
-            if (seed.preview) {
-                files.push({
-                    kind: 'preview' as const,
-                    format: 'glb' as const,
-                    filename: `${seed.slug}-preview.glb`,
-                    sizeBytes: 400_000,
                 });
             }
             if (files.length > 0) {
