@@ -42,9 +42,11 @@ COPY --from=deps /app/node_modules ./node_modules
 COPY --from=deps /app/apps/web/node_modules ./apps/web/node_modules
 COPY --from=build /app/apps/web/package.json ./apps/web/package.json
 COPY --from=build /app/apps/web/build ./apps/web/build
+COPY --from=build /app/apps/web/server.ts ./apps/web/server.ts
 WORKDIR /app/apps/web
 USER nobody
 EXPOSE 3000
 HEALTHCHECK --interval=30s --timeout=5s --start-period=10s \
     CMD ["node", "-e", "fetch('http://localhost:'+process.env.PORT+'/').then(r=>process.exit(r.ok?0:1),()=>process.exit(1))"]
-CMD ["node_modules/.bin/react-router-serve", "./build/server/index.js"]
+# server.ts trusts the hosting proxy (HTTPS); see the comment at its top.
+CMD ["node", "server.ts"]
