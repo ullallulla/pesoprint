@@ -1,17 +1,19 @@
 import { readFile } from 'node:fs/promises';
 
-import { publishProblems, type License, type ProductFileFormat, type ProductStatus } from '@app/shared';
+import { MODEL_CONTENT_TYPES, publishProblems, type License, type ProductStatus } from '@app/shared';
 import { eq, inArray } from 'drizzle-orm';
 
 import { bucketForFileKind } from '../services/product-media.ts';
 import type { Storage } from '../lib/storage.ts';
 import type { Database } from './client.ts';
 import type { SeedAsset } from './seed-assets.ts';
+import { sampleModel, type SampleModel } from './seed-models.ts';
 import { categories, productFiles, productImages, products, users, type NewProduct } from './schema.ts';
 
 /**
- * Sample catalogue for development and staging demos. Everything here is placeholder content:
- * the products, prices and descriptions are made up, and the storage keys point at objects that don't exist.
+ * Sample catalogue for development and staging demos. Everything here is placeholder content: the products,
+ * prices and descriptions are made up, and each model is a box at the product's printed size (a real STL to
+ * download, with a 3D preview). Real models come from `seed-assets/`.
  *
  * Seed products belong to a dedicated "Sample Studio" user, so seeding again replaces them
  * without touching products you created yourself.
@@ -71,7 +73,6 @@ interface SeedProduct {
     file: number | null;
     print: number | null;
     license?: License;
-    format?: ProductFileFormat;
     /** Width × depth × height in mm, and filament weight in grams. */
     size?: [number, number, number, number];
     images?: number;
@@ -99,7 +100,6 @@ const SEED_PRODUCTS: SeedProduct[] = [
         file: 450,
         print: 1890,
         license: 'standard_digital',
-        format: '3mf',
         size: [140, 120, 30, 72],
         images: 2,
         featured: true,
@@ -143,7 +143,6 @@ const SEED_PRODUCTS: SeedProduct[] = [
         file: 300,
         print: 2690,
         license: 'commercial',
-        format: 'step',
         size: [120, 100, 260, 140],
         images: 2,
     },
@@ -173,7 +172,6 @@ const SEED_PRODUCTS: SeedProduct[] = [
         file: 500,
         print: 2990,
         license: 'standard_digital',
-        format: '3mf',
         size: [80, 80, 80, 110],
         images: 2,
     },
@@ -297,20 +295,22 @@ export interface SeedResult {
     products: number;
     images: number;
     files: number;
-    /** Asset files uploaded to storage this run (files already there with the same size are skipped). */
+    /** Files uploaded to storage this run (files already there with the same size are skipped). */
     uploaded: number;
 }
 
 export interface SeedOptions {
     /** Real models from `seed-assets/`, see `loadSeedAssets()`. */
     assets?: SeedAsset[];
-    /** Where asset files are uploaded. Without it the rows are still written, pointing at files that don't exist. */
+    /** Where the files are uploaded. Without it the rows are still written, pointing at files that don't exist. */
     storage?: Storage | null;
     now?: Date;
 }
 
 const assetKey = (slug: string, filename: string) => `seed/products/${slug}/${filename}`;
 const placeholderKey = (slug: string, index: number) => `seed/products/${slug}/image-${index + 1}.webp`;
+/** The sample product's model file and its preview. */
+const sampleFiles = (slug: string) => ({ stl: `${slug}.stl`, glb: `${slug}-preview.glb` });
 
 /** One neutral "Sample product" image (1200×900), uploaded for every image of the placeholder products. */
 const PLACEHOLDER_IMAGE = new URL('./seed-placeholder.webp', import.meta.url);
@@ -357,16 +357,31 @@ function assertAssetsPublishable(assets: SeedAsset[]): void {
     }
 }
 
-/** Uploads the placeholder image under each placeholder product's image keys, unless it's already there. */
-async function uploadPlaceholders(storage: Storage, body: Uint8Array): Promise<number> {
+/**
+ * Uploads the placeholder products' files that aren't in storage yet: the shared placeholder image under each
+ * image key, the box model (if the file is offered) and its 3D preview.
+ */
+async function uploadPlaceholders(
+    storage: Storage,
+    image: Uint8Array,
+    models: Map<string, SampleModel>,
+): Promise<number> {
     let uploaded = 0;
+    const upload = async (bucket: 'public' | 'private', key: string, body: Uint8Array, contentType: string) => {
+        if ((await storage.head(bucket, key))?.sizeBytes === body.byteLength) return;
+        await storage.put(bucket, key, body, contentType);
+        uploaded++;
+    };
     for (const seed of SEED_PRODUCTS) {
         for (let index = 0; index < (seed.images ?? 0); index++) {
-            const key = placeholderKey(seed.slug, index);
-            if ((await storage.head('public', key))?.sizeBytes === body.byteLength) continue;
-            await storage.put('public', key, body, 'image/webp');
-            uploaded++;
+            await upload('public', placeholderKey(seed.slug, index), image, 'image/webp');
         }
+        const model = models.get(seed.slug)!;
+        const names = sampleFiles(seed.slug);
+        if (seed.file !== null) {
+            await upload('private', assetKey(seed.slug, names.stl), model.stl, MODEL_CONTENT_TYPES.stl);
+        }
+        await upload('public', assetKey(seed.slug, names.glb), model.glb, MODEL_CONTENT_TYPES.glb);
     }
     return uploaded;
 }
@@ -395,8 +410,11 @@ export async function seedDatabase(db: Database, options: SeedOptions = {}): Pro
     const { assets = [], storage = null, now = new Date() } = options;
     assertAssetsPublishable(assets);
     const placeholder = new Uint8Array(await readFile(PLACEHOLDER_IMAGE));
+    const models = new Map(
+        await Promise.all(SEED_PRODUCTS.map(async (seed) => [seed.slug, await sampleModel(seed.size)] as const)),
+    );
     const uploaded = storage
-        ? (await uploadPlaceholders(storage, placeholder)) + (await uploadAssets(storage, assets))
+        ? (await uploadPlaceholders(storage, placeholder, models)) + (await uploadAssets(storage, assets))
         : 0;
 
     return db.transaction(async (tx) => {
@@ -554,27 +572,25 @@ export async function seedDatabase(db: Database, options: SeedOptions = {}): Pro
                 result.images += imageCount;
             }
 
-            const files = [];
-            if (seed.file !== null) {
-                const format = seed.format ?? 'stl';
-                files.push({
-                    kind: 'download' as const,
-                    format,
-                    filename: `${seed.slug}.${format}`,
-                    sizeBytes: 2_500_000,
-                });
-            }
-            if (files.length > 0) {
-                await tx.insert(productFiles).values(
-                    files.map((file, position) => ({
-                        ...file,
-                        productId,
-                        storageKey: `seed/products/${seed.slug}/${file.filename}`,
-                        position,
-                    })),
-                );
-                result.files += files.length;
-            }
+            // Every sample product has a 3D preview; the model file itself only when it's offered.
+            const model = models.get(seed.slug)!;
+            const names = sampleFiles(seed.slug);
+            const files = [
+                ...(seed.file === null
+                    ? []
+                    : [{ kind: 'download' as const, format: 'stl' as const, filename: names.stl, body: model.stl }]),
+                { kind: 'preview' as const, format: 'glb' as const, filename: names.glb, body: model.glb },
+            ];
+            await tx.insert(productFiles).values(
+                files.map(({ body, ...file }, position) => ({
+                    ...file,
+                    productId,
+                    storageKey: assetKey(seed.slug, file.filename),
+                    sizeBytes: body.byteLength,
+                    position,
+                })),
+            );
+            result.files += files.length;
         }
 
         return result;

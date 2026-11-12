@@ -61,7 +61,7 @@ try {
         `Seeded ${result.categories} categories, ${result.products} products (${assets.length} from seed-assets/), ${result.images} images and ${result.files} files.`,
     );
     if (storage) {
-        console.log(`Uploaded ${result.uploaded} new or changed asset files to storage.`);
+        console.log(`Uploaded ${result.uploaded} new or changed files to storage.`);
     }
 } catch (error) {
     console.error('Seeding failed:', error);

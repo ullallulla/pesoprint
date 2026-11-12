@@ -74,6 +74,25 @@ describe.skipIf(!url)('seedDatabase (integration)', () => {
         }
     });
 
+    test('every sample product has a 3D preview, and a real STL when the file is offered', async () => {
+        const rows = await db
+            .select({ slug: products.slug, offered: products.digitalPriceCents, file: productFiles })
+            .from(products)
+            .innerJoin(productFiles, eq(productFiles.productId, products.id))
+            .where(eq(products.creatorId, SEED_CREATOR.id));
+        const seeded = await db.select().from(products).where(eq(products.creatorId, SEED_CREATOR.id));
+
+        for (const product of seeded) {
+            const files = rows.filter((row) => row.slug === product.slug).map((row) => row.file);
+            expect(files.filter((file) => file.kind === 'preview')).toHaveLength(1);
+            const downloads = files.filter((file) => file.kind === 'download');
+            expect(downloads).toHaveLength(product.digitalPriceCents === null ? 0 : 1);
+            for (const file of downloads) {
+                expect(file).toMatchObject({ format: 'stl', filename: `${product.slug}.stl`, sizeBytes: 84 + 12 * 50 });
+            }
+        }
+    });
+
     test('covers every way a model can be offered', async () => {
         const rows = await db.select().from(products).where(eq(products.status, 'published'));
         const offers = new Set(
@@ -144,8 +163,10 @@ describe.skipIf(!url)('seedDatabase (integration)', () => {
                 expect.arrayContaining([
                     'private:seed/products/real-cable-clip/cable-clip.stl',
                     'public:seed/products/real-cable-clip/render-1.png',
-                    // The placeholder products get the shared placeholder image.
+                    // The placeholder products get the shared placeholder image, a box model and its preview.
                     'public:seed/products/articulated-dragon/image-1.webp',
+                    'private:seed/products/articulated-dragon/articulated-dragon.stl',
+                    'public:seed/products/articulated-dragon/articulated-dragon-preview.glb',
                 ]),
             );
             expect(first.uploaded).toBe(storage.puts.length);
