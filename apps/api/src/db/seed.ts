@@ -1,3 +1,5 @@
+import { readFile } from 'node:fs/promises';
+
 import { publishProblems, type License, type ProductFileFormat, type ProductStatus } from '@app/shared';
 import { eq, inArray } from 'drizzle-orm';
 
@@ -314,6 +316,10 @@ export interface SeedOptions {
 }
 
 const assetKey = (slug: string, filename: string) => `seed/products/${slug}/${filename}`;
+const placeholderKey = (slug: string, index: number) => `seed/products/${slug}/image-${index + 1}.webp`;
+
+/** One neutral "Sample product" image (1200×900), uploaded for every image of the placeholder products. */
+const PLACEHOLDER_IMAGE = new URL('./seed-placeholder.webp', import.meta.url);
 
 function assetDescription(asset: SeedAsset): string {
     const { description, designer, url } = asset.source;
@@ -357,6 +363,20 @@ function assertAssetsPublishable(assets: SeedAsset[]): void {
     }
 }
 
+/** Uploads the placeholder image under each placeholder product's image keys, unless it's already there. */
+async function uploadPlaceholders(storage: Storage, body: Uint8Array): Promise<number> {
+    let uploaded = 0;
+    for (const seed of SEED_PRODUCTS) {
+        for (let index = 0; index < (seed.images ?? 0); index++) {
+            const key = placeholderKey(seed.slug, index);
+            if ((await storage.head('public', key))?.sizeBytes === body.byteLength) continue;
+            await storage.put('public', key, body, 'image/webp');
+            uploaded++;
+        }
+    }
+    return uploaded;
+}
+
 /** Uploads asset files that aren't in storage yet. Runs before the database transaction, so no transaction waits on the network. */
 async function uploadAssets(storage: Storage, assets: SeedAsset[]): Promise<number> {
     let uploaded = 0;
@@ -380,7 +400,10 @@ async function uploadAssets(storage: Storage, assets: SeedAsset[]): Promise<numb
 export async function seedDatabase(db: Database, options: SeedOptions = {}): Promise<SeedResult> {
     const { assets = [], storage = null, now = new Date() } = options;
     assertAssetsPublishable(assets);
-    const uploaded = storage ? await uploadAssets(storage, assets) : 0;
+    const placeholder = new Uint8Array(await readFile(PLACEHOLDER_IMAGE));
+    const uploaded = storage
+        ? (await uploadPlaceholders(storage, placeholder)) + (await uploadAssets(storage, assets))
+        : 0;
 
     return db.transaction(async (tx) => {
         await tx
@@ -526,11 +549,11 @@ export async function seedDatabase(db: Database, options: SeedOptions = {}): Pro
                 await tx.insert(productImages).values(
                     Array.from({ length: imageCount }, (_, position) => ({
                         productId,
-                        storageKey: `seed/products/${seed.slug}/image-${position + 1}.webp`,
-                        alt: `${seed.title}, placeholder photo ${position + 1}`,
+                        storageKey: placeholderKey(seed.slug, position),
+                        alt: `Placeholder image for the sample product ${seed.title}`,
                         width: 1200,
                         height: 900,
-                        sizeBytes: 150_000,
+                        sizeBytes: placeholder.byteLength,
                         position,
                     })),
                 );

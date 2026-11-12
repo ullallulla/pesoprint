@@ -140,11 +140,16 @@ describe.skipIf(!url)('seedDatabase (integration)', () => {
             const assets = await loadSeedAssets(dir);
 
             const first = await seedDatabase(db, { assets, storage });
-            expect(first.uploaded).toBe(2);
-            expect(storage.puts.sort()).toEqual([
-                'private:seed/products/real-cable-clip/cable-clip.stl',
-                'public:seed/products/real-cable-clip/render-1.png',
-            ]);
+            expect(storage.puts).toEqual(
+                expect.arrayContaining([
+                    'private:seed/products/real-cable-clip/cable-clip.stl',
+                    'public:seed/products/real-cable-clip/render-1.png',
+                    // The placeholder products get the shared placeholder image.
+                    'public:seed/products/articulated-dragon/image-1.webp',
+                ]),
+            );
+            expect(first.uploaded).toBe(storage.puts.length);
+            const uploadsAfterFirstRun = storage.puts.length;
 
             const [product] = await db.select().from(products).where(eq(products.slug, 'real-cable-clip'));
             expect(product).toMatchObject({
@@ -180,7 +185,7 @@ describe.skipIf(!url)('seedDatabase (integration)', () => {
             // Unchanged files are not uploaded again.
             const second = await seedDatabase(db, { assets, storage });
             expect(second.uploaded).toBe(0);
-            expect(storage.puts).toHaveLength(2);
+            expect(storage.puts).toHaveLength(uploadsAfterFirstRun);
         });
 
         test('refuses, before writing anything, a model that could not be published', async () => {
