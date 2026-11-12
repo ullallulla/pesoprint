@@ -26,7 +26,8 @@ export function downloadRoutes(deps: DownloadDeps) {
         summary: 'Get a download link',
         description: [
             'Returns a link to one model file that works for 5 minutes. Anyone may download the files of free,',
-            'published models; admins may download any file. Everything else is a 404.',
+            'published models; admins may download any file. Everything else is a 404. Visitors are limited to',
+            '30 downloads an hour (by anonymised IP; admins are not limited).',
             '',
             `The web server passes on the visitor's IP in \`${CLIENT_IP_HEADER}\`, with the shared secret in`,
             `\`${PROXY_SECRET_HEADER}\`. IPs are only stored as a daily keyed hash.`,
@@ -44,6 +45,9 @@ export function downloadRoutes(deps: DownloadDeps) {
             400: errorResponse('The id is not a UUID.'),
             401: errorResponse('A session token was sent, but it is invalid or has expired.'),
             404: errorResponse("No such file, or you can't download it."),
+            429: errorResponse(
+                'Too many downloads from this visitor in the last hour. `Retry-After` says when to try again.',
+            ),
             503: errorResponse('File storage is not configured.'),
         },
     });

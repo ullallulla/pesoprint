@@ -22,7 +22,7 @@ describe.skipIf(!url)('downloads (integration)', () => {
     const hashIp = createIpHasher(SECRET);
     const storage = createFakeStorage();
     const app = buildApp({
-        downloads: createDownloadsService(db, storage, hashIp, () => NOW),
+        downloads: createDownloadsService(db, storage, hashIp, { now: () => NOW }),
         internalApiSecret: SECRET,
     });
     let categoryId: string;
@@ -173,5 +173,69 @@ describe.skipIf(!url)('downloads (integration)', () => {
 
         expect((await noStorage.request(`/api/downloads/${file.id}`, { method: 'POST' })).status).toBe(503);
         expect(await db.select().from(downloadEvents).where(eq(downloadEvents.productId, product.id))).toEqual([]);
+    });
+    describe('rate limit', () => {
+        const limited = buildApp({
+            downloads: createDownloadsService(db, storage, hashIp, {
+                now: () => NOW,
+                limit: { count: 3, windowSeconds: 3600 },
+            }),
+            internalApiSecret: SECRET,
+        });
+        const from = (ip: string) => ({ [CLIENT_IP_HEADER]: ip, [PROXY_SECRET_HEADER]: SECRET });
+        const get = (fileId: string, headers: Record<string, string>) =>
+            limited.request(`/api/downloads/${fileId}`, { method: 'POST', headers });
+
+        test('a visitor over the limit gets a 429 with Retry-After, and nothing is logged or counted', async () => {
+            const { product, download: file } = await model();
+            for (let i = 0; i < 3; i++) {
+                expect((await get(file.id, from('203.0.113.1'))).status).toBe(200);
+            }
+
+            const res = await get(file.id, from('203.0.113.1'));
+            expect(res.status).toBe(429);
+            expect(res.headers.get('retry-after')).toBe('3600');
+            const { error } = apiErrorSchema.parse(await res.json());
+            expect(error).toMatchObject({ code: 'rate_limited' });
+            expect(error.message).toBe("You've reached the limit of 3 downloads an hour. Try again in 60 minutes.");
+            expect(await countOf(product.id)).toBe(3);
+            expect(await db.select().from(downloadEvents).where(eq(downloadEvents.productId, product.id))).toHaveLength(
+                3,
+            );
+
+            // Other visitors and admins aren't affected.
+            expect((await get(file.id, from('203.0.113.2'))).status).toBe(200);
+            expect((await get(file.id, { ...from('203.0.113.1'), ...bearer(tokens.admin).headers })).status).toBe(200);
+        });
+
+        test('only downloads within the window count', async () => {
+            const { product, download: file } = await model();
+            const twoHoursAgo = new Date(NOW.getTime() - 2 * 3600 * 1000);
+            await db.insert(downloadEvents).values(
+                Array.from({ length: 3 }, () => ({
+                    productId: product.id,
+                    fileId: file.id,
+                    ipHash: hashIp('203.0.113.3', NOW),
+                    createdAt: twoHoursAgo,
+                })),
+            );
+            expect((await get(file.id, from('203.0.113.3'))).status).toBe(200);
+        });
+
+        test('downloads without a known IP are not limited', async () => {
+            const { download: file } = await model();
+            for (let i = 0; i < 5; i++) {
+                expect((await get(file.id, {})).status).toBe(200);
+            }
+        });
+
+        test('simultaneous downloads from one visitor cannot get past the limit', async () => {
+            const { download: file } = await model();
+            const statuses = await Promise.all(
+                Array.from({ length: 6 }, async () => (await get(file.id, from('203.0.113.4'))).status),
+            );
+            expect(statuses.filter((status) => status === 200)).toHaveLength(3);
+            expect(statuses.filter((status) => status === 429)).toHaveLength(3);
+        });
     });
 });

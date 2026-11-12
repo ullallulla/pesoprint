@@ -43,7 +43,13 @@ export function ErrorBoundary({ error }: Route.ErrorBoundaryProps) {
         status === 404
             ? ["This file isn't available", 'The model may have been removed, or its file is no longer offered.']
             : status === 429
-              ? ['Too many downloads', 'Please wait a while and try again.']
+              ? [
+                    'Too many downloads',
+                    // The API says how long to wait, e.g. "Try again in 12 minutes."
+                    isRouteErrorResponse(error) && typeof error.data === 'string'
+                        ? error.data
+                        : 'Please wait a while and try again.',
+                ]
               : ["The download couldn't start", 'Something went wrong on our side. Try again in a moment.'];
 
     return (

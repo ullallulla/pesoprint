@@ -4,7 +4,7 @@ import { logger } from 'hono/logger';
 import { requestId } from 'hono/request-id';
 import { secureHeaders } from 'hono/secure-headers';
 
-import { AppError, errorCodeForStatus, sendError } from './lib/errors.ts';
+import { AppError, errorCodeForStatus, RateLimitedError, sendError } from './lib/errors.ts';
 import { createRouter } from './lib/router.ts';
 import { adminCategoryRoutes, type AdminCategoryDeps } from './routes/admin-categories.ts';
 import { adminProductMediaRoutes, type AdminProductMediaDeps } from './routes/admin-product-media.ts';
@@ -72,6 +72,9 @@ export function createApp(options: AppOptions) {
     app.notFound((c) => sendError(c, 404, 'not_found', `No route for ${c.req.method} ${c.req.path}`));
 
     app.onError((error, c) => {
+        if (error instanceof RateLimitedError) {
+            c.header('Retry-After', String(error.retryAfterSeconds));
+        }
         if (error instanceof AppError) {
             return sendError(c, error.status, error.code, error.message, error.issues);
         }

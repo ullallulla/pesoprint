@@ -58,6 +58,17 @@ export class AppError extends Error {
     }
 }
 
+/** Too many requests. The app's error handler adds `Retry-After`, so clients know when to try again. */
+export class RateLimitedError extends AppError {
+    readonly retryAfterSeconds: number;
+
+    constructor(message: string, retryAfterSeconds: number) {
+        super(429, 'rate_limited', message);
+        this.name = 'RateLimitedError';
+        this.retryAfterSeconds = retryAfterSeconds;
+    }
+}
+
 export const notFound = (message: string) => new AppError(404, 'not_found', message);
 /** The request clashes with the current state. `issues` can list what has to change first. */
 export const conflict = (message: string, issues?: ErrorIssues) => new AppError(409, 'conflict', message, issues);
