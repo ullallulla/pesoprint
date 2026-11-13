@@ -13,6 +13,7 @@
     "dependencies": {
         "@app/shared": "workspace:*",
         "@clerk/react-router": "catalog:",
+        "@fontsource-variable/inter": "catalog:",
         "@react-router/express": "catalog:",
         "@react-router/node": "^8.5.1",
         "@react-three/drei": "catalog:",
@@ -24,6 +25,7 @@
         "isbot": "catalog:",
         "lucide-react": "catalog:",
         "morgan": "catalog:",
+        "posthog-js": "catalog:",
         "radix-ui": "catalog:",
         "react": "catalog:",
         "react-dom": "catalog:",

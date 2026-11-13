@@ -11,26 +11,30 @@ import {
     useNavigation,
 } from 'react-router';
 
+import { Analytics } from '~/components/analytics';
 import { HeaderAuth } from '~/components/header-auth';
 import { SiteFooter } from '~/components/site-footer';
 import { SiteHeader } from '~/components/site-header';
 import { Button } from '~/components/ui/button';
+import { getEnv } from '~/env.server';
+import { readConsent } from '~/lib/consent';
 
 import type { Route } from './+types/root';
+// Served from this site rather than Google Fonts, so no visitor data goes to Google.
+import '@fontsource-variable/inter/opsz.css';
+import '@fontsource-variable/inter/opsz-italic.css';
 import './app.css';
 
 // Clerk reads the session cookie on every request; rootAuthLoader passes the auth state to the browser.
 export const middleware: Route.MiddlewareFunction[] = [clerkMiddleware()];
-export const loader = (args: Route.LoaderArgs) => rootAuthLoader(args);
-
-export const links: Route.LinksFunction = () => [
-    { rel: 'preconnect', href: 'https://fonts.googleapis.com' },
-    { rel: 'preconnect', href: 'https://fonts.gstatic.com', crossOrigin: 'anonymous' },
-    {
-        rel: 'stylesheet',
-        href: 'https://fonts.googleapis.com/css2?family=Inter:ital,opsz,wght@0,14..32,100..900;1,14..32,100..900&display=swap',
-    },
-];
+export const loader = (args: Route.LoaderArgs) =>
+    rootAuthLoader(args, ({ request }) => {
+        const { POSTHOG_KEY, POSTHOG_HOST } = getEnv();
+        return {
+            analytics: POSTHOG_KEY ? { key: POSTHOG_KEY, host: POSTHOG_HOST } : null,
+            consent: readConsent(request.headers.get('cookie')),
+        };
+    });
 
 export function Layout({ children }: { children: React.ReactNode }) {
     return (
@@ -53,14 +57,16 @@ export function Layout({ children }: { children: React.ReactNode }) {
 export default function App({ loaderData }: Route.ComponentProps) {
     return (
         <ClerkProvider loaderData={loaderData}>
-            <NavigationProgress />
-            <SiteHeader>
-                <HeaderAuth />
-            </SiteHeader>
-            <div className='flex flex-1 flex-col'>
-                <Outlet />
-            </div>
-            <SiteFooter />
+            <Analytics config={loaderData.analytics} initialConsent={loaderData.consent}>
+                <NavigationProgress />
+                <SiteHeader>
+                    <HeaderAuth />
+                </SiteHeader>
+                <div className='flex flex-1 flex-col'>
+                    <Outlet />
+                </div>
+                <SiteFooter />
+            </Analytics>
         </ClerkProvider>
     );
 }
