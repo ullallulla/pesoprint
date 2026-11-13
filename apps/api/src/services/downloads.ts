@@ -1,5 +1,5 @@
 import { isFreeDownload, MODEL_CONTENT_TYPES, type DownloadLink } from '@app/shared';
-import { and, count, eq, gt, min, sql } from 'drizzle-orm';
+import { and, count, eq, gt, isNotNull, lt, min, sql } from 'drizzle-orm';
 
 import type { Database } from '../db/client.ts';
 import { downloadEvents, productFiles, products, users, type Product } from '../db/schema.ts';
@@ -23,9 +23,17 @@ export interface DownloadLimit {
  */
 export const DOWNLOAD_LIMIT: DownloadLimit = { count: 30, windowSeconds: 60 * 60 };
 
+/**
+ * How long a download keeps its IP hash. The rate limit only looks back an hour; the rest is a short
+ * margin for looking into abuse. The privacy policy promises this, so keep them in step.
+ */
+export const IP_HASH_RETENTION_DAYS = 7;
+
 export interface DownloadsService {
     /** Checks access, logs the download and returns a short-lived link to the file. 404 if not allowed. */
     start(input: { fileId: string; caller: AuthContext | undefined; ip: string | null }): Promise<DownloadLink>;
+    /** Erases the IP hash from downloads older than the retention period. Returns how many were erased. */
+    forgetOldIpHashes(): Promise<number>;
 }
 
 /** Admins and the model's creator: they can download anything, and their downloads aren't counted. */
@@ -130,6 +138,16 @@ export function createDownloadsService(
                 filename: file.filename,
                 expiresAt: new Date(at.getTime() + DOWNLOAD_LINK_SECONDS * 1000).toISOString(),
             };
+        },
+
+        async forgetOldIpHashes() {
+            const before = new Date(now().getTime() - IP_HASH_RETENTION_DAYS * 24 * 60 * 60 * 1000);
+            const erased = await db
+                .update(downloadEvents)
+                .set({ ipHash: null })
+                .where(and(isNotNull(downloadEvents.ipHash), lt(downloadEvents.createdAt, before)))
+                .returning({ id: downloadEvents.id });
+            return erased.length;
         },
     };
 }

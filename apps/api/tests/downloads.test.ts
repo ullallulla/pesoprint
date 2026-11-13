@@ -174,6 +174,23 @@ describe.skipIf(!url)('downloads (integration)', () => {
         expect((await noStorage.request(`/api/downloads/${file.id}`, { method: 'POST' })).status).toBe(503);
         expect(await db.select().from(downloadEvents).where(eq(downloadEvents.productId, product.id))).toEqual([]);
     });
+
+    test('IP hashes are erased after 7 days, but the downloads stay', async () => {
+        const { product, download: file } = await model();
+        const daysAgo = (days: number) => new Date(NOW.getTime() - days * 24 * 3600 * 1000);
+        await db.insert(downloadEvents).values([
+            { productId: product.id, fileId: file.id, ipHash: 'old', createdAt: daysAgo(8) },
+            { productId: product.id, fileId: file.id, ipHash: 'recent', createdAt: daysAgo(6) },
+        ]);
+
+        const service = createDownloadsService(db, storage, hashIp, { now: () => NOW });
+        expect(await service.forgetOldIpHashes()).toBe(1);
+
+        const events = await db.select().from(downloadEvents).where(eq(downloadEvents.productId, product.id));
+        expect(new Set(events.map((event) => event.ipHash))).toEqual(new Set([null, 'recent']));
+        expect(await service.forgetOldIpHashes()).toBe(0);
+    });
+
     describe('rate limit', () => {
         const limited = buildApp({
             downloads: createDownloadsService(db, storage, hashIp, {

@@ -28,6 +28,8 @@ if (!storage) {
     console.warn('S3_* storage settings are not set: the upload endpoints will answer 503.');
 }
 
+const downloads = createDownloadsService(db, storage, createIpHasher(env.IP_HASH_SECRET));
+
 const app = createApp({
     checkDatabase: () => pingDatabase(db),
     verifySessionToken: createClerkTokenVerifier({
@@ -40,7 +42,7 @@ const app = createApp({
     products: createProductsService(db, storage),
     productMedia: createProductMediaService(db, storage),
     catalog: createCatalogService(db, storage),
-    downloads: createDownloadsService(db, storage, createIpHasher(env.IP_HASH_SECRET)),
+    downloads,
     internalApiSecret: env.INTERNAL_API_SECRET,
     version: packageJson.version,
     startedAt: new Date(),
@@ -50,6 +52,18 @@ const app = createApp({
 const server = serve({ fetch: app.fetch, port: env.PORT }, (info) => {
     console.log(`Pesoprint API listening on http://localhost:${info.port} (docs: /api/docs)`);
 });
+
+// Erase old IP hashes from the download log, at startup and then daily (see IP_HASH_RETENTION_DAYS).
+async function forgetOldIpHashes() {
+    try {
+        const erased = await downloads.forgetOldIpHashes();
+        if (erased > 0) console.log(`Erased the IP hash from ${erased} old downloads.`);
+    } catch (error) {
+        console.error('Erasing old IP hashes failed:', error);
+    }
+}
+void forgetOldIpHashes();
+setInterval(() => void forgetOldIpHashes(), 24 * 60 * 60 * 1000).unref();
 
 function shutdown(signal: string) {
     console.log(`${signal} received, shutting down...`);
