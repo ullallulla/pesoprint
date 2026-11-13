@@ -1,6 +1,6 @@
 # Pesoprint – Rebuild Plan (working name)
 
-_Drafted 2026-11-09 from the [prototype review](./prototype-review.md) and the planning questions. M0 and M1 are done (2026-11-12) and running on staging; M2 is next._
+_Drafted 2026-11-09 from the [prototype review](./prototype-review.md) and the planning questions. M0, M1 and M2 are done and running on staging; M3 is next. The public launch moved to M6._
 
 ## 1. What we're building
 
@@ -205,13 +205,17 @@ Each milestone ends with: CI green, deployed to staging, and a short demo you co
 - A seed script with sample data
 - **Done when:** you can upload a real model in the admin and find it through search on staging
 
-### M2 – Free downloads (first public launch)
+### M2 – Free downloads ✅ (2026-11-13)
 
-- `GET /api/downloads/:productId/files/:fileId` endpoint: checks the model is free and published (or that the user owns it), logs a download event, and redirects to a short-lived signed R2 URL
-- Rate limiting per IP hash
-- Download counter shown on product cards
-- Basic legal pages (terms, privacy) and cookie consent before PostHog loads
-- **Done when:** strangers can browse and download your free models. This is already a real, live portfolio project.
+- `POST /api/downloads/:fileId` endpoint: checks the model is free and published (or that the caller is an admin or the creator), logs a download event, and returns a ~5-minute signed R2 URL. The web app's `/models/:slug/download/:fileId` route redirects to it.
+- Rate limiting per IP hash (30 downloads an hour). IP hashes are erased after 7 days.
+- Download counter on product cards and product pages, and a "Most downloaded" sort
+- Sample products have real (placeholder) STL files and 3D previews
+- Terms of use and privacy policy (who runs the shop is still a placeholder in `apps/web/app/lib/legal.ts`), and a cookie banner: PostHog (EU cloud) only loads after consent. A `model_downloaded` event for download clicks.
+- Inter is served from the site instead of Google Fonts
+- Staging on Render's free plan: a `/healthz` health check, a timeout for API requests, and a "starting up" page that loads by itself while a sleeping API wakes
+- Maintenance commands: `users:sync` (Clerk users into the database) and `storage:cleanup` (unused files in R2)
+- **Done when:** strangers can browse and download free models on staging. The public launch (own domain, production environment) moved to M6.
 
 ### M3 – Paid digital files
 
@@ -244,8 +248,9 @@ Each milestone ends with: CI green, deployed to staging, and a short demo you co
 ### M6 – Launch readiness
 
 - Decide market, VAT and company form (§9). Fill the `vat_rates` table and make sure invoices and receipts show VAT correctly. Mollie doesn't do this for us.
-- Terms of sale, refund and returns policy for prints, privacy policy, company details in the footer
-- Sentry, uptime monitoring, database backups (and test restoring one)
+- Terms of sale, refund and returns policy for prints. Update the privacy policy, and fill in who runs the shop (`apps/web/app/lib/legal.ts`) and the company details in the footer.
+- Own domain. Production environment: its own database, R2 buckets, secrets, Clerk production instance (needs the domain) and webhook, and paid hosting so the site doesn't sleep. Moved here from M2.
+- Sentry, uptime monitoring (moved here from M2), database backups (and test restoring one)
 - Production deploy. Complete Mollie's business verification and switch to the live API key.
 - Accessibility pass and Lighthouse pass
 - **Done when:** you'd be comfortable taking a real customer's money
