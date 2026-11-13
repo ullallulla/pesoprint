@@ -27,6 +27,7 @@ export function createFakeUsers(): UsersService & { rows: Map<string, NewUser> }
     return {
         rows,
         count: async () => rows.size,
+        ids: async () => [...rows.keys()],
         upsert: async (user) => {
             rows.set(user.id, user);
         },

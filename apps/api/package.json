@@ -12,7 +12,8 @@
         "db:generate": "drizzle-kit generate",
         "db:migrate": "vpx src/migrate.ts",
         "db:seed": "vpx src/seed.ts",
-        "db:studio": "drizzle-kit studio"
+        "db:studio": "drizzle-kit studio",
+        "users:sync": "vpx src/sync-users.ts"
     },
     "dependencies": {
         "@app/shared": "workspace:*",
