@@ -15,6 +15,13 @@ const envSchema = z.object({
      * IP (for rate limits); without it the API only sees this server's IP.
      */
     INTERNAL_API_SECRET: z.string().min(32, 'INTERNAL_API_SECRET must be at least 32 characters').optional(),
+    /**
+     * PostHog project API key (phc_…, public by design). Without it there are no analytics, and no
+     * cookie banner since nothing optional is set.
+     */
+    POSTHOG_KEY: z.string().startsWith('phc_', 'POSTHOG_KEY is the project API key and starts with phc_').optional(),
+    /** PostHog region: EU Cloud keeps the data in Frankfurt. */
+    POSTHOG_HOST: z.url().default('https://eu.i.posthog.com'),
 });
 
 export type WebEnv = z.infer<typeof envSchema>;

@@ -6,11 +6,13 @@ const escapeXml = (value: string) =>
         (char) => ({ '<': '&lt;', '>': '&gt;', '&': '&amp;', "'": '&apos;', '"': '&quot;' })[char]!,
     );
 
-/** sitemap.xml for the public pages: home, the model listing, categories with models, and every published model. */
+/** sitemap.xml for the public pages: home, the model listing, the legal pages, categories with models, and every published model. */
 export function buildSitemap(siteUrl: string, entries: CatalogSitemap): string {
     const urls: { loc: string; lastmod?: string }[] = [
         { loc: `${siteUrl}/` },
         { loc: `${siteUrl}/models` },
+        { loc: `${siteUrl}/terms` },
+        { loc: `${siteUrl}/privacy` },
         ...entries.categories.map((category) => ({
             loc: `${siteUrl}/categories/${encodeURIComponent(category.slug)}`,
         })),

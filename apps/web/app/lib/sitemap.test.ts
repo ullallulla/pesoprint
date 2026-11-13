@@ -11,6 +11,7 @@ test('sitemap lists home, the listing, categories and products with their last c
     expect(xml).toContain('<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">');
     expect(xml).toContain('<url><loc>https://pesoprint.test/</loc></url>');
     expect(xml).toContain('<url><loc>https://pesoprint.test/models</loc></url>');
+    expect(xml).toContain('<url><loc>https://pesoprint.test/privacy</loc></url>');
     expect(xml).toContain('<url><loc>https://pesoprint.test/categories/ham-radio</loc></url>');
     expect(xml).toContain(
         '<url><loc>https://pesoprint.test/models/ft5-table-stand</loc><lastmod>2026-11-10</lastmod></url>',
