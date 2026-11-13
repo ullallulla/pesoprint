@@ -5,6 +5,7 @@ import { Breadcrumbs, type Crumb } from '~/components/catalog/breadcrumbs';
 import { Markdown } from '~/components/catalog/markdown';
 import { ProductGallery } from '~/components/catalog/product-gallery';
 import { Button, buttonVariants } from '~/components/ui/button';
+import { track } from '~/lib/analytics';
 import { getProduct } from '~/lib/catalog.server';
 import { formatBytes, formatPrice, plainExcerpt } from '~/lib/format';
 import { pageMeta } from '~/lib/seo';
@@ -127,6 +128,15 @@ function FreeDownload({ product }: { product: CatalogProduct }) {
                             rel='nofollow'
                             className={buttonVariants({ size: 'sm' })}
                             aria-label={`Download ${file.filename}`}
+                            onClick={() =>
+                                track('model_downloaded', {
+                                    model: product.slug,
+                                    model_title: product.title,
+                                    category: product.category?.slug ?? null,
+                                    file_format: file.format,
+                                    file_id: file.id,
+                                })
+                            }
                         >
                             <Download aria-hidden />
                             Download

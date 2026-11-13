@@ -36,6 +36,30 @@ export function startAnalytics(config: AnalyticsConfig): Promise<PostHog> {
     return loading;
 }
 
+/** Our own events and their properties. Keep names stable: insights and dashboards in PostHog use them. */
+export interface AnalyticsEvents {
+    /** A visitor clicked a free model's Download button. */
+    model_downloaded: {
+        model: string;
+        model_title: string;
+        category: string | null;
+        file_format: string;
+        file_id: string;
+    };
+}
+
+/**
+ * Sends one of our events, if the visitor allowed statistics. Otherwise PostHog isn't loaded and
+ * nothing happens.
+ */
+export function track<E extends keyof AnalyticsEvents>(event: E, properties: AnalyticsEvents[E]): void {
+    if (!loading) return;
+    void loading.then((posthog) => {
+        // A beacon is still delivered if the click leaves the page.
+        posthog.capture(event, properties, { send_instantly: true, transport: 'sendBeacon' });
+    });
+}
+
 /** Removes PostHog's cookies and stored data, e.g. after the visitor withdraws consent. */
 export function clearAnalyticsStorage(): void {
     const names = analyticsCookieNames(document.cookie);

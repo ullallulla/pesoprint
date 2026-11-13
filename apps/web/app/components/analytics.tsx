@@ -3,7 +3,7 @@ import { createContext, use, useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router';
 
 import { Button } from '~/components/ui/button';
-import { clearAnalyticsStorage, startAnalytics, stopAnalytics, type AnalyticsConfig } from '~/lib/analytics.client';
+import { clearAnalyticsStorage, startAnalytics, stopAnalytics, type AnalyticsConfig } from '~/lib/analytics';
 import { consentCookie, type Consent } from '~/lib/consent';
 
 interface AnalyticsState {
