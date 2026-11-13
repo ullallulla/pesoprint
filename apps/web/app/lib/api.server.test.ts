@@ -1,6 +1,7 @@
 import { healthResponseSchema } from '@app/shared';
 import { afterEach, describe, expect, test, vi } from 'vite-plus/test';
 
+import { API_UNAVAILABLE } from './api-unavailable';
 import { apiFetch, ApiRequestError } from './api.server';
 
 const baseUrl = 'http://api.test';
@@ -18,6 +19,14 @@ afterEach(() => {
 });
 
 describe('apiFetch', () => {
+    /** What apiFetch throws when the API can't be reached: a 503 response for the page. */
+    const UNAVAILABLE = { data: API_UNAVAILABLE, init: { status: 503, headers: { 'Retry-After': '10' } } };
+    const thrownBy = (request: Promise<unknown>) =>
+        request.then(
+            () => undefined,
+            (e: unknown) => e,
+        );
+
     test("gives up on an API that doesn't answer, instead of hanging the page", async () => {
         // The timeout has already run out; fetch rejects the way it does when its signal aborts.
         vi.spyOn(AbortSignal, 'timeout').mockReturnValue(AbortSignal.abort(new DOMException('', 'TimeoutError')));
@@ -27,11 +36,32 @@ describe('apiFetch', () => {
                 throw init?.signal?.reason;
             }),
         );
+        expect(await thrownBy(apiFetch('/api/health', healthResponseSchema, { baseUrl }))).toMatchObject(UNAVAILABLE);
+    });
 
-        const error = await apiFetch('/api/health', healthResponseSchema, { baseUrl }).catch((e: unknown) => e);
+    test('an API that refuses connections is unavailable', async () => {
+        vi.stubGlobal(
+            'fetch',
+            vi.fn<typeof fetch>(async () => {
+                throw new TypeError('fetch failed', { cause: new Error('connect ECONNREFUSED') });
+            }),
+        );
+        expect(await thrownBy(apiFetch('/api/health', healthResponseSchema, { baseUrl }))).toMatchObject(UNAVAILABLE);
+    });
 
+    test("a gateway error from the host's proxy is unavailable, but the API's own 503 is not", async () => {
+        vi.stubGlobal(
+            'fetch',
+            vi.fn<typeof fetch>(async () => new Response('<h1>Bad Gateway</h1>', { status: 502 })),
+        );
+        expect(await thrownBy(apiFetch('/api/catalog/home', healthResponseSchema, { baseUrl }))).toMatchObject(
+            UNAVAILABLE,
+        );
+
+        mockFetch(503, { error: { code: 'internal_error', message: 'File storage is not configured.' } });
+        const error = await apiFetch('/api/x', healthResponseSchema, { baseUrl }).catch((e: unknown) => e);
         expect(error).toBeInstanceOf(ApiRequestError);
-        expect(error).toMatchObject({ status: 504, message: 'API request timed out after 20 s: /api/health' });
+        expect(error).toMatchObject({ status: 503, message: 'File storage is not configured.' });
     });
 
     test('returns parsed data for a valid response', async () => {

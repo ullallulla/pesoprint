@@ -2,6 +2,8 @@ import { renderToStaticMarkup } from 'react-dom/server';
 import { createRoutesStub, data } from 'react-router';
 import { expect, test } from 'vite-plus/test';
 
+import { API_UNAVAILABLE } from '~/lib/api-unavailable';
+
 import Download, { ErrorBoundary } from './download';
 
 function renderError(status: number, message: string) {
@@ -35,4 +37,10 @@ test('over the limit, the page says when to try again and links back to the mode
 test("a file that can't be downloaded is simply not available", () => {
     const html = renderError(404, 'File not found.');
     expect(html).toContain('This file isn&#x27;t available');
+});
+
+test('while the API is starting up, the page says so instead of reporting an error', () => {
+    const html = renderError(503, API_UNAVAILABLE);
+    expect(html).toContain('The site is starting up');
+    expect(html).not.toContain('Something went wrong');
 });

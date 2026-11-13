@@ -34,6 +34,12 @@ app.get('/healthz', (_request, response) => {
 app.use(morgan('tiny'));
 app.all('/{*splat}', createRequestHandler({ build, mode: process.env.NODE_ENV }));
 
+// A host that puts idle services to sleep wakes this server on the first visit; wake the API at the same
+// time, so it's ready sooner. Nothing depends on the answer.
+if (process.env.API_URL) {
+    fetch(new URL('/api/health', process.env.API_URL), { signal: AbortSignal.timeout(120_000) }).catch(() => {});
+}
+
 const port = Number(process.env.PORT ?? 3000);
 const server = app.listen(port, () => {
     // oxlint-disable-next-line no-console -- the startup line in the host's log

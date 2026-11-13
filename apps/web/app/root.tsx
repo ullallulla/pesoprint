@@ -15,8 +15,10 @@ import { Analytics } from '~/components/analytics';
 import { HeaderAuth } from '~/components/header-auth';
 import { SiteFooter } from '~/components/site-footer';
 import { SiteHeader } from '~/components/site-header';
+import { StartingUp } from '~/components/starting-up';
 import { Button } from '~/components/ui/button';
 import { getEnv } from '~/env.server';
+import { isApiUnavailable } from '~/lib/api-unavailable';
 import { readConsent } from '~/lib/consent';
 
 import type { Route } from './+types/root';
@@ -84,6 +86,16 @@ function NavigationProgress() {
 
 // Renders outside <ClerkProvider> (the root loader may have failed), so the header has no sign-in here.
 export function ErrorBoundary({ error }: Route.ErrorBoundaryProps) {
+    if (isApiUnavailable(error)) {
+        return (
+            <>
+                <SiteHeader />
+                <StartingUp />
+                <SiteFooter />
+            </>
+        );
+    }
+
     let title = 'Something went wrong';
     let details = 'An unexpected error occurred. Please try again.';
     let stack: string | undefined;

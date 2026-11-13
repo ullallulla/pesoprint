@@ -1,7 +1,9 @@
 import { apiErrorSchema, type ApiError } from '@app/shared';
+import { data } from 'react-router';
 import type { z } from 'zod';
 
 import { getEnv } from '~/env.server';
+import { API_UNAVAILABLE, API_UNAVAILABLE_RETRY_SECONDS } from '~/lib/api-unavailable';
 
 /** Thrown when the API answers with an error, or with a body that doesn't match the expected schema. */
 export class ApiRequestError extends Error {
@@ -28,9 +30,26 @@ export interface ApiFetchOptions extends RequestInit {
     token?: string | null;
 }
 
+/** Statuses a proxy in front of the API answers with when there's no API behind it to answer. */
+const GATEWAY_STATUSES = [502, 503, 504];
+
+/**
+ * The API couldn't be reached: the page answers 503, and the error boundaries show "starting up" and try
+ * again. It's thrown as a response rather than an ApiRequestError so that it reaches the boundary as it is,
+ * past every caller's handling of the API's own errors.
+ */
+function apiUnavailable(reason: string): never {
+    console.warn(`API unavailable: ${reason}`);
+    throw data(API_UNAVAILABLE, {
+        status: 503,
+        headers: { 'Retry-After': String(API_UNAVAILABLE_RETRY_SECONDS) },
+    });
+}
+
 /**
  * Calls the Pesoprint API from the web server and validates the response with a shared zod schema,
- * so loaders get typed, trusted data instead of `any`.
+ * so loaders get typed, trusted data instead of `any`. If the API can't be reached (no answer, a timeout,
+ * or a gateway error from the host's proxy), it throws a 503 "API unavailable" response.
  */
 export async function apiFetch<TSchema extends z.ZodType>(
     path: string,
@@ -51,8 +70,12 @@ export async function apiFetch<TSchema extends z.ZodType>(
     try {
         response = await fetch(url, { ...init, headers, signal });
     } catch (error) {
-        if (timeout.aborted) {
-            throw new ApiRequestError(`API request timed out after ${API_TIMEOUT_MS / 1000} s: ${url.pathname}`, 504);
+        // The caller's own signal (e.g. the visitor left the page) is not the API's fault.
+        if (init.signal?.aborted) throw error;
+        if (timeout.aborted) apiUnavailable(`no answer within ${API_TIMEOUT_MS / 1000} s: ${url.pathname}`);
+        // fetch fails with a TypeError when it can't connect; the cause says why (e.g. ECONNREFUSED).
+        if (error instanceof TypeError) {
+            apiUnavailable(`${error.cause instanceof Error ? error.cause.message : error.message}: ${url.pathname}`);
         }
         throw error;
     }
@@ -62,6 +85,10 @@ export async function apiFetch<TSchema extends z.ZodType>(
     if (!response.ok && !acceptStatuses.includes(response.status)) {
         const parsedError = apiErrorSchema.safeParse(body);
         const apiError = parsedError.success ? parsedError.data.error : undefined;
+        // Our API always explains its errors. A gateway status without that came from the proxy instead.
+        if (!apiError && GATEWAY_STATUSES.includes(response.status)) {
+            apiUnavailable(`${response.status} from ${url.pathname}`);
+        }
         throw new ApiRequestError(
             apiError?.message ?? `API request failed: ${response.status} ${url.pathname}`,
             response.status,

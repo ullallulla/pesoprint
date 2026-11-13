@@ -2,6 +2,7 @@ import { data, isRouteErrorResponse, Link, redirect, useParams } from 'react-rou
 import { z } from 'zod';
 
 import { Button } from '~/components/ui/button';
+import { isApiUnavailable } from '~/lib/api-unavailable';
 import { ApiRequestError } from '~/lib/api.server';
 import { requestDownload } from '~/lib/downloads.server';
 
@@ -39,18 +40,19 @@ export default function Download() {
 export function ErrorBoundary({ error }: Route.ErrorBoundaryProps) {
     const { slug } = useParams();
     const status = isRouteErrorResponse(error) ? error.status : 500;
-    const [title, text] =
-        status === 404
-            ? ["This file isn't available", 'The model may have been removed, or its file is no longer offered.']
-            : status === 429
-              ? [
-                    'Too many downloads',
-                    // The API says how long to wait, e.g. "Try again in 12 minutes."
-                    isRouteErrorResponse(error) && typeof error.data === 'string'
-                        ? error.data
-                        : 'Please wait a while and try again.',
-                ]
-              : ["The download couldn't start", 'Something went wrong on our side. Try again in a moment.'];
+    const [title, text] = isApiUnavailable(error)
+        ? ['The site is starting up', 'This usually takes under a minute. Try the download again in a moment.']
+        : status === 404
+          ? ["This file isn't available", 'The model may have been removed, or its file is no longer offered.']
+          : status === 429
+            ? [
+                  'Too many downloads',
+                  // The API says how long to wait, e.g. "Try again in 12 minutes."
+                  isRouteErrorResponse(error) && typeof error.data === 'string'
+                      ? error.data
+                      : 'Please wait a while and try again.',
+              ]
+            : ["The download couldn't start", 'Something went wrong on our side. Try again in a moment.'];
 
     return (
         <main className='mx-auto flex w-full max-w-7xl flex-1 flex-col items-start gap-4 px-4 py-16'>

@@ -3,7 +3,9 @@ import { getAuth } from '@clerk/react-router/server';
 import { cn } from 'cn';
 import { data, isRouteErrorResponse, Link, NavLink, Outlet } from 'react-router';
 
+import { StartingUp } from '~/components/starting-up';
 import { Button } from '~/components/ui/button';
+import { isApiUnavailable } from '~/lib/api-unavailable';
 
 import type { Route } from './+types/layout';
 
@@ -52,6 +54,7 @@ export default function AdminLayout() {
 
 // Catches errors from every admin page. Rendered inside <ClerkProvider>, so it can offer a sign-in button.
 export function ErrorBoundary({ error }: Route.ErrorBoundaryProps) {
+    if (isApiUnavailable(error)) return <StartingUp />;
     const status = isRouteErrorResponse(error) ? error.status : 500;
 
     return (
