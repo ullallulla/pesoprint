@@ -35,6 +35,14 @@ export function isPaidFile(product: Pick<ProductOffers, 'digitalPriceCents'>): b
     return product.digitalPriceCents !== null && product.digitalPriceCents > 0;
 }
 
+/**
+ * Whether the public product page has a 3D view. Anything the browser shows can be saved and printed,
+ * so only free downloads get one: for a paid file or a print-only model it would give the model away.
+ */
+export function hasPublicPreview(product: Pick<ProductOffers, 'digitalPriceCents'>): boolean {
+    return isFreeDownload(product);
+}
+
 /** The model can be ordered as a physical print. */
 export function offersPrint(product: Pick<ProductOffers, 'printBasePriceCents'>): boolean {
     return product.printBasePriceCents !== null;

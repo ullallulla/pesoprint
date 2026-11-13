@@ -3,6 +3,7 @@ import { describe, expect, test } from 'vite-plus/test';
 import {
     createCategorySchema,
     digitalPriceCentsSchema,
+    hasPublicPreview,
     isFreeDownload,
     isPaidFile,
     offersFile,
@@ -15,15 +16,17 @@ import {
 describe('price helpers', () => {
     // The three file states must never be confused: `0` and `null` are both falsy in JS.
     test.each([
-        ['no file', null, { offersFile: false, isFreeDownload: false, isPaidFile: false }],
-        ['free download', 0, { offersFile: true, isFreeDownload: true, isPaidFile: false }],
-        ['paid file', 500, { offersFile: true, isFreeDownload: false, isPaidFile: true }],
+        ['no file', null, { offersFile: false, isFreeDownload: false, isPaidFile: false, hasPublicPreview: false }],
+        ['free download', 0, { offersFile: true, isFreeDownload: true, isPaidFile: false, hasPublicPreview: true }],
+        ['paid file', 500, { offersFile: true, isFreeDownload: false, isPaidFile: true, hasPublicPreview: false }],
     ])('%s', (_, digitalPriceCents, expected) => {
         const product = { digitalPriceCents };
         expect({
             offersFile: offersFile(product),
             isFreeDownload: isFreeDownload(product),
             isPaidFile: isPaidFile(product),
+            // Only free downloads have a public 3D view: it would give a paid or print-only model away.
+            hasPublicPreview: hasPublicPreview(product),
         }).toEqual(expected);
     });
 

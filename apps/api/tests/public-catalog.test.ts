@@ -301,6 +301,32 @@ describe.skipIf(!url)('public catalogue (integration)', () => {
             expect(JSON.stringify(product)).not.toContain('storageKey');
         });
 
+        test.each([
+            ['cable-clip', 'a paid file'],
+            ['wooden-look-yoyo', 'a print-only model'],
+        ])('%s (%s) has no 3D view, not even its address', async (slug) => {
+            const [product] = await db.select().from(products).where(eq(products.slug, slug));
+            const storageKey = `p/${slug}/preview.glb`;
+            const [preview] = await db
+                .insert(productFiles)
+                .values({
+                    productId: product!.id,
+                    kind: 'preview',
+                    format: 'glb',
+                    filename: 'p.glb',
+                    storageKey,
+                    sizeBytes: 1,
+                })
+                .returning();
+            try {
+                const res = await get(`/products/${slug}`);
+                expect(catalogProductSchema.parse(await res.clone().json()).preview).toBeNull();
+                expect(await res.text()).not.toContain(storageKey);
+            } finally {
+                await db.delete(productFiles).where(eq(productFiles.id, preview!.id));
+            }
+        });
+
         test('a top-level category has no parent', async () => {
             const product = catalogProductSchema.parse(await (await get('/products/wooden-look-yoyo')).json());
             expect(product.category).toEqual({ slug: 'toys', name: 'Toys', parent: null });

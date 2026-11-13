@@ -9,6 +9,7 @@ import type {
     CatalogSitemap,
     CatalogSort,
 } from '@app/shared';
+import { hasPublicPreview } from '@app/shared';
 import { and, asc, count, desc, eq, gt, inArray, isNotNull, sql, type SQL } from 'drizzle-orm';
 import { alias } from 'drizzle-orm/pg-core';
 
@@ -252,7 +253,11 @@ export function createCatalogService(db: Database, storage: Storage | null): Cat
                     : null,
                 cover: gallery[0] ?? null,
                 images: gallery,
-                preview: preview && storage ? { url: storage.publicUrl(preview.storageKey) } : null,
+                // Not even the address of a paid model's preview is given out (see hasPublicPreview).
+                preview:
+                    preview && storage && hasPublicPreview(product)
+                        ? { url: storage.publicUrl(preview.storageKey) }
+                        : null,
                 files: files
                     .filter((file) => file.kind === 'download')
                     .map((file) => ({

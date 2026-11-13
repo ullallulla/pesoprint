@@ -594,8 +594,9 @@ function Files({ product }: { product: AdminProduct }) {
                     <div>
                         <h3 className='font-medium'>3D preview</h3>
                         <p className='text-sm text-muted-foreground'>
-                            Shown in the public 3D viewer. Made automatically from the first STL you upload, or upload
-                            your own reduced .glb (up to 25 MB). Never the full-quality model.
+                            Shown in the public 3D viewer for free downloads only: paid and print-only models have no 3D
+                            view, since it would give the model away. Made automatically from the first STL you upload,
+                            or upload your own reduced .glb (up to 25 MB). Never the full-quality model.
                         </p>
                     </div>
                     <div className='flex flex-wrap items-start gap-2'>

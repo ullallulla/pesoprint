@@ -173,7 +173,7 @@ favourites       user_id, product_id, created_at
 - **Featured products:** pick any product by setting `featured_at`; the home page shows published ones, most recently featured first.
 - **File access:**
     - Images and the preview GLB are in the **public** bucket and served directly. The 3D viewer is public on every product, including paid ones.
-    - The **preview GLB is reduced to at most 100k triangles**. Anything the viewer shows can be saved from the browser, so reduction, not access control, is what protects paid models. Simple CAD parts are already under the limit and are shown in full detail, which is fine for free models; decide how to handle paid ones before M3 (§9).
+    - The **preview GLB is reduced to at most 100k triangles**. Anything the viewer shows can be saved from the browser, so reduction, not access control, is what protects paid models. Simple CAD parts are already under the limit and are shown in full detail, which is fine for free models. Paid and print-only models have no public 3D view at all (decided 2026-11-13, §9 #8): the API doesn't even give out their preview's address.
     - Download files are in the **private** bucket. A single `canDownload(product, file, user)` check decides access: admins and the creator always; free + published for anyone; paid + published/archived with an entitlement (buyers keep access after archiving); otherwise `404`. Allowed requests are redirected to a ~5-minute signed URL.
 - **Getting ready for creators:** `products.creator_id` exists from day one. In the MVP it always points to you.
 
@@ -313,8 +313,8 @@ These don't block M0–M2. Decide them before M3 or M4.
 1. **Market & language:** Finland only, or the EU from the start? English, Finnish, or both? This affects shipping rates and the UI copy.
 2. **Business & VAT:** sole trader (toiminimi) or company? Selling digital goods to EU consumers means charging VAT at the buyer's country's rate (via OSS, the EU's One-Stop Shop) once you're VAT-registered. Mollie doesn't calculate VAT, so our code does, using the `vat_rates` table. Check the current Finnish VAT registration threshold with an accountant. Selling to Finland only at first keeps VAT simple.
 3. **File formats:** which formats you offer (STL only, or STL + 3MF + STEP?). GLB previews are made automatically from STLs; other formats need a hand-made `.glb`.
-4. **Model licence:** personal use only, or also a commercial-use licence at a higher price?
+4. ~~**Model licence:** personal use only, or also a commercial-use licence at a higher price?~~ **Decided 2026-11-13:** no commercial licence at a higher price. A paid file has one price; its licence (Standard Digital File or Commercial Use) is chosen per model and doesn't change the price.
 5. **Print pricing formula:** a fixed base price per model plus a material surcharge (the plan's default), or a calculation from grams and print time?
 6. **Shipping:** carriers (Posti, Matkahuolto, DHL…), flat rates vs weight-based, and which countries.
 7. **Returns for printed items:** policy for misprints and damage in transit.
-8. **3D previews of paid models:** the public preview keeps up to 100k triangles, so a simple paid model is shown in full detail and could be saved and printed. Before M3: a much lower limit for paid models, a deliberately rough preview, or no 3D view for paid models.
+8. ~~**3D previews of paid models.**~~ **Decided 2026-11-13:** no 3D view for paid models. Only free downloads have one; paid-file and print-only models show photos only.
