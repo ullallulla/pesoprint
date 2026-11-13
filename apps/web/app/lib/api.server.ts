@@ -16,6 +16,9 @@ export class ApiRequestError extends Error {
     }
 }
 
+/** Longer than any normal answer, but a page never waits minutes for an API that isn't there. */
+export const API_TIMEOUT_MS = 20_000;
+
 export interface ApiFetchOptions extends RequestInit {
     /** HTTP statuses (besides 2xx) whose body should still be parsed with the schema, e.g. 503 from /health. */
     acceptStatuses?: number[];
@@ -42,7 +45,17 @@ export async function apiFetch<TSchema extends z.ZodType>(
     if (token) {
         headers.set('authorization', `Bearer ${token}`);
     }
-    const response = await fetch(url, { ...init, headers });
+    const timeout = AbortSignal.timeout(API_TIMEOUT_MS);
+    const signal = init.signal ? AbortSignal.any([init.signal, timeout]) : timeout;
+    let response: Response;
+    try {
+        response = await fetch(url, { ...init, headers, signal });
+    } catch (error) {
+        if (timeout.aborted) {
+            throw new ApiRequestError(`API request timed out after ${API_TIMEOUT_MS / 1000} s: ${url.pathname}`, 504);
+        }
+        throw error;
+    }
 
     const body: unknown = await response.json().catch(() => undefined);
 

@@ -26,6 +26,11 @@ app.use(compression());
 // Built assets have content hashes in their names, so they can be cached forever.
 app.use('/assets', express.static('build/client/assets', { immutable: true, maxAge: '1y' }));
 app.use(express.static('build/client', { maxAge: '1h' }));
+// For the host's health check. It only says this server is running, without asking the API: a health
+// check on a page that needs the API fails while the API sleeps, and the host then never lets visitors in.
+app.get('/healthz', (_request, response) => {
+    response.type('text/plain').send('ok');
+});
 app.use(morgan('tiny'));
 app.all('/{*splat}', createRequestHandler({ build, mode: process.env.NODE_ENV }));
 

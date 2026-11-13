@@ -47,6 +47,6 @@ WORKDIR /app/apps/web
 USER nobody
 EXPOSE 3000
 HEALTHCHECK --interval=30s --timeout=5s --start-period=10s \
-    CMD ["node", "-e", "fetch('http://localhost:'+process.env.PORT+'/').then(r=>process.exit(r.ok?0:1),()=>process.exit(1))"]
+    CMD ["node", "-e", "fetch('http://localhost:'+process.env.PORT+'/healthz').then(r=>process.exit(r.ok?0:1),()=>process.exit(1))"]
 # server.ts trusts the hosting proxy (HTTPS); see the comment at its top.
 CMD ["node", "server.ts"]

@@ -14,9 +14,26 @@ function mockFetch(status: number, body: unknown) {
 
 afterEach(() => {
     vi.unstubAllGlobals();
+    vi.restoreAllMocks();
 });
 
 describe('apiFetch', () => {
+    test("gives up on an API that doesn't answer, instead of hanging the page", async () => {
+        // The timeout has already run out; fetch rejects the way it does when its signal aborts.
+        vi.spyOn(AbortSignal, 'timeout').mockReturnValue(AbortSignal.abort(new DOMException('', 'TimeoutError')));
+        vi.stubGlobal(
+            'fetch',
+            vi.fn<typeof fetch>(async (_url, init) => {
+                throw init?.signal?.reason;
+            }),
+        );
+
+        const error = await apiFetch('/api/health', healthResponseSchema, { baseUrl }).catch((e: unknown) => e);
+
+        expect(error).toBeInstanceOf(ApiRequestError);
+        expect(error).toMatchObject({ status: 504, message: 'API request timed out after 20 s: /api/health' });
+    });
+
     test('returns parsed data for a valid response', async () => {
         const fetchMock = mockFetch(200, healthy);
 
