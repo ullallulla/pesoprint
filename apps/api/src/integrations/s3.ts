@@ -2,6 +2,7 @@ import {
     DeleteObjectsCommand,
     GetObjectCommand,
     HeadObjectCommand,
+    ListObjectsV2Command,
     NoSuchKey,
     NotFound,
     PutObjectCommand,
@@ -10,7 +11,7 @@ import {
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 
 import type { Env } from '../env.ts';
-import { attachmentDisposition, type Bucket, type Storage } from '../lib/storage.ts';
+import { attachmentDisposition, type Bucket, type ListedObject, type Storage } from '../lib/storage.ts';
 
 export interface S3StorageConfig {
     /** e.g. `https://<account id>.r2.cloudflarestorage.com` for R2. */
@@ -102,6 +103,32 @@ export function createS3Storage(config: S3StorageConfig): Storage {
                 if (error instanceof NotFound || isNotFound(error)) return null;
                 throw error;
             }
+        },
+
+        async list(bucket, prefix) {
+            const objects: ListedObject[] = [];
+            let token: string | undefined;
+            // Up to 1000 keys per page.
+            do {
+                const page = await client.send(
+                    new ListObjectsV2Command({
+                        Bucket: config.buckets[bucket],
+                        Prefix: prefix,
+                        ContinuationToken: token,
+                    }),
+                );
+                for (const object of page.Contents ?? []) {
+                    if (object.Key && object.LastModified) {
+                        objects.push({
+                            key: object.Key,
+                            sizeBytes: object.Size ?? 0,
+                            lastModified: object.LastModified,
+                        });
+                    }
+                }
+                token = page.IsTruncated ? page.NextContinuationToken : undefined;
+            } while (token);
+            return objects;
         },
 
         async delete(bucket, keys) {

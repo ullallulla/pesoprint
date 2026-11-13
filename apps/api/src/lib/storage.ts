@@ -18,6 +18,12 @@ export interface StoredObject {
     contentType: string | undefined;
 }
 
+export interface ListedObject {
+    key: string;
+    sizeBytes: number;
+    lastModified: Date;
+}
+
 export interface Storage {
     /** A URL the browser can PUT exactly this file to (same type and size), valid for a few minutes. */
     presignUpload(input: {
@@ -43,6 +49,8 @@ export interface Storage {
     get(bucket: Bucket, key: string): Promise<Uint8Array | null>;
     /** The object's size and type, or `null` if it doesn't exist. */
     head(bucket: Bucket, key: string): Promise<StoredObject | null>;
+    /** Every object whose key starts with `prefix`. */
+    list(bucket: Bucket, prefix: string): Promise<ListedObject[]>;
     /** Deletes the objects. Keys that don't exist are ignored. */
     delete(bucket: Bucket, keys: string[]): Promise<void>;
     /** The public URL of an object in the public bucket. */

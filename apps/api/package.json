@@ -13,6 +13,7 @@
         "db:migrate": "vpx src/migrate.ts",
         "db:seed": "vpx src/seed.ts",
         "db:studio": "drizzle-kit studio",
+        "storage:cleanup": "vpx src/clean-storage.ts",
         "users:sync": "vpx src/sync-users.ts"
     },
     "dependencies": {

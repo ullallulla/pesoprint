@@ -80,14 +80,24 @@ export const bearer = (token: string) => ({ headers: { authorization: `Bearer ${
  * `puts` and `deleted` record what the API uploaded and removed.
  */
 export function createFakeStorage() {
-    const objects = new Map<string, { sizeBytes: number; contentType: string; body?: Uint8Array }>();
+    const objects = new Map<
+        string,
+        { sizeBytes: number; contentType: string; body?: Uint8Array; lastModified: Date }
+    >();
     const deleted: string[] = [];
     const puts: string[] = [];
     const id = (bucket: Bucket, key: string) => `${bucket}:${key}`;
 
     const storage: Storage & {
         /** Pretends the browser uploaded a file. Pass `body` when the server will read the file. */
-        simulateUpload(bucket: Bucket, key: string, sizeBytes: number, contentType: string, body?: Uint8Array): void;
+        simulateUpload(
+            bucket: Bucket,
+            key: string,
+            sizeBytes: number,
+            contentType: string,
+            body?: Uint8Array,
+            lastModified?: Date,
+        ): void;
         has(bucket: Bucket, key: string): boolean;
         deleted: string[];
         puts: string[];
@@ -115,8 +125,17 @@ export function createFakeStorage() {
             return object ? { sizeBytes: object.sizeBytes, contentType: object.contentType } : null;
         },
         async put(bucket, key, body, contentType) {
-            objects.set(id(bucket, key), { sizeBytes: body.byteLength, contentType, body });
+            objects.set(id(bucket, key), { sizeBytes: body.byteLength, contentType, body, lastModified: new Date() });
             puts.push(id(bucket, key));
+        },
+        async list(bucket, prefix) {
+            return [...objects.entries()]
+                .filter(([name]) => name.startsWith(id(bucket, prefix)))
+                .map(([name, object]) => ({
+                    key: name.slice(bucket.length + 1),
+                    sizeBytes: object.sizeBytes,
+                    lastModified: object.lastModified,
+                }));
         },
         async delete(bucket, keys) {
             for (const key of keys) {
@@ -125,8 +144,8 @@ export function createFakeStorage() {
             }
         },
         publicUrl: (key) => `https://assets.test/${key}`,
-        simulateUpload(bucket, key, sizeBytes, contentType, body) {
-            objects.set(id(bucket, key), { sizeBytes, contentType, body });
+        simulateUpload(bucket, key, sizeBytes, contentType, body, lastModified = new Date()) {
+            objects.set(id(bucket, key), { sizeBytes, contentType, body, lastModified });
         },
         has: (bucket, key) => objects.has(id(bucket, key)),
     };
