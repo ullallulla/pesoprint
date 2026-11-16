@@ -46,6 +46,19 @@ const envSchema = z
         INTERNAL_API_SECRET: z.string().min(32, 'INTERNAL_API_SECRET must be at least 32 characters').optional(),
         /** Key for hashing visitors' IPs (`download_events.ip_hash`). Optional: a random key per start is used without it. */
         IP_HASH_SECRET: z.string().min(32, 'IP_HASH_SECRET must be at least 32 characters').optional(),
+        /**
+         * Stripe secret key (Dashboard → Developers → API keys): `sk_test_…` until launch. Without it,
+         * checkout answers 503. Stripe sends buyers back to the first of WEB_ORIGINS.
+         */
+        STRIPE_SECRET_KEY: z
+            .string()
+            .regex(/^(sk|rk)_(test|live)_/, 'STRIPE_SECRET_KEY must start with sk_test_ or sk_live_')
+            .optional(),
+        /** Signing secret of the Stripe webhook endpoint (or of `stripe listen`). Without it, the webhook answers 503. */
+        STRIPE_WEBHOOK_SECRET: z
+            .string()
+            .startsWith('whsec_', 'STRIPE_WEBHOOK_SECRET must start with whsec_')
+            .optional(),
         /** e.g. `https://<account id>.r2.cloudflarestorage.com`. */
         S3_ENDPOINT: z.url().optional(),
         /** `auto` for R2. */

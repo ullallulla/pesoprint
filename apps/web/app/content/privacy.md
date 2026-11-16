@@ -26,6 +26,12 @@ You don't need an account to browse or download free models. If you create one, 
 
 We use this data to sign you in and to provide the service you signed up for (GDPR Article 6(1)(b)). We keep it until you delete your account, or ask us to. When the account is deleted, your downloads stay in the counts but are no longer linked to you.
 
+### Buying a model
+
+When you buy, we keep a record of the order: what you bought, the prices and VAT, your account and email address, and when it was paid. We need it to give you the files, and the law requires us to keep it for bookkeeping. You pay on the payment page of our payment provider, Stripe. We send Stripe your email address and what's in the order. Your card or bank details go only to Stripe; we never see them. Stripe also processes payment data for its own purposes, such as preventing fraud, as described in [Stripe's privacy policy](https://stripe.com/privacy).
+
+The legal basis is our contract with you (GDPR Article 6(1)(b)) and our legal obligation to keep accounting records (GDPR Article 6(1)(c)). We keep orders for as long as accounting law requires.
+
 ### Statistics, only if you allow them {#analytics}
 
 If you click "Allow" in the cookie banner, we use PostHog to collect anonymous usage statistics: which pages and models people view, what they click, which site they came from, and their type of browser and device. PostHog gives your browser a random ID in a cookie, so repeat visits can be counted. PostHog is set not to store your IP address. We don't link this data to your account, and we don't record your screen.
@@ -49,6 +55,7 @@ We use these service providers, who process data only on our instructions:
 - **Neon** (database), Neon, Inc., USA. The database is in the EU (Frankfurt).
 - **Cloudflare** (file storage and delivery), Cloudflare, Inc., USA
 - **Clerk** (accounts and sign-in), Clerk, Inc., USA
+- **Stripe** (payments), Stripe Payments Europe, Ltd., Ireland
 - **PostHog** (statistics, only with consent), PostHog, Inc., USA. Data is stored in the EU (Frankfurt).
 
 Some of them are US companies and may process data in the United States. Those transfers rely on the EU–US Data Privacy Framework or the European Commission's standard contractual clauses. We don't sell your data, and we don't share it with advertisers.

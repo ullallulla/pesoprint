@@ -1,6 +1,6 @@
 /**
- * An order's life. M3 sells files only: an order is `pending` until Mollie reports the payment, then
- * `paid` (the buyer owns the files) or `cancelled` (failed, expired or cancelled at Mollie). `refunded`
+ * An order's life. M3 sells files only: an order is `pending` until Stripe reports the payment, then
+ * `paid` (the buyer owns the files) or `cancelled` (the payment failed, or checkout expired unpaid). `refunded`
  * is set when a paid order is refunded. Print orders (M4) add printing → shipped → delivered.
  */
 export const ORDER_STATUSES = ['pending', 'paid', 'cancelled', 'refunded'] as const;

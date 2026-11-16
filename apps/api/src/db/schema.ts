@@ -298,11 +298,13 @@ export const orders = pgTable(
         totalCents: integer('total_cents').notNull(),
         vatCountry: text('vat_country').notNull(),
         vatRateBp: integer('vat_rate_bp').notNull(),
-        /** Set once the Mollie payment is created (`tr_…`). */
-        molliePaymentId: text('mollie_payment_id').unique(),
-        /** Mollie's own status for the payment (open, paid, failed, expired, canceled…), for support. */
+        /** The Stripe Checkout Session the buyer pays on (`cs_…`), set once it's created. */
+        stripeCheckoutSessionId: text('stripe_checkout_session_id').unique(),
+        /** The Stripe payment (`pi_…`), set once paid: what a refund refers to. */
+        stripePaymentIntentId: text('stripe_payment_intent_id').unique(),
+        /** Stripe's own payment status (`unpaid`, `paid`…), for support. */
         paymentStatus: text('payment_status'),
-        /** e.g. `creditcard`, `mobilepay`, once known. */
+        /** e.g. `card`, `mobilepay`, `klarna`, once paid. */
         paymentMethod: text('payment_method'),
         createdAt: createdAt(),
         updatedAt: updatedAt(),

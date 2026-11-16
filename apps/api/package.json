@@ -31,6 +31,7 @@
         "hono": "catalog:",
         "meshoptimizer": "catalog:",
         "pg": "catalog:",
+        "stripe": "catalog:",
         "zod": "catalog:"
     },
     "devDependencies": {

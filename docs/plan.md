@@ -43,31 +43,31 @@ At first you are the only seller. The data model is designed so other creators c
 ```
 Browser ──► web (React Router v8, SSR) ──HTTP + Clerk token──► api (Hono) ──► Postgres
    │                                                              ▲   ├────► R2 (files)
-   └── uploads (presigned PUT), images, 3D previews ──► R2        │   └────► Mollie, Resend
-Mollie / Clerk webhooks, file downloads ──────────────────────────┘
+   └── uploads (presigned PUT), images, 3D previews ──► R2        │   └────► Stripe, Resend
+Stripe / Clerk webhooks, file downloads ──────────────────────────┘
 ```
 
-- **The API owns all data and business rules.** It is the only thing that talks to Postgres, R2 and Mollie.
+- **The API owns all data and business rules.** It is the only thing that talks to Postgres, R2 and Stripe.
 - **The web app is a server-rendered frontend.** Its loaders and actions call the API over HTTP using a typed client. It has no database access, so the API boundary stays real.
 - **The browser never calls the API directly.** Pages, forms and even the upload steps go through the web server, which calls the API with the user's token. So the two can run on separate hosts (as on staging) without CORS. The browser only talks to R2: uploads through presigned URLs, and public images and previews.
 
-| Layer              | Choice                                                                                   | Why                                                                                                                                                                                                                                                                                                                                                                                                    |
-| ------------------ | ---------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| API                | **Hono** on Node + `@hono/zod-openapi`                                                   | A small, modern, fast framework that runs on any host. Routes are defined with zod schemas, which gives request validation, **generated OpenAPI docs** (a Swagger UI at `/api/docs`) and a typed client for the web app, all from one definition. That's a strong backend portfolio piece.                                                                                                             |
-| Web                | **React Router v8 in framework mode** (Vite, SSR)                                        | The next step from the `react-router-dom` + Vite setup you already used. Server-side rendering gives search engines and link previews real HTML for product pages. Loaders call the API from the server, so the browser never needs the API's internals.                                                                                                                                               |
-| Database           | **PostgreSQL + Drizzle ORM** (inside `apps/api`)                                         | The schema is written in TypeScript and the types come from it. Migrations are generated from the schema. It works the same on Neon (free tier) and on a self-hosted Postgres.                                                                                                                                                                                                                         |
-| Validation         | **zod**, in `packages/shared`                                                            | Request and response schemas are shared by the API and the web app: one source for validation and types.                                                                                                                                                                                                                                                                                               |
-| Auth               | **Clerk**: `@clerk/react-router` in web, Clerk token verification in the API             | The web app gets the user's session token and sends it as `Authorization: Bearer …`. The API verifies it and checks roles (admin role in Clerk `publicMetadata`). Users are mirrored to the database with a Clerk webhook to the API.                                                                                                                                                                  |
-| File storage       | **Cloudflare R2** (S3 API), replacing UploadThing                                        | Paid files must be **private** and downloaded through short-lived signed URLs. R2 does that, has 10 GB free and no egress fees (3D files are large), and its S3 API means you can later move to AWS S3, MinIO on a VPS, or similar.                                                                                                                                                                    |
-| Payments           | **Mollie** (Payments API, `@mollie/api-client`) + webhooks                               | An EU-based provider (Netherlands) with no monthly fee. Its hosted payment page offers cards, MobilePay, Klarna, Apple Pay and more. Mollie Connect leaves a path to paying out to creators later. **Unlike Stripe Checkout, Mollie doesn't collect shipping addresses or calculate VAT,** so our own checkout page handles the address, shipping rate and VAT, then sends the buyer to Mollie to pay. |
-| Email              | **Resend** (free tier) + React Email                                                     | Order confirmations, download links and shipping notifications.                                                                                                                                                                                                                                                                                                                                        |
-| Search             | **Postgres full-text search** (`tsvector`)                                               | No extra service to run. Enough for the first few thousand models.                                                                                                                                                                                                                                                                                                                                     |
-| 3D viewer          | react-three-fiber + drei                                                                 | The preview GLB is generated from the first STL upload (meshoptimizer, at most 100k triangles), and three.js only loads when someone opens the 3D view.                                                                                                                                                                                                                                                |
-| UI                 | Tailwind v4 + shadcn/ui                                                                  | Kept from the old code: reuse the theme and the page layouts you already designed.                                                                                                                                                                                                                                                                                                                     |
-| Analytics / errors | PostHog + Sentry (both have free tiers)                                                  | PostHog only loads after cookie consent.                                                                                                                                                                                                                                                                                                                                                               |
-| Testing            | Vitest via `vp test` (unit + integration against real Postgres), Playwright (end-to-end) |                                                                                                                                                                                                                                                                                                                                                                                                        |
-| Toolchain          | **Vite+** (`vp`) on pnpm workspaces; TypeScript 7; Node 26                               | One tool for dev server, build (Vite/Rolldown), tests (Vitest), linting (Oxlint, type-aware), formatting (Oxfmt), library bundling (tsdown) and a cached task runner (`vp run`), all configured in the root `vite.config.ts`. Replaces ESLint, Prettier and Turborepo.                                                                                                                                 |
-| Deploy             | **Two Docker images** (api, web) from day one                                            | They run anywhere: a free host for staging, then a VPS (Hetzner + Docker Compose + Caddy as the reverse proxy) or a cloud container service, with no code changes.                                                                                                                                                                                                                                     |
+| Layer              | Choice                                                                                   | Why                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                |
+| ------------------ | ---------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| API                | **Hono** on Node + `@hono/zod-openapi`                                                   | A small, modern, fast framework that runs on any host. Routes are defined with zod schemas, which gives request validation, **generated OpenAPI docs** (a Swagger UI at `/api/docs`) and a typed client for the web app, all from one definition. That's a strong backend portfolio piece.                                                                                                                                                                                                                         |
+| Web                | **React Router v8 in framework mode** (Vite, SSR)                                        | The next step from the `react-router-dom` + Vite setup you already used. Server-side rendering gives search engines and link previews real HTML for product pages. Loaders call the API from the server, so the browser never needs the API's internals.                                                                                                                                                                                                                                                           |
+| Database           | **PostgreSQL + Drizzle ORM** (inside `apps/api`)                                         | The schema is written in TypeScript and the types come from it. Migrations are generated from the schema. It works the same on Neon (free tier) and on a self-hosted Postgres.                                                                                                                                                                                                                                                                                                                                     |
+| Validation         | **zod**, in `packages/shared`                                                            | Request and response schemas are shared by the API and the web app: one source for validation and types.                                                                                                                                                                                                                                                                                                                                                                                                           |
+| Auth               | **Clerk**: `@clerk/react-router` in web, Clerk token verification in the API             | The web app gets the user's session token and sends it as `Authorization: Bearer …`. The API verifies it and checks roles (admin role in Clerk `publicMetadata`). Users are mirrored to the database with a Clerk webhook to the API.                                                                                                                                                                                                                                                                              |
+| File storage       | **Cloudflare R2** (S3 API), replacing UploadThing                                        | Paid files must be **private** and downloaded through short-lived signed URLs. R2 does that, has 10 GB free and no egress fees (3D files are large), and its S3 API means you can later move to AWS S3, MinIO on a VPS, or similar.                                                                                                                                                                                                                                                                                |
+| Payments           | **Stripe Checkout** (`stripe` SDK) + webhooks. Replaced Mollie on 2026-11-16             | Stripe's hosted payment page (Checkout) offers cards, Apple Pay, Google Pay, MobilePay, Klarna and more, and its test mode works right after signing up, before any company exists (Mollie wouldn't open its dashboard without company details). No monthly fee. Stripe Connect leaves a path to paying out to creators later. We send the amounts from our server and keep calculating VAT ourselves (Stripe Tax isn't used); our checkout page shows the summary and VAT, then sends the buyer to Stripe to pay. |
+| Email              | **Resend** (free tier) + React Email                                                     | Order confirmations, download links and shipping notifications.                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
+| Search             | **Postgres full-text search** (`tsvector`)                                               | No extra service to run. Enough for the first few thousand models.                                                                                                                                                                                                                                                                                                                                                                                                                                                 |
+| 3D viewer          | react-three-fiber + drei                                                                 | The preview GLB is generated from the first STL upload (meshoptimizer, at most 100k triangles), and three.js only loads when someone opens the 3D view.                                                                                                                                                                                                                                                                                                                                                            |
+| UI                 | Tailwind v4 + shadcn/ui                                                                  | Kept from the old code: reuse the theme and the page layouts you already designed.                                                                                                                                                                                                                                                                                                                                                                                                                                 |
+| Analytics / errors | PostHog + Sentry (both have free tiers)                                                  | PostHog only loads after cookie consent.                                                                                                                                                                                                                                                                                                                                                                                                                                                                           |
+| Testing            | Vitest via `vp test` (unit + integration against real Postgres), Playwright (end-to-end) |                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
+| Toolchain          | **Vite+** (`vp`) on pnpm workspaces; TypeScript 7; Node 26                               | One tool for dev server, build (Vite/Rolldown), tests (Vitest), linting (Oxlint, type-aware), formatting (Oxfmt), library bundling (tsdown) and a cached task runner (`vp run`), all configured in the root `vite.config.ts`. Replaces ESLint, Prettier and Turborepo.                                                                                                                                                                                                                                             |
+| Deploy             | **Two Docker images** (api, web) from day one                                            | They run anywhere: a free host for staging, then a VPS (Hetzner + Docker Compose + Caddy as the reverse proxy) or a cloud container service, with no code changes.                                                                                                                                                                                                                                                                                                                                                 |
 
 ### Repository layout
 
@@ -79,7 +79,7 @@ pesoprint/
 │  │  │  ├─ routes/            # HTTP layer: products, orders, checkout, downloads, reviews, admin, webhooks
 │  │  │  ├─ services/          # business logic (pricing, VAT, entitlements, order status)
 │  │  │  ├─ db/                # Drizzle schema, client, seed script
-│  │  │  ├─ integrations/      # mollie, r2, resend, clerk
+│  │  │  ├─ integrations/      # stripe, r2, resend, clerk
 │  │  │  ├─ middleware/        # auth, admin guard, rate limiting, error handler
 │  │  │  └─ env.ts             # zod-validated environment variables
 │  │  ├─ drizzle/              # generated SQL migrations
@@ -115,7 +115,7 @@ Money is stored as **integer cents**. Catalogue prices are EUR and **include VAT
 ```
 users            id (Clerk user id, text PK), email, display_name, role (customer|admin|creator),
                  created_at
-                 -- creator fields (bio, avatar, mollie_organization_id) are added later
+                 -- creator fields (bio, avatar, stripe_account_id) are added later
 
 categories       id, slug (unique), name, description?, parent_id? → categories, position
                  -- at most 2 levels; depth and cycles checked in the category service
@@ -140,7 +140,8 @@ product_materials product_id, material_id            -- which materials each mod
 orders           id, user_id? (kept as null if the account is deleted), email (snapshot),
                  status (pending|paid|cancelled|refunded; M4 adds printing|shipped|delivered),
                  currency, subtotal_cents, shipping_cents (M4), tax_cents, total_cents,
-                 mollie_payment_id, payment_status (Mollie's own), payment_method,
+                 stripe_checkout_session_id, stripe_payment_intent_id,
+                 payment_status (Stripe's own), payment_method,
                  vat_country, vat_rate_bp,   -- VAT rate in basis points, e.g. 2550 = 25.5 %
                  shipping_name, shipping_address (jsonb), carrier, tracking_number,
                  created_at, paid_at, shipped_at
@@ -149,7 +150,7 @@ order_items      id, order_id, product_id, type (digital; M4 adds print), materi
                  -- a product with order items or entitlements can't be deleted, only archived
 
 shipping_rates   id, name, countries (text[]), price_cents, active   -- e.g. "Finland – Posti parcel"
-vat_rates        country_code, standard_rate_bp, valid_from        -- needed because Mollie doesn't calculate VAT
+vat_rates        country_code, standard_rate_bp, valid_from        -- our own VAT calculation (Stripe Tax isn't used)
 entitlements     user_id, product_id (together the key), order_id?, granted_at   -- the "who owns what" table
 download_events  id, product_id, user_id?, ip_hash, created_at     -- download counts + rate limiting
 reviews          id, product_id, user_id, rating (1–5), body, created_at,
@@ -164,12 +165,12 @@ favourites       user_id, product_id, created_at
     - a user with an entitlement to the model (they bought it)
     - a user with a delivered print order for the model
     - for free models, a signed-in user who downloaded it while signed in
-- **The cart** is stored in the browser, in a first-party cookie (`pesoprint_cart`, 30 days, at most 25 items) that holds only product ids, never prices. A cookie rather than localStorage, so the server sees it: the cart page and the header's count are in the first render, and adding to the cart works before the page's JavaScript has loaded. `POST /api/cart/quote` prices it on every view and drops what's no longer for sale or already owned. The server prices everything again when it creates the order and the Mollie payment.
-- **Checkout flow (Mollie):**
-    1. Our checkout page collects the shipping address (only for print items) and the shipping method.
+- **The cart** is stored in the browser, in a first-party cookie (`pesoprint_cart`, 30 days, at most 25 items) that holds only product ids, never prices. A cookie rather than localStorage, so the server sees it: the cart page and the header's count are in the first render, and adding to the cart works before the page's JavaScript has loaded. `POST /api/cart/quote` prices it on every view and drops what's no longer for sale or already owned. The server prices everything again when it creates the order and the Stripe Checkout Session.
+- **Checkout flow (Stripe Checkout):**
+    1. Our checkout page shows the summary and VAT; it requires signing in, so purchases land in the buyer's library. M4 adds the shipping address and method here.
     2. The server re-prices everything, calculates VAT, and creates an order with status `pending`.
-    3. The server creates a Mollie payment with `redirectUrl` and `webhookUrl`, then redirects the buyer to Mollie.
-    4. Mollie calls our webhook with the payment id. We **fetch the payment from the Mollie API** (this is the verification) and set the order to `paid` only if Mollie says it's paid.
+    3. The server creates a Stripe Checkout Session with the order's lines (amounts from our database, never from the browser), the order id in its metadata, and `success_url` / `cancel_url`, then redirects the buyer to Stripe.
+    4. Stripe sends `checkout.session.*` events to our webhook. The signature is checked against the raw body (`STRIPE_WEBHOOK_SECRET`) before anything is trusted. The return page also asks Stripe for the session from the server, so a buyer who comes back before the webhook arrives sees their files. Both paths use the same idempotent fulfilment: the order is marked `paid` only if Stripe says the session is paid and its amount and currency match the order.
 - **Catalogue rules enforced by the database** (CHECK constraints, M1): a published product has `published_at`, a category, at least one price, and a licence if a file is offered. Paid files must use one of the shop's own licences (Standard Digital File or Commercial Use), never CC or open-source.
 - **`digital_price_cents` is never tested for truthiness.** `0` (free) and `null` (no file) mean different things; use the shared helpers.
 - **Featured products:** pick any product by setting `featured_at`; the home page shows published ones, most recently featured first.
@@ -222,19 +223,19 @@ Each milestone ends with: CI green, deployed to staging, and a short demo you co
 ### M3 – Paid digital files
 
 - Cart (digital items) ✅
-- Our own checkout page: order summary and VAT. Then a Mollie payment is created on the server and the buyer is redirected to Mollie's hosted payment page.
-- Mollie webhook → fetch the payment from Mollie → order marked paid + entitlements granted. Handled idempotently, so repeated webhook calls do nothing twice. Failed, expired and cancelled payments are handled too.
-- A "payment pending" return page, because the buyer may come back before the webhook arrives
+- Our own checkout page: order summary and VAT. Then a Stripe Checkout Session is created on the server and the buyer is redirected to Stripe's hosted payment page. ✅
+- Stripe webhook (signature verified) → order marked paid + entitlements granted. Handled idempotently, so repeated webhook calls do nothing twice. Failed and expired payments are handled too. ✅
+- A "payment pending" return page, because the buyer may come back before the webhook arrives ✅
 - "My library" page for re-downloading purchased files
 - Order confirmation email with a link to the library
 - EU rule for digital content: a checkbox where the buyer agrees to immediate delivery and accepts losing the 14-day right of withdrawal
-- **Done when:** a Mollie test-mode purchase gives the buyer a download in their library, and the webhook is covered by an integration test
+- **Done when:** a Stripe test-mode purchase gives the buyer a download in their library, and the webhook is covered by an integration test
 
 ### M4 – Physical print orders
 
 - Admin: manage materials and colours, mark colours out of stock, choose which materials each model allows
 - Product page: pick material + colour; the live price comes from the server
-- Cart with both digital and print items. Our checkout page collects the shipping address and offers shipping rates from the `shipping_rates` table (start with fixed rates per region). The Mollie payment includes the order lines and the shipping address.
+- Cart with both digital and print items. Our checkout page collects the shipping address and offers shipping rates from the `shipping_rates` table (start with fixed rates per region). The Stripe Checkout Session includes the order lines and the shipping cost.
 - Admin order queue: paid → printing → shipped (carrier + tracking number) → delivered, with filters
 - Emails: order received, order shipped (with tracking)
 - Customer "My orders" page showing each order's status
@@ -249,17 +250,17 @@ Each milestone ends with: CI green, deployed to staging, and a short demo you co
 
 ### M6 – Launch readiness
 
-- Decide market, VAT and company form (§9). Fill the `vat_rates` table and make sure invoices and receipts show VAT correctly. Mollie doesn't do this for us.
+- Decide market, VAT and company form (§9). Fill the `vat_rates` table and make sure invoices and receipts show VAT correctly. Stripe doesn't do this for us (Stripe Tax isn't used).
 - Terms of sale, refund and returns policy for prints. Update the privacy policy, and fill in who runs the shop (`apps/web/app/lib/legal.ts`) and the company details in the footer.
 - Own domain. Production environment: its own database, R2 buckets, secrets, Clerk production instance (needs the domain) and webhook, and paid hosting so the site doesn't sleep. Moved here from M2.
 - Sentry, uptime monitoring (moved here from M2), database backups (and test restoring one)
-- Production deploy. Complete Mollie's business verification and switch to the live API key.
+- Production deploy. Activate the Stripe account (business details and verification) and switch to the live keys and a live webhook.
 - Accessibility pass and Lighthouse pass
 - **Done when:** you'd be comfortable taking a real customer's money
 
 ### Later (after launch)
 
-- **Creators:** sign-up, creator profiles, Mollie Connect payouts (split payments), commission settings, moderation queue
+- **Creators:** sign-up, creator profiles, Stripe Connect payouts (split payments), commission settings, moderation queue
 - "Makes" gallery (buyers post photos of their prints)
 - Finnish/English language versions, multiple currencies
 - Discount codes, bundles
@@ -284,7 +285,7 @@ Each milestone ends with: CI green, deployed to staging, and a short demo you co
 1. **Every API route that writes data or returns private data** goes through the auth middleware and validates its input with zod. The web app's checks are only for user experience; the API enforces the rules.
 2. **Only the API touches the database.** The web app gets all its data through the API.
 3. **The API is the only source of truth** for prices, permissions and order status.
-4. **Mollie webhooks are verified by fetching the payment from the Mollie API** (the webhook body contains only an id), and handling them is idempotent. Paid status comes only from that check, never from the browser redirect.
+4. **Stripe webhooks are verified by their signature** (`Stripe-Signature`, checked against the raw request body), and handling them is idempotent. Paid status comes only from Stripe (a verified webhook, or the server asking Stripe for the session), never from the browser redirect.
 5. **No secrets in the client bundle.** Only `VITE_`-prefixed environment variables reach the browser; server-only settings live in `env.server.ts`.
 6. **Every PR passes `vp check` (format, lint, types), tests and build.**
 7. **Database changes only through Drizzle migrations.** Never `sync`.
@@ -293,16 +294,16 @@ Each milestone ends with: CI green, deployed to staging, and a short demo you co
 ## 7. Testing strategy
 
 - **Unit (Vitest):** price calculation, review eligibility, order status transitions, zod schemas
-- **API integration (Vitest + real Postgres):** HTTP tests against the Hono app through `app.request()` (no server needed), covering auth and permissions, the Mollie webhook handler (with the Mollie client mocked to return paid, failed and expired payments), the download route. Postgres runs in Docker locally and as a service container in CI.
-- **End-to-end (Playwright):** browse → free download; sign in → buy digital file (Mollie test mode); admin creates and publishes a model; print order through to "shipped"
+- **API integration (Vitest + real Postgres):** HTTP tests against the Hono app through `app.request()` (no server needed), covering auth and permissions, the Stripe webhook handler (signed test events for paid, failed and expired sessions), the download route. Postgres runs in Docker locally and as a service container in CI.
+- **End-to-end (Playwright):** browse → free download; sign in → buy digital file (Stripe test mode); admin creates and publishes a model; print order through to "shipped"
 - **Rule of thumb:** every bug fix comes with a test that would have caught it
 
 ## 8. Hosting path
 
 | Stage           | Setup                                                                                                                                                                                                  | Cost |
 | --------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ---- |
-| Local           | Docker Compose: Postgres. File storage uses a separate R2 dev bucket (decided in M1; MinIO no longer ships prebuilt images). A tunnel (cloudflared or ngrok) so Mollie's webhooks can reach localhost. | 0 €  |
-| Staging (M0–M5) | Render (two Docker web services, free plan; the API runs `node dist/start.mjs` to migrate on start), Neon Postgres (Frankfurt), R2 staging buckets with their own token, Clerk/Resend/Mollie test mode | ~0 € |
+| Local           | Docker Compose: Postgres. File storage uses a separate R2 dev bucket (decided in M1; MinIO no longer ships prebuilt images). `stripe listen` (the Stripe CLI) forwards Stripe's webhooks to localhost. | 0 €  |
+| Staging (M0–M5) | Render (two Docker web services, free plan; the API runs `node dist/start.mjs` to migrate on start), Neon Postgres (Frankfurt), R2 staging buckets with their own token, Clerk/Resend/Stripe test mode | ~0 € |
 | Production (M6) | **Option A:** the same managed setup on paid tiers (~10–25 €/mo). **Option B:** a Hetzner VPS (~5 €/mo) with Docker Compose (app + Postgres + Caddy for HTTPS) and nightly backups to R2.              |      |
 | Later           | The same Docker image runs on AWS ECS/App Runner, Azure Container Apps or Google Cloud Run if you want cloud experience on your CV                                                                     |      |
 
@@ -313,7 +314,7 @@ The Docker image and the S3-compatible storage are what keep you free to move be
 These don't block M0–M2. Decide them before M3 or M4.
 
 1. **Market & language:** Finland only, or the EU from the start? English, Finnish, or both? This affects shipping rates and the UI copy.
-2. **Business & VAT:** sole trader (toiminimi) or company? Selling digital goods to EU consumers means charging VAT at the buyer's country's rate (via OSS, the EU's One-Stop Shop) once you're VAT-registered. Mollie doesn't calculate VAT, so our code does, using the `vat_rates` table. Check the current Finnish VAT registration threshold with an accountant. Selling to Finland only at first keeps VAT simple.
+2. **Business & VAT:** sole trader (toiminimi) or company? Selling digital goods to EU consumers means charging VAT at the buyer's country's rate (via OSS, the EU's One-Stop Shop) once you're VAT-registered. We don't use Stripe Tax, so our code calculates VAT, using the `vat_rates` table. Check the current Finnish VAT registration threshold with an accountant. Selling to Finland only at first keeps VAT simple.
 3. **File formats:** which formats you offer (STL only, or STL + 3MF + STEP?). GLB previews are made automatically from STLs; other formats need a hand-made `.glb`.
 4. ~~**Model licence:** personal use only, or also a commercial-use licence at a higher price?~~ **Decided 2026-11-13:** no commercial licence at a higher price. A paid file has one price; its licence (Standard Digital File or Commercial Use) is chosen per model and doesn't change the price.
 5. **Print pricing formula:** a fixed base price per model plus a material surcharge (the plan's default), or a calculation from grams and print time?

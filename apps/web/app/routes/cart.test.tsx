@@ -37,7 +37,7 @@ const quote: CartQuote = {
     vatRateBp: 2550,
 };
 
-function render(loaderData: { quote: CartQuote | null; removed: CartQuote['removed'] }) {
+function render(loaderData: { quote: CartQuote | null; removed: CartQuote['removed']; cartCount?: number }) {
     // oxlint-disable-next-line typescript/no-explicit-any -- the stub supplies the route's props
     const Stub = createRoutesStub([{ id: 'page', path: '/cart', Component: CartPage as any, loader: () => null }]);
     return renderToStaticMarkup(
@@ -65,6 +65,7 @@ test('lists each file with its licence, price and a remove button, and the total
     expect(html).toContain('€17.40');
     expect(html).toContain('Includes VAT 25.5 %');
     expect(html).toContain('€3.54');
+    expect(html).toMatch(/<a[^>]* href="\/checkout"[^>]*>Checkout<\/a>/);
 });
 
 test('says why items were taken out', () => {

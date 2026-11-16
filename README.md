@@ -90,6 +90,27 @@ Setup in the Cloudflare dashboard (R2 Object Storage):
 
 4. R2 → Manage API tokens → Create an **Object Read & Write** token limited to the two buckets. Copy the access key id and secret into `apps/api/.env`, and the S3 endpoint (`https://<account id>.r2.cloudflarestorage.com`) into `S3_ENDPOINT`.
 
+## Payments (Stripe)
+
+Paid files are bought through [Stripe Checkout](https://docs.stripe.com/payments/checkout), Stripe's hosted payment page. The API creates a pending order and a Checkout Session with the order's amounts, and the buyer pays on Stripe. Stripe then reports the payment to `POST /api/webhooks/stripe`. When the buyer comes back to `/orders/<id>`, the API also asks Stripe for the session, so the order is settled even before the webhook arrives. Without `STRIPE_SECRET_KEY` the API still runs, and checkout answers 503.
+
+Setup (test mode needs no company details):
+
+1. Create a Stripe account, and keep the dashboard in **test mode**.
+2. **Developers → API keys**: copy the secret key (`sk_test_…`) into `STRIPE_SECRET_KEY` in `apps/api/.env`.
+3. **Webhooks**, optional locally (the order page asks Stripe anyway):
+    - Locally: install the [Stripe CLI](https://docs.stripe.com/stripe-cli), run `stripe login`, then `stripe listen --forward-to localhost:3001/api/webhooks/stripe`. It prints a `whsec_…` secret for `STRIPE_WEBHOOK_SECRET`.
+    - Staging: **Developers → Webhooks → Add endpoint** `https://<api host>/api/webhooks/stripe` with the events `checkout.session.completed`, `checkout.session.async_payment_succeeded`, `checkout.session.async_payment_failed` and `checkout.session.expired`. Put its signing secret in the API's `STRIPE_WEBHOOK_SECRET`.
+
+Stripe sends buyers back to the first origin in `WEB_ORIGINS`. To pay in test mode, use the card `4242 4242 4242 4242` with any future expiry date and any CVC. Other [test cards](https://docs.stripe.com/testing) decline or ask for 3-D Secure.
+
+| Endpoint                    | Access                           |
+| --------------------------- | -------------------------------- |
+| `POST /api/cart/quote`      | Anyone (prices the cart)         |
+| `POST /api/checkout`        | Any signed-in user               |
+| `GET /api/orders/{id}`      | The buyer                        |
+| `POST /api/webhooks/stripe` | Stripe only (signature-verified) |
+
 ## Everyday commands
 
 | Command                                     | What it does                                                         |

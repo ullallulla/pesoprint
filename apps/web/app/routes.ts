@@ -8,6 +8,9 @@ export default [
     route('models/:slug/download/:fileId', 'routes/download.tsx'),
     route('categories/:slug', 'routes/category.tsx'),
     route('cart', 'routes/cart.tsx'),
+    route('checkout', 'routes/checkout.tsx'),
+    // Stripe sends buyers here after paying.
+    route('orders/:id', 'routes/order.tsx'),
     route('terms', 'routes/terms.tsx'),
     route('privacy', 'routes/privacy.tsx'),
     ...prefix('admin', [

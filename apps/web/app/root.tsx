@@ -8,8 +8,8 @@ import {
     Outlet,
     Scripts,
     ScrollRestoration,
+    useMatches,
     useNavigation,
-    useRouteLoaderData,
 } from 'react-router';
 
 import { Analytics } from '~/components/analytics';
@@ -25,7 +25,6 @@ import { readCart } from '~/lib/cart.server';
 import { readConsent } from '~/lib/consent';
 
 import type { Route } from './+types/root';
-import type { loader as cartLoader } from './routes/cart';
 // Served from this site rather than Google Fonts, so no visitor data goes to Google.
 import '@fontsource-variable/inter/opsz.css';
 import '@fontsource-variable/inter/opsz-italic.css';
@@ -62,10 +61,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
 }
 
 export default function App({ loaderData }: Route.ComponentProps) {
-    // On the cart page, count what can actually be bought: it has just dropped what's no longer for sale,
-    // and this loader read the cookie before that.
-    const cart = useRouteLoaderData<typeof cartLoader>('routes/cart');
-    const cartCount = cart ? (cart.quote?.lines.length ?? 0) : loaderData.cartCount;
+    const cartCount = useCartCount(loaderData.cartCount);
 
     return (
         <ClerkProvider loaderData={loaderData}>
@@ -82,6 +78,21 @@ export default function App({ loaderData }: Route.ComponentProps) {
             </Analytics>
         </ClerkProvider>
     );
+}
+
+/**
+ * The header's cart count. A page that changes the cart while loading (the cart page drops what's no longer
+ * for sale, a paid order empties it) returns its own `cartCount`, since this root loader read the cookie
+ * before that change. The deepest page that returns one wins.
+ */
+function useCartCount(fromCookie: number): number {
+    const counts = useMatches().map((match) => {
+        const data: unknown = match.loaderData;
+        return data && typeof data === 'object' && 'cartCount' in data && typeof data.cartCount === 'number'
+            ? data.cartCount
+            : undefined;
+    });
+    return counts.filter((count) => count !== undefined).at(-1) ?? fromCookie;
 }
 
 /** A thin bar at the top of the page while the next page loads. */

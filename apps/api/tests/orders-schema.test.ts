@@ -72,7 +72,7 @@ describe.skipIf(!url)('orders schema (integration)', () => {
 
     test('a new order is pending, in euros', async () => {
         const [row] = await db.insert(orders).values(order()).returning();
-        expect(row).toMatchObject({ status: 'pending', currency: 'EUR', paidAt: null, molliePaymentId: null });
+        expect(row).toMatchObject({ status: 'pending', currency: 'EUR', paidAt: null, stripeCheckoutSessionId: null });
     });
 
     test.each([

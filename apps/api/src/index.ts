@@ -6,12 +6,14 @@ import { createApp } from './app.ts';
 import { createDatabase, pingDatabase } from './db/client.ts';
 import { loadEnv } from './env.ts';
 import { createStorageFromEnv } from './integrations/s3.ts';
+import { createStripePayments } from './integrations/stripe.ts';
 import { createClerkTokenVerifier } from './lib/auth.ts';
 import { createIpHasher } from './lib/client-ip.ts';
 import { createCartService } from './services/cart.ts';
 import { createCatalogService } from './services/catalog.ts';
 import { createCategoriesService } from './services/categories.ts';
 import { createDownloadsService } from './services/downloads.ts';
+import { createOrdersService } from './services/orders.ts';
 import { createProductMediaService } from './services/product-media.ts';
 import { createProductsService } from './services/products.ts';
 import { createUsersService } from './services/users.ts';
@@ -31,6 +33,18 @@ if (!storage) {
 
 const downloads = createDownloadsService(db, storage, createIpHasher(env.IP_HASH_SECRET));
 
+const payments = env.STRIPE_SECRET_KEY
+    ? createStripePayments({ secretKey: env.STRIPE_SECRET_KEY, webhookSecret: env.STRIPE_WEBHOOK_SECRET })
+    : null;
+if (!payments) {
+    console.warn('STRIPE_SECRET_KEY is not set: checkout will answer 503.');
+} else if (!payments.verifyWebhook) {
+    console.warn('STRIPE_WEBHOOK_SECRET is not set: POST /api/webhooks/stripe will answer 503.');
+}
+const cart = createCartService(db, storage);
+// Stripe sends buyers back to the web app: the first of its origins.
+const orders = createOrdersService(db, cart, payments, { siteUrl: env.WEB_ORIGINS[0]! });
+
 const app = createApp({
     checkDatabase: () => pingDatabase(db),
     verifySessionToken: createClerkTokenVerifier({
@@ -43,7 +57,9 @@ const app = createApp({
     products: createProductsService(db, storage),
     productMedia: createProductMediaService(db, storage),
     catalog: createCatalogService(db, storage),
-    cart: createCartService(db, storage),
+    cart,
+    orders,
+    verifyStripeWebhook: payments?.verifyWebhook ?? null,
     downloads,
     internalApiSecret: env.INTERNAL_API_SECRET,
     version: packageJson.version,

@@ -1,6 +1,7 @@
 export * from './auth.ts';
 export * from './cart.ts';
 export * from './catalog.ts';
+export * from './checkout.ts';
 export * from './categories.ts';
 export * from './downloads.ts';
 export * from './errors.ts';

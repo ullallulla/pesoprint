@@ -17,15 +17,20 @@ export const meta: Route.MetaFunction = () => [{ title: 'Cart – Pesoprint' }, 
  */
 export async function loader(args: Route.LoaderArgs) {
     const items = await readCart(args.request);
-    if (items.length === 0) return { quote: null, removed: [] };
+    if (items.length === 0) return { quote: null, removed: [], cartCount: 0 };
 
     const quote = await quoteCart(args, items);
-    if (quote.removed.length === 0) return { quote, removed: [] };
+    // `cartCount` corrects the header, whose loader counted the cart before this one dropped anything.
+    const cartCount = quote.lines.length;
+    if (quote.removed.length === 0) return { quote, removed: [], cartCount };
 
     const kept = items.filter((item) =>
         quote.lines.some((line) => line.productId === item.productId && line.type === item.type),
     );
-    return data({ quote, removed: quote.removed }, { headers: { 'Set-Cookie': await saveCart(args.request, kept) } });
+    return data(
+        { quote, removed: quote.removed, cartCount },
+        { headers: { 'Set-Cookie': await saveCart(args.request, kept) } },
+    );
 }
 
 export async function action({ request }: Route.ActionArgs) {
@@ -160,8 +165,9 @@ function Summary({ quote }: { quote: CartQuote }) {
                 <dt className='text-muted-foreground'>Includes VAT {formatVatRate(quote.vatRateBp)}</dt>
                 <dd className='text-right text-muted-foreground tabular-nums'>{formatPrice(quote.taxCents)}</dd>
             </dl>
-            <Button disabled>Checkout</Button>
-            <p className='text-sm text-muted-foreground'>Checkout opens soon.</p>
+            <Button asChild>
+                <Link to='/checkout'>Checkout</Link>
+            </Button>
         </aside>
     );
 }

@@ -15,6 +15,7 @@ import { catalogRoutes, type CatalogDeps } from './routes/catalog.ts';
 import { downloadRoutes, type DownloadDeps } from './routes/downloads.ts';
 import { healthRoutes, type HealthDeps } from './routes/health.ts';
 import { meRoutes } from './routes/me.ts';
+import { orderRoutes, type OrderDeps } from './routes/orders.ts';
 import { webhookRoutes, type WebhookDeps } from './routes/webhooks.ts';
 
 export interface AppOptions
@@ -27,6 +28,7 @@ export interface AppOptions
         CartDeps,
         CatalogDeps,
         DownloadDeps,
+        OrderDeps,
         WebhookDeps {
     logRequests: boolean;
 }
@@ -49,6 +51,7 @@ export function createApp(options: AppOptions) {
     app.route('/api', catalogRoutes(options));
     app.route('/api', cartRoutes(options));
     app.route('/api', downloadRoutes(options));
+    app.route('/api', orderRoutes(options));
     app.route('/api', adminRoutes(options));
     app.route('/api', adminCategoryRoutes(options));
     app.route('/api', adminProductRoutes(options));
