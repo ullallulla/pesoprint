@@ -1,19 +1,20 @@
-import { ORDER_CURRENCY, type CartItem, type CheckoutStart, type Order as OrderView } from '@app/shared';
+import { ORDER_CURRENCY, type CheckoutRequest, type CheckoutStart, type Order as OrderView } from '@app/shared';
 import { and, asc, eq, inArray } from 'drizzle-orm';
 
 import type { Database } from '../db/client.ts';
 import { entitlements, orderItems, orders, productFiles, products, users, type Order } from '../db/schema.ts';
 import type { CheckoutState, Payments } from '../integrations/stripe.ts';
 import type { AuthContext } from '../lib/auth.ts';
-import { AppError, conflict, notFound } from '../lib/errors.ts';
+import { AppError, conflict, invalidField, notFound } from '../lib/errors.ts';
 import type { CartService } from './cart.ts';
 
 export interface OrdersService {
     /**
      * Prices the cart again, creates a pending order and a Stripe Checkout Session for it, and returns
-     * the payment page's URL. Refuses a cart that changed since the buyer saw it (409).
+     * the payment page's URL. Refuses a cart that changed since the buyer saw it (409), and an order with
+     * model files unless the buyer agreed to immediate delivery, giving up their right of withdrawal (400).
      */
-    checkout(caller: AuthContext, items: CartItem[]): Promise<CheckoutStart>;
+    checkout(caller: AuthContext, request: CheckoutRequest): Promise<CheckoutStart>;
     /** One of the caller's orders. A pending one is first checked with Stripe, so it's up to date. */
     get(caller: AuthContext, orderId: string): Promise<OrderView>;
     /** Updates the order behind a Checkout Session from what Stripe says about it (webhooks call this). */
@@ -140,7 +141,7 @@ export function createOrdersService(
     }
 
     return {
-        async checkout(caller, items) {
+        async checkout(caller, { items, immediateDeliveryConsent }) {
             if (!payments) throw paymentsUnavailable();
 
             const [user] = await db.select({ email: users.email }).from(users).where(eq(users.id, caller.userId));
@@ -158,6 +159,15 @@ export function createOrdersService(
             if (quote.lines.length === 0) {
                 throw conflict('Your cart is empty.', [{ path: 'items', message: 'Your cart is empty.' }]);
             }
+            // EU rule: a file can only be delivered before the 14-day withdrawal period ends if the buyer
+            // agreed to that, knowing it ends their right of withdrawal.
+            const hasFiles = quote.lines.some((line) => line.type === 'digital');
+            if (hasFiles && !immediateDeliveryConsent) {
+                throw invalidField(
+                    'immediateDeliveryConsent',
+                    'Agree to immediate delivery of the files to continue. It ends your 14-day right of withdrawal.',
+                );
+            }
 
             const orderId = await db.transaction(async (tx) => {
                 const [order] = await tx
@@ -170,6 +180,7 @@ export function createOrdersService(
                         totalCents: quote.totalCents,
                         vatCountry: quote.vatCountry,
                         vatRateBp: quote.vatRateBp,
+                        immediateDeliveryConsentAt: hasFiles ? now() : null,
                     })
                     .returning({ id: orders.id });
                 await tx.insert(orderItems).values(

@@ -1,4 +1,4 @@
-import { checkoutStartSchema, orderSchema, type CartItem, type CheckoutStart, type Order } from '@app/shared';
+import { checkoutStartSchema, orderSchema, type CheckoutRequest, type CheckoutStart, type Order } from '@app/shared';
 import { getAuth } from '@clerk/react-router/server';
 import { data, type LoaderFunctionArgs } from 'react-router';
 
@@ -11,11 +11,11 @@ async function tokenFor(args: LoaderFunctionArgs): Promise<string | null> {
 }
 
 /** Creates the order and its Stripe Checkout Session. */
-export async function startCheckout(args: LoaderFunctionArgs, items: CartItem[]): Promise<CheckoutStart> {
+export async function startCheckout(args: LoaderFunctionArgs, request: CheckoutRequest): Promise<CheckoutStart> {
     return apiFetch('/api/checkout', checkoutStartSchema, {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ items }),
+        body: JSON.stringify(request),
         token: await tokenFor(args),
     });
 }

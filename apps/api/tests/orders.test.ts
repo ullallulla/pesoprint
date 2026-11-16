@@ -113,7 +113,16 @@ describe('checkout and orders without a database', () => {
         const res = await app.request('/api/checkout', {
             method: 'POST',
             headers: { 'content-type': 'application/json', ...bearer(tokens.customer).headers },
-            body: JSON.stringify({ items: [] }),
+            body: JSON.stringify({ items: [], immediateDeliveryConsent: true }),
+        });
+        expect(res.status).toBe(400);
+    });
+
+    test('the buyer must answer whether they agree to immediate delivery', async () => {
+        const res = await app.request('/api/checkout', {
+            method: 'POST',
+            headers: { 'content-type': 'application/json', ...bearer(tokens.customer).headers },
+            body: JSON.stringify({ items: [{ productId: '0190b6a0-0000-7000-8000-000000000101', type: 'digital' }] }),
         });
         expect(res.status).toBe(400);
     });
@@ -188,11 +197,16 @@ describe.skipIf(!url)('checkout and orders (integration)', () => {
 
     const digital = (productId: string): CartItem => ({ productId, type: 'digital' });
 
-    function checkout(items: CartItem[], token: string = tokens.customer, target = app) {
+    function checkout(
+        items: CartItem[],
+        token: string = tokens.customer,
+        target = app,
+        immediateDeliveryConsent = true,
+    ) {
         return target.request('/api/checkout', {
             method: 'POST',
             headers: { 'content-type': 'application/json', ...bearer(token).headers },
-            body: JSON.stringify({ items }),
+            body: JSON.stringify({ items, immediateDeliveryConsent }),
         });
     }
 
@@ -272,6 +286,7 @@ describe.skipIf(!url)('checkout and orders (integration)', () => {
                 vatCountry: 'FI',
                 vatRateBp: 2550,
                 paidAt: null,
+                immediateDeliveryConsentAt: NOW,
             });
             const items = await db.select().from(orderItems).where(eq(orderItems.orderId, start.orderId));
             expect(
@@ -327,6 +342,20 @@ describe.skipIf(!url)('checkout and orders (integration)', () => {
                     issues: [{ path: 'items', message: 'Your cart has changed. Check it and try again.' }],
                 });
             }
+            expect(await db.select().from(orders)).toEqual([]);
+            expect(payments.created).toEqual([]);
+        });
+
+        test('refuses model files unless the buyer agreed to immediate delivery, and creates nothing', async () => {
+            const hook = await model();
+
+            const res = await checkout([digital(hook.id)], tokens.customer, app, false);
+
+            expect(res.status).toBe(400);
+            expect(apiErrorSchema.parse(await res.json()).error).toMatchObject({
+                code: 'validation_failed',
+                issues: [{ path: 'immediateDeliveryConsent' }],
+            });
             expect(await db.select().from(orders)).toEqual([]);
             expect(payments.created).toEqual([]);
         });

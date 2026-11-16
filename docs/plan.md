@@ -227,7 +227,7 @@ Each milestone ends with: CI green, deployed to staging, and a short demo you co
 - Stripe webhook (signature verified) → order marked paid + entitlements granted. Handled idempotently, so repeated webhook calls do nothing twice. Failed and expired payments are handled too. ✅
 - A "payment pending" return page, because the buyer may come back before the webhook arrives ✅
 - "My library" page for re-downloading purchased files, and "In your library" on the product page ✅
-- EU rule for digital content: a checkbox where the buyer agrees to immediate delivery and accepts losing the 14-day right of withdrawal
+- EU rule for digital content: a checkbox where the buyer agrees to immediate delivery and accepts losing the 14-day right of withdrawal. The API refuses an order with files without it, and the order records when the buyer agreed (`immediate_delivery_consent_at`). ✅
 - **Done when:** a Stripe test-mode purchase gives the buyer a download in their library, and the webhook is covered by an integration test
 
 ### M4 – Physical print orders
@@ -251,7 +251,7 @@ Each milestone ends with: CI green, deployed to staging, and a short demo you co
 - Decide market, VAT and company form (§9). Fill the `vat_rates` table and make sure invoices and receipts show VAT correctly. Stripe doesn't do this for us (Stripe Tax isn't used).
 - Terms of sale, refund and returns policy for prints. Update the privacy policy, and fill in who runs the shop (`apps/web/app/lib/legal.ts`) and the company details in the footer.
 - Own domain. Production environment: its own database, R2 buckets, secrets, Clerk production instance (needs the domain) and webhook, and paid hosting so the site doesn't sleep. Moved here from M2.
-- Emails (Resend + React Email): the order confirmation with a link to the library (moved from M3), and "order received" and "order shipped" with tracking for print orders (moved from M4). They are sent from the Stripe webhook and when an order is marked shipped. Sending fails without a verified domain, so they moved here on 2026-11-16 and come after the domain purchase. Verify a sending subdomain in Resend (SPF/DKIM). Use the Resend SDK over HTTPS, not SMTP (Render's free plan blocks SMTP ports). Send each email at most once per order, and a failed send must not stop the order from being updated (e.g. marked paid or shipped).
+- Emails (Resend + React Email): the order confirmation with a link to the library (moved from M3), and "order received" and "order shipped" with tracking for print orders (moved from M4). They are sent from the Stripe webhook and when an order is marked shipped. Sending fails without a verified domain, so they moved here on 2026-11-16 and come after the domain purchase. Verify a sending subdomain in Resend (SPF/DKIM). Use the Resend SDK over HTTPS, not SMTP (Render's free plan blocks SMTP ports). The order confirmation must repeat that the buyer agreed to immediate delivery and gave up the right of withdrawal: under EU rules, the right only ends once the buyer has had this confirmation. Send each email at most once per order, and a failed send must not stop the order from being updated (e.g. marked paid or shipped).
 - Sentry, uptime monitoring (moved here from M2), database backups (and test restoring one)
 - Production deploy. Activate the Stripe account (business details and verification) and switch to the live keys and a live webhook.
 - Accessibility pass and Lighthouse pass

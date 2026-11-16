@@ -1,0 +1,1 @@
+ALTER TABLE "orders" ADD COLUMN "immediate_delivery_consent_at" timestamp with time zone;

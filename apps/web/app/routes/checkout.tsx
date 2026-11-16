@@ -30,6 +30,9 @@ export async function loader(args: Route.LoaderArgs) {
     return { quote, signedIn: isAuthenticated };
 }
 
+const CONSENT_FIELD = 'immediateDeliveryConsent';
+const CONSENT_MISSING = 'Tick the box to continue. We can only deliver the files right away if you agree to it.';
+
 /** Creates the order and sends the buyer to Stripe's payment page. */
 export async function action(args: Route.ActionArgs) {
     const { isAuthenticated } = await getAuth(args);
@@ -37,8 +40,12 @@ export async function action(args: Route.ActionArgs) {
     const items = await readCart(args.request);
     if (items.length === 0) return redirect('/cart');
 
+    // The box is `required`, so this only happens without the browser's check. The API checks it too.
+    const immediateDeliveryConsent = (await args.request.formData()).get(CONSENT_FIELD) === 'yes';
+    if (!immediateDeliveryConsent) return { error: CONSENT_MISSING, consentMissing: true };
+
     try {
-        const { paymentUrl } = await startCheckout(args, items);
+        const { paymentUrl } = await startCheckout(args, { items, immediateDeliveryConsent });
         return redirect(paymentUrl);
     } catch (error) {
         if (isCartChanged(error)) return redirect('/cart');
@@ -70,8 +77,9 @@ export default function Checkout({ loaderData, actionData }: Route.ComponentProp
 
             {signedIn ? (
                 <Form method='post' className='flex flex-col gap-3'>
+                    <ImmediateDeliveryConsent invalid={actionData?.consentMissing === true} />
                     {actionData?.error && (
-                        <p role='alert' className='text-sm text-destructive'>
+                        <p id='checkout-error' role='alert' className='text-sm text-destructive'>
                             {actionData.error}
                         </p>
                     )}
@@ -97,6 +105,30 @@ export default function Checkout({ loaderData, actionData }: Route.ComponentProp
                 </div>
             )}
         </main>
+    );
+}
+
+/**
+ * EU rule for digital content: the 14-day right of withdrawal ends once a file is delivered, but only if
+ * the buyer agreed to immediate delivery knowing that. So the box is never ticked in advance.
+ */
+function ImmediateDeliveryConsent({ invalid }: { invalid: boolean }) {
+    return (
+        <label className='flex items-start gap-3 rounded-lg border p-4 text-sm'>
+            <input
+                type='checkbox'
+                name={CONSENT_FIELD}
+                value='yes'
+                required
+                aria-invalid={invalid || undefined}
+                aria-describedby={invalid ? 'checkout-error' : undefined}
+                className='mt-0.5 size-4 shrink-0 accent-primary'
+            />
+            <span>
+                I want the files right away. I agree that they are delivered as soon as I&apos;ve paid, and I understand
+                that this ends my 14-day right of withdrawal.
+            </span>
+        </label>
     );
 }
 

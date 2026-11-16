@@ -24,6 +24,9 @@ export function orderRoutes(deps: OrderDeps) {
             "Prices the cart again from today's catalogue, creates a pending order, and creates a Stripe Checkout",
             'Session for it. Send the buyer to `paymentUrl`. Stripe sends them back to `/orders/{id}` on the web',
             "app when they're done, or to `/cart` if they go back. The order is paid only once Stripe says so.",
+            '',
+            'An order with model files needs `immediateDeliveryConsent: true`: the buyer agreed that the files are',
+            'delivered right away, which ends their 14-day right of withdrawal (EU rule for digital content).',
         ].join('\n'),
         request: {
             body: { required: true, content: { 'application/json': { schema: checkoutRequestSchema } } },
@@ -33,7 +36,7 @@ export function orderRoutes(deps: OrderDeps) {
                 description: 'The order was created; send the buyer to the payment page.',
                 content: { 'application/json': { schema: checkoutStartSchema } },
             },
-            400: errorResponse('Invalid items.'),
+            400: errorResponse('Invalid items, or model files without `immediateDeliveryConsent`.'),
             401: errorResponse('Sign in required.'),
             409: errorResponse(
                 'The cart changed (something is no longer for sale, or already owned) or is empty, or the account is still being set up.',
@@ -65,7 +68,7 @@ export function orderRoutes(deps: OrderDeps) {
 
     return createRouter()
         .openapi(checkoutRoute, async (c) => {
-            const start = await deps.orders.checkout(c.get('auth'), c.req.valid('json').items);
+            const start = await deps.orders.checkout(c.get('auth'), c.req.valid('json'));
             return c.json(start, 201);
         })
         .openapi(orderRoute, async (c) => {

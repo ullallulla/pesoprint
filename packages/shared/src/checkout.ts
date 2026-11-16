@@ -6,7 +6,14 @@ import { ORDER_CURRENCY, ORDER_ITEM_TYPES, ORDER_STATUSES } from './orders.ts';
 
 /** Starts paying for the cart: the API prices it again, creates a pending order and a Stripe Checkout Session. */
 export const checkoutRequestSchema = z
-    .object({ items: z.array(cartItemSchema).min(1).max(MAX_CART_ITEMS) })
+    .object({
+        items: z.array(cartItemSchema).min(1).max(MAX_CART_ITEMS),
+        /**
+         * The buyer ticked the box agreeing that files are delivered right away, and that this ends their
+         * 14-day right of withdrawal (EU rule for digital content). Required for an order with model files.
+         */
+        immediateDeliveryConsent: z.boolean(),
+    })
     .meta({ id: 'CheckoutRequest' });
 export type CheckoutRequest = z.infer<typeof checkoutRequestSchema>;
 

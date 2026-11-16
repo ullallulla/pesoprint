@@ -42,3 +42,20 @@ test('a signed-in buyer sees what they pay for, with its VAT, and a button that 
     expect(html).toMatch(/<form[^>]* action="\/checkout" method="post">/);
     expect(html).toMatch(/<button[^>]* type="submit"[^>]*>.*Pay €4.50<\/button>/s);
 });
+
+test('the buyer has to tick the immediate-delivery box themselves before paying', () => {
+    // oxlint-disable-next-line typescript/no-explicit-any -- the stub supplies the route's props
+    const Stub = createRoutesStub([
+        { id: 'page', path: '/checkout', Component: CheckoutPage as any, loader: () => null },
+    ]);
+    const html = renderToStaticMarkup(
+        <Stub initialEntries={['/checkout']} hydrationData={{ loaderData: { page: { quote, signedIn: true } } }} />,
+    );
+
+    const checkbox = html.match(/<input[^>]*name="immediateDeliveryConsent"[^>]*>/)?.[0];
+    expect(checkbox).toBeDefined();
+    expect(checkbox).toContain('type="checkbox"');
+    expect(checkbox).toContain('required');
+    expect(checkbox).not.toContain('checked');
+    expect(html).toContain('14-day right of withdrawal');
+});

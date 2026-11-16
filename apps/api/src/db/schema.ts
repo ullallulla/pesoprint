@@ -306,6 +306,12 @@ export const orders = pgTable(
         paymentStatus: text('payment_status'),
         /** e.g. `card`, `mobilepay`, `klarna`, once paid. */
         paymentMethod: text('payment_method'),
+        /**
+         * When the buyer agreed that model files are delivered right away and that this ends their 14-day
+         * right of withdrawal. Set on every order with a digital item: it's the record that the right was
+         * waived.
+         */
+        immediateDeliveryConsentAt: timestamp('immediate_delivery_consent_at', { withTimezone: true }),
         createdAt: createdAt(),
         updatedAt: updatedAt(),
         paidAt: timestamp('paid_at', { withTimezone: true }),
