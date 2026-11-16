@@ -8,6 +8,7 @@ import type { CatalogService } from '../src/services/catalog.ts';
 import type { CategoriesService } from '../src/services/categories.ts';
 import type { DownloadsService } from '../src/services/downloads.ts';
 import type { LibraryService } from '../src/services/library.ts';
+import type { MaterialsService } from '../src/services/materials.ts';
 import type { OrdersService } from '../src/services/orders.ts';
 import type { ProductMediaService } from '../src/services/product-media.ts';
 import type { ProductsService } from '../src/services/products.ts';
@@ -64,6 +65,7 @@ export function buildApp(overrides: Partial<AppOptions> = {}) {
         verifyClerkWebhook: null,
         users: createFakeUsers(),
         categories: unusedService<CategoriesService>('categories'),
+        materials: unusedService<MaterialsService>('materials'),
         products: unusedService<ProductsService>('products'),
         productMedia: unusedService<ProductMediaService>('productMedia'),
         catalog: unusedService<CatalogService>('catalog'),

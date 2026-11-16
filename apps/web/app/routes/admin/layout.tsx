@@ -25,6 +25,7 @@ const sections = [
     { to: '/admin', label: 'Overview', end: true },
     { to: '/admin/products', label: 'Products', end: false },
     { to: '/admin/categories', label: 'Categories', end: false },
+    { to: '/admin/materials', label: 'Materials', end: false },
 ];
 
 export default function AdminLayout() {

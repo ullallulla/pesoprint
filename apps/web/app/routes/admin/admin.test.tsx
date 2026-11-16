@@ -1,9 +1,10 @@
-import type { AdminCategory, AdminProduct, AdminProductList } from '@app/shared';
+import type { AdminCategory, AdminMaterial, AdminProduct, AdminProductList } from '@app/shared';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { createRoutesStub } from 'react-router';
 import { describe, expect, test } from 'vite-plus/test';
 
 import AdminCategories from './categories';
+import AdminMaterials from './materials';
 import EditProduct from './product-edit';
 import AdminProducts from './products';
 
@@ -188,4 +189,49 @@ test('the product list shows status, category and offers', () => {
     expect(html).toContain('Gadgets › Ham radio');
     expect(html).toContain('Print from €12.90');
     expect(html).toContain('File €4.50');
+});
+
+test('the material manager shows each material with its colours, and which are out of stock', () => {
+    const petg: AdminMaterial = {
+        id: '0190b6a0-0000-7000-8000-000000000301',
+        name: 'PETG',
+        description: 'Tough and slightly flexible.',
+        active: false,
+        position: 0,
+        colours: [
+            {
+                id: '0190b6a0-0000-7000-8000-000000000311',
+                materialId: '0190b6a0-0000-7000-8000-000000000301',
+                name: 'Signal red',
+                hex: '#cc0000',
+                inStock: true,
+                position: 0,
+            },
+            {
+                id: '0190b6a0-0000-7000-8000-000000000312',
+                materialId: '0190b6a0-0000-7000-8000-000000000301',
+                name: 'Galaxy black',
+                hex: '#111111',
+                inStock: false,
+                position: 1,
+            },
+        ],
+    };
+    const html = render('/admin/materials', AdminMaterials, { materials: [petg] });
+
+    expect(html).toContain('Inactive');
+    expect(html).toContain('2 colours, 1 in stock');
+    expect(html.indexOf('Signal red')).toBeLessThan(html.indexOf('Galaxy black'));
+    expect(html).toContain('background-color:#cc0000');
+    expect(html).toContain('Out of stock');
+    expect(html).toContain('Mark in stock');
+    expect(html).toContain('Mark out of stock');
+    expect(inputAttributes(html, 'active')).not.toHaveProperty('checked');
+    expect(html).toContain('Add colour');
+    expect(html).toContain('Add material');
+});
+
+test('the material manager says when there are no materials yet', () => {
+    const html = render('/admin/materials', AdminMaterials, { materials: [] });
+    expect(html).toContain('No materials yet. Add the first one.');
 });

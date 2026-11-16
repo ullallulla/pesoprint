@@ -8,6 +8,7 @@ export * from './errors.ts';
 export * from './health.ts';
 export * from './library.ts';
 export * from './licenses.ts';
+export * from './materials.ts';
 export * from './media.ts';
 export * from './orders.ts';
 export * from './pricing.ts';

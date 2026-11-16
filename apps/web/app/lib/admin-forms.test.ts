@@ -8,6 +8,8 @@ import {
     fieldErrors,
     fileOfferOf,
     parseCategoryForm,
+    parseColourForm,
+    parseMaterialForm,
     parseEuros,
     parseNewProductForm,
     parseProductForm,
@@ -220,4 +222,40 @@ describe('reorderImages', () => {
 test('the licence picker offers every licence exactly once', () => {
     const offered = LICENSE_GROUPS.flatMap((group) => group.ids);
     expect([...offered].sort()).toEqual([...LICENSE_IDS].sort());
+});
+
+describe('parseMaterialForm', () => {
+    test('reads the active box, defaults the position and clears an empty description', () => {
+        expect(parseMaterialForm(formData({ name: ' PETG ', description: '', position: '', active: 'on' }))).toEqual({
+            ok: true,
+            data: { name: 'PETG', description: null, active: true, position: 0 },
+        });
+        expect(parseMaterialForm(formData({ name: 'PLA', position: '2' }))).toMatchObject({
+            ok: true,
+            data: { active: false, position: 2 },
+        });
+    });
+
+    test('needs a name', () => {
+        const result = parseMaterialForm(formData({ name: '' }));
+        expect(Object.keys(fieldErrors(result.ok ? [] : result.issues))).toEqual(['name']);
+    });
+});
+
+describe('parseColourForm', () => {
+    test('lowercases the swatch and reads the stock box', () => {
+        expect(parseColourForm(formData({ name: 'Signal red', hex: '#FF0000', position: '1' }))).toEqual({
+            ok: true,
+            data: { name: 'Signal red', hex: '#ff0000', inStock: false, position: 1 },
+        });
+        expect(parseColourForm(formData({ name: 'Black', hex: '#000000', inStock: 'on' }))).toMatchObject({
+            ok: true,
+            data: { inStock: true, position: 0 },
+        });
+    });
+
+    test('rejects a swatch that is not #rrggbb', () => {
+        const result = parseColourForm(formData({ name: 'Red', hex: 'red' }));
+        expect(fieldErrors(result.ok ? [] : result.issues)).toEqual({ hex: 'Use a colour like #1f6feb.' });
+    });
 });

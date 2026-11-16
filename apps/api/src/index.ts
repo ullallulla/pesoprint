@@ -14,6 +14,7 @@ import { createCatalogService } from './services/catalog.ts';
 import { createCategoriesService } from './services/categories.ts';
 import { createDownloadsService } from './services/downloads.ts';
 import { createLibraryService } from './services/library.ts';
+import { createMaterialsService } from './services/materials.ts';
 import { createOrdersService } from './services/orders.ts';
 import { createProductMediaService } from './services/product-media.ts';
 import { createProductsService } from './services/products.ts';
@@ -55,6 +56,7 @@ const app = createApp({
     verifyClerkWebhook: signingSecret ? (request) => verifyWebhook(request, { signingSecret }) : null,
     users: createUsersService(db),
     categories: createCategoriesService(db),
+    materials: createMaterialsService(db),
     products: createProductsService(db, storage),
     productMedia: createProductMediaService(db, storage),
     catalog: createCatalogService(db, storage),

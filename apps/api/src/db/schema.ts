@@ -1,4 +1,5 @@
 import {
+    HEX_COLOUR_PATTERN,
     LICENSE_IDS,
     ORDER_CURRENCY,
     ORDER_ITEM_TYPES,
@@ -12,6 +13,7 @@ import {
 import { sql } from 'drizzle-orm';
 import {
     bigint,
+    boolean,
     check,
     customType,
     index,
@@ -384,3 +386,49 @@ export const entitlements = pgTable(
 );
 
 export type Entitlement = typeof entitlements.$inferSelect;
+
+/** What prints are made of (PLA, PETG…). Inactive materials are hidden from buyers but kept for past orders. */
+export const materials = pgTable(
+    'materials',
+    {
+        id: id(),
+        name: text('name').notNull(),
+        /** A line for buyers about what the material is good for. */
+        description: text('description'),
+        active: boolean('active').notNull().default(true),
+        /** Order in lists, lowest first. */
+        position: integer('position').notNull().default(0),
+        createdAt: createdAt(),
+        updatedAt: updatedAt(),
+    },
+    (t) => [uniqueIndex('materials_name_unique').on(sql`lower(${t.name})`)],
+);
+
+export type Material = typeof materials.$inferSelect;
+export type NewMaterial = typeof materials.$inferInsert;
+
+/** A material's colours. An out-of-stock colour stays listed but can't be ordered. */
+export const colours = pgTable(
+    'colours',
+    {
+        id: id(),
+        materialId: uuid('material_id')
+            .notNull()
+            .references(() => materials.id, { onDelete: 'cascade' }),
+        name: text('name').notNull(),
+        /** `#rrggbb`, lowercase. */
+        hex: text('hex').notNull(),
+        inStock: boolean('in_stock').notNull().default(true),
+        /** Order among the material's colours, lowest first. */
+        position: integer('position').notNull().default(0),
+        createdAt: createdAt(),
+        updatedAt: updatedAt(),
+    },
+    (t) => [
+        check('colours_hex_format', sql`${t.hex} ~ '${sql.raw(HEX_COLOUR_PATTERN)}'`),
+        uniqueIndex('colours_material_id_name_unique').on(t.materialId, sql`lower(${t.name})`),
+    ],
+);
+
+export type Colour = typeof colours.$inferSelect;
+export type NewColour = typeof colours.$inferInsert;

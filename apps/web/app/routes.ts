@@ -19,6 +19,7 @@ export default [
         layout('routes/admin/layout.tsx', [
             index('routes/admin/overview.tsx'),
             route('categories', 'routes/admin/categories.tsx'),
+            route('materials', 'routes/admin/materials.tsx'),
             route('products', 'routes/admin/products.tsx'),
             route('products/new', 'routes/admin/product-new.tsx'),
             route('products/:id', 'routes/admin/product-edit.tsx'),

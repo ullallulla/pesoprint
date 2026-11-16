@@ -1,8 +1,12 @@
 import {
+    createColourSchema,
+    createMaterialSchema,
     MAX_PRICE_CENTS,
     updateCategorySchema,
     updateProductSchema,
     type ApiErrorIssue,
+    type CreateColour,
+    type CreateMaterial,
     type UpdateCategory,
     type UpdateProduct,
 } from '@app/shared';
@@ -160,6 +164,34 @@ export function parseCategoryForm(
         description: text(form, 'description') || null,
         parentId: text(form, 'parentId') || null,
         position: position === '' ? 0 : Number(position),
+    });
+    return parsed.success ? { ok: true, data: parsed.data } : { ok: false, issues: zodIssues(parsed.error) };
+}
+
+/** An empty position means 0; anything else is checked by the schema. */
+const position = (form: FormData) => {
+    const value = text(form, 'position');
+    return value === '' ? 0 : Number(value);
+};
+
+/** The material form → a body for create (POST) or update (PATCH); both take every field. */
+export function parseMaterialForm(form: FormData): Parsed<CreateMaterial> {
+    const parsed = createMaterialSchema.safeParse({
+        name: text(form, 'name'),
+        description: text(form, 'description') || null,
+        active: form.get('active') === 'on',
+        position: position(form),
+    });
+    return parsed.success ? { ok: true, data: parsed.data } : { ok: false, issues: zodIssues(parsed.error) };
+}
+
+/** The colour form → a body for create (POST) or update (PATCH); both take every field. */
+export function parseColourForm(form: FormData): Parsed<CreateColour> {
+    const parsed = createColourSchema.safeParse({
+        name: text(form, 'name'),
+        hex: text(form, 'hex'),
+        inStock: form.get('inStock') === 'on',
+        position: position(form),
     });
     return parsed.success ? { ok: true, data: parsed.data } : { ok: false, issues: zodIssues(parsed.error) };
 }
