@@ -1,6 +1,6 @@
 # Pesoprint – Rebuild Plan (working name)
 
-_Drafted 2026-11-09 from the [prototype review](./prototype-review.md) and the planning questions. M0, M1 and M2 are done and running on staging; M3 is next. The public launch moved to M6._
+_Drafted 2026-11-09 from the [prototype review](./prototype-review.md) and the planning questions. M0–M3 are done and running on staging; M4 is next. The public launch moved to M6._
 
 ## 1. What we're building
 
@@ -220,7 +220,7 @@ Each milestone ends with: CI green, deployed to staging, and a short demo you co
 - Maintenance commands: `users:sync` (Clerk users into the database) and `storage:cleanup` (unused files in R2)
 - **Done when:** strangers can browse and download free models on staging. The public launch (own domain, production environment) moved to M6.
 
-### M3 – Paid digital files
+### M3 – Paid digital files ✅ (2026-11-16)
 
 - Cart (digital items) ✅
 - Our own checkout page: order summary and VAT. Then a Stripe Checkout Session is created on the server and the buyer is redirected to Stripe's hosted payment page. ✅
