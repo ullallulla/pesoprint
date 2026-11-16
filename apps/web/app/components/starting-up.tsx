@@ -10,22 +10,33 @@ const RETRY_SECONDS = 5;
 const MAX_ATTEMPTS = 12;
 
 /**
+ * Asks the sleeping API to wake up, from the visitor's browser. Render's free plan only wakes a service for
+ * requests from outside Render; the web server's own requests get an instant 502 and leave it asleep. The
+ * answer doesn't matter (and can't be read cross-origin): reaching the host is what starts the API.
+ */
+function wakeApi(url: string) {
+    fetch(url, { mode: 'no-cors', cache: 'no-store' }).catch(() => {});
+}
+
+/**
  * Shown when the API can't be reached: on a free host it sleeps when nobody visits, and the first visit
  * wakes it. Tries the page again by itself, and shows the page as soon as the API answers.
  */
-export function StartingUp() {
+export function StartingUp({ wakeUrl }: { wakeUrl: string }) {
     const { revalidate, state } = useRevalidator();
     const [attempts, setAttempts] = useState(0);
     const givenUp = attempts >= MAX_ATTEMPTS;
 
     useEffect(() => {
         if (givenUp || state !== 'idle') return;
+        // Each attempt also wakes the API, in case an earlier request didn't get through.
+        wakeApi(wakeUrl);
         const timer = setTimeout(() => {
             setAttempts((count) => count + 1);
             void revalidate();
         }, RETRY_SECONDS * 1000);
         return () => clearTimeout(timer);
-    }, [attempts, givenUp, revalidate, state]);
+    }, [attempts, givenUp, revalidate, state, wakeUrl]);
 
     return (
         <main className='mx-auto flex w-full max-w-7xl flex-1 flex-col items-start gap-4 px-4 py-16'>

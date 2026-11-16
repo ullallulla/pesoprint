@@ -24,7 +24,7 @@ function renderRootError(status: number, data: unknown) {
 }
 
 test('a page whose API is still starting up says so, and loads by itself', () => {
-    const html = renderRootError(503, API_UNAVAILABLE);
+    const html = renderRootError(503, { reason: API_UNAVAILABLE, wakeUrl: 'http://api.test/api/health' });
     expect(html).toContain('The site is starting up');
     expect(html).toContain('The page will load by itself');
     expect(html).not.toContain('Something went wrong');

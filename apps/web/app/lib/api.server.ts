@@ -3,7 +3,7 @@ import { data } from 'react-router';
 import type { z } from 'zod';
 
 import { getEnv } from '~/env.server';
-import { API_UNAVAILABLE, API_UNAVAILABLE_RETRY_SECONDS } from '~/lib/api-unavailable';
+import { API_UNAVAILABLE, API_UNAVAILABLE_RETRY_SECONDS, type ApiUnavailable } from '~/lib/api-unavailable';
 
 /** Thrown when the API answers with an error, or with a body that doesn't match the expected schema. */
 export class ApiRequestError extends Error {
@@ -38,9 +38,10 @@ const GATEWAY_STATUSES = [502, 503, 504];
  * again. It's thrown as a response rather than an ApiRequestError so that it reaches the boundary as it is,
  * past every caller's handling of the API's own errors.
  */
-function apiUnavailable(reason: string): never {
+function apiUnavailable(reason: string, apiUrl: URL): never {
     console.warn(`API unavailable: ${reason}`);
-    throw data(API_UNAVAILABLE, {
+    const body: ApiUnavailable = { reason: API_UNAVAILABLE, wakeUrl: new URL('/api/health', apiUrl).href };
+    throw data(body, {
         status: 503,
         headers: { 'Retry-After': String(API_UNAVAILABLE_RETRY_SECONDS) },
     });
@@ -72,10 +73,11 @@ export async function apiFetch<TSchema extends z.ZodType>(
     } catch (error) {
         // The caller's own signal (e.g. the visitor left the page) is not the API's fault.
         if (init.signal?.aborted) throw error;
-        if (timeout.aborted) apiUnavailable(`no answer within ${API_TIMEOUT_MS / 1000} s: ${url.pathname}`);
+        if (timeout.aborted) apiUnavailable(`no answer within ${API_TIMEOUT_MS / 1000} s: ${url.pathname}`, url);
         // fetch fails with a TypeError when it can't connect; the cause says why (e.g. ECONNREFUSED).
         if (error instanceof TypeError) {
-            apiUnavailable(`${error.cause instanceof Error ? error.cause.message : error.message}: ${url.pathname}`);
+            const cause = error.cause instanceof Error ? error.cause.message : error.message;
+            apiUnavailable(`${cause}: ${url.pathname}`, url);
         }
         throw error;
     }
@@ -87,7 +89,7 @@ export async function apiFetch<TSchema extends z.ZodType>(
         const apiError = parsedError.success ? parsedError.data.error : undefined;
         // Our API always explains its errors. A gateway status without that came from the proxy instead.
         if (!apiError && GATEWAY_STATUSES.includes(response.status)) {
-            apiUnavailable(`${response.status} from ${url.pathname}`);
+            apiUnavailable(`${response.status} from ${url.pathname}`, url);
         }
         throw new ApiRequestError(
             apiError?.message ?? `API request failed: ${response.status} ${url.pathname}`,

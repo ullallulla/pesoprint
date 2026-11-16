@@ -6,7 +6,7 @@ import { API_UNAVAILABLE } from '~/lib/api-unavailable';
 
 import Download, { ErrorBoundary } from './download';
 
-function renderError(status: number, message: string) {
+function renderError(status: number, body: unknown) {
     const Stub = createRoutesStub([
         {
             id: 'download',
@@ -15,14 +15,14 @@ function renderError(status: number, message: string) {
             // oxlint-disable-next-line typescript/no-explicit-any -- the stub supplies the route's props
             ErrorBoundary: ErrorBoundary as any,
             loader: () => {
-                throw data(message, { status });
+                throw data(body, { status });
             },
         },
     ]);
     return renderToStaticMarkup(
         <Stub
             initialEntries={['/models/hook/download/x']}
-            hydrationData={{ errors: { download: { status, statusText: '', internal: false, data: message } } }}
+            hydrationData={{ errors: { download: { status, statusText: '', internal: false, data: body } } }}
         />,
     );
 }
@@ -40,7 +40,7 @@ test("a file that can't be downloaded is simply not available", () => {
 });
 
 test('while the API is starting up, the page says so instead of reporting an error', () => {
-    const html = renderError(503, API_UNAVAILABLE);
+    const html = renderError(503, { reason: API_UNAVAILABLE, wakeUrl: 'http://api.test/api/health' });
     expect(html).toContain('The site is starting up');
     expect(html).not.toContain('Something went wrong');
 });

@@ -90,7 +90,7 @@ export function ErrorBoundary({ error }: Route.ErrorBoundaryProps) {
         return (
             <>
                 <SiteHeader />
-                <StartingUp />
+                <StartingUp wakeUrl={error.data.wakeUrl} />
                 <SiteFooter />
             </>
         );

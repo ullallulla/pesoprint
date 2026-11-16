@@ -20,7 +20,10 @@ afterEach(() => {
 
 describe('apiFetch', () => {
     /** What apiFetch throws when the API can't be reached: a 503 response for the page. */
-    const UNAVAILABLE = { data: API_UNAVAILABLE, init: { status: 503, headers: { 'Retry-After': '10' } } };
+    const UNAVAILABLE = {
+        data: { reason: API_UNAVAILABLE, wakeUrl: 'http://api.test/api/health' },
+        init: { status: 503, headers: { 'Retry-After': '10' } },
+    };
     const thrownBy = (request: Promise<unknown>) =>
         request.then(
             () => undefined,
