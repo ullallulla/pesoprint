@@ -22,6 +22,14 @@ export function offerLines(product: ProductOffers): OfferLine[] {
     return lines;
 }
 
+// A fixed time zone (the shop's), so the server and the browser render the same date.
+const dateFormat = new Intl.DateTimeFormat('en-IE', { dateStyle: 'medium', timeZone: 'Europe/Helsinki' });
+
+/** `2026-11-16T12:00:00.000Z` → `16 Nov 2026`. */
+export function formatDate(iso: string): string {
+    return dateFormat.format(new Date(iso));
+}
+
 const compactCount = new Intl.NumberFormat('en-IE', { notation: 'compact', maximumFractionDigits: 1 });
 
 /** `950` → `950`, `1234` → `1.2K`, `2_500_000` → `2.5M`: short counts for cards. */

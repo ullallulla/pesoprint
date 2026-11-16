@@ -1,14 +1,15 @@
 import { formatVatRate, type Order } from '@app/shared';
 import { SignInButton } from '@clerk/react-router';
 import { getAuth } from '@clerk/react-router/server';
-import { CircleCheck, Download, LoaderCircle } from 'lucide-react';
+import { CircleCheck, Library, LoaderCircle } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { data, Link, useRevalidator } from 'react-router';
 import { z } from 'zod';
 
-import { Button, buttonVariants } from '~/components/ui/button';
+import { FileDownloads } from '~/components/file-downloads';
+import { Button } from '~/components/ui/button';
 import { readCart, saveCart } from '~/lib/cart.server';
-import { formatBytes, formatPrice } from '~/lib/format';
+import { formatPrice } from '~/lib/format';
 import { getOrder } from '~/lib/orders.server';
 
 import type { Route } from './+types/order';
@@ -76,7 +77,9 @@ function Paid({ order }: { order: Order }) {
                     <CircleCheck className='size-8 text-primary' aria-hidden />
                     Thank you for your order
                 </h1>
-                <p className='text-muted-foreground'>Payment received. Your files are ready to download.</p>
+                <p className='text-muted-foreground'>
+                    Payment received. Your files are ready to download, here or any time from your library.
+                </p>
             </div>
 
             <ul className='flex flex-col gap-4'>
@@ -90,31 +93,18 @@ function Paid({ order }: { order: Order }) {
                                 This model has no files right now. Contact us and we&apos;ll sort it out.
                             </p>
                         ) : (
-                            <ul className='flex flex-col gap-2'>
-                                {item.files.map((file) => (
-                                    <li key={file.id} className='flex flex-wrap items-center justify-between gap-2'>
-                                        <span className='min-w-0 truncate text-sm'>
-                                            {file.filename}{' '}
-                                            <span className='text-muted-foreground'>
-                                                ({file.format.toUpperCase()}, {formatBytes(file.sizeBytes)})
-                                            </span>
-                                        </span>
-                                        <a
-                                            href={`/models/${item.slug}/download/${file.id}`}
-                                            rel='nofollow'
-                                            className={buttonVariants({ size: 'sm' })}
-                                            aria-label={`Download ${file.filename}`}
-                                        >
-                                            <Download aria-hidden />
-                                            Download
-                                        </a>
-                                    </li>
-                                ))}
-                            </ul>
+                            <FileDownloads slug={item.slug} files={item.files} />
                         )}
                     </li>
                 ))}
             </ul>
+
+            <Button asChild variant='outline' className='self-start'>
+                <Link to='/library'>
+                    <Library aria-hidden />
+                    Go to your library
+                </Link>
+            </Button>
 
             <OrderTotals order={order} />
         </>

@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'vite-plus/test';
 
-import { formatBytes, formatCount, formatPrice, offerLines, plainExcerpt } from './format';
+import { formatBytes, formatCount, formatDate, formatPrice, offerLines, plainExcerpt } from './format';
 
 describe('formatPrice', () => {
     test.each([
@@ -31,6 +31,12 @@ describe('offerLines', () => {
             'print',
         ]);
     });
+});
+
+test("formatDate shows the shop's local date, whatever the time zone of the server", () => {
+    expect(formatDate('2026-11-16T12:00:00.000Z')).toBe('16 Nov 2026');
+    // 23:30 UTC is already the next day in Helsinki.
+    expect(formatDate('2026-11-16T23:30:00.000Z')).toBe('17 Nov 2026');
 });
 
 test('formatBytes', () => {

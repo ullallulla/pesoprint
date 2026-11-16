@@ -1,26 +1,39 @@
-import { isFreeDownload, isPaidFile, LICENSES, MAX_CART_ITEMS, offersPrint, type CatalogProduct } from '@app/shared';
-import { Check, Download, FileBox, Printer, ShoppingCart } from 'lucide-react';
+import {
+    isFreeDownload,
+    isPaidFile,
+    LICENSES,
+    MAX_CART_ITEMS,
+    offersPrint,
+    type CatalogProduct,
+    type LibraryItem,
+} from '@app/shared';
+import { Check, Download, FileBox, Library, Printer, ShoppingCart } from 'lucide-react';
 import { data, Link, useFetcher } from 'react-router';
 
 import { Breadcrumbs, type Crumb } from '~/components/catalog/breadcrumbs';
 import { Markdown } from '~/components/catalog/markdown';
 import { ProductGallery } from '~/components/catalog/product-gallery';
-import { Button, buttonVariants } from '~/components/ui/button';
+import { FileDownloads, type DownloadableFile } from '~/components/file-downloads';
+import { Button } from '~/components/ui/button';
 import { track } from '~/lib/analytics';
 import { addToCart, cartChanged, isInCart, readCart } from '~/lib/cart.server';
 import { getProduct } from '~/lib/catalog.server';
 import { formatBytes, formatPrice, plainExcerpt } from '~/lib/format';
+import { getOwned } from '~/lib/library.server';
 import { pageMeta } from '~/lib/seo';
 import { absoluteUrl } from '~/lib/site.server';
 
 import type { Route } from './+types/product';
 
-export async function loader({ params, request }: Route.LoaderArgs) {
-    const [product, cart] = await Promise.all([getProduct(params.slug), readCart(request)]);
+export async function loader(args: Route.LoaderArgs) {
+    const [product, cart] = await Promise.all([getProduct(args.params.slug), readCart(args.request)]);
+    // A free file is anyone's anyway. Otherwise a buyer gets their files here, whatever the model costs now.
+    const owned = isFreeDownload(product) ? null : await getOwned(args, product.id);
     return {
         product,
         url: absoluteUrl(`/models/${product.slug}`),
         inCart: isInCart(cart, { productId: product.id, type: 'digital' }),
+        owned,
     };
 }
 
@@ -55,7 +68,7 @@ export const meta: Route.MetaFunction = ({ loaderData }) => {
 };
 
 export default function Product({ loaderData }: Route.ComponentProps) {
-    const { product, inCart } = loaderData;
+    const { product, inCart, owned } = loaderData;
     const crumbs: Crumb[] = [
         { label: 'Home', to: '/' },
         { label: 'Models', to: '/models' },
@@ -75,7 +88,7 @@ export default function Product({ loaderData }: Route.ComponentProps) {
 
                 <div className='flex flex-col gap-6'>
                     <h1 className='text-3xl font-bold tracking-tight'>{product.title}</h1>
-                    <GetThisModel product={product} inCart={inCart} />
+                    <GetThisModel product={product} inCart={inCart} owned={owned} />
                     <Details product={product} />
                 </div>
             </div>
@@ -95,14 +108,26 @@ export default function Product({ loaderData }: Route.ComponentProps) {
 }
 
 /** The ways to get the model. Print orders arrive in M4, so that button is disabled. */
-function GetThisModel({ product, inCart }: { product: CatalogProduct; inCart: boolean }) {
+function GetThisModel({
+    product,
+    inCart,
+    owned,
+}: {
+    product: CatalogProduct;
+    inCart: boolean;
+    owned: LibraryItem | null;
+}) {
     return (
         <section aria-labelledby='get-heading' className='flex flex-col gap-3 rounded-lg border p-5'>
             <h2 id='get-heading' className='text-sm font-medium text-muted-foreground'>
                 Get this model
             </h2>
             {isFreeDownload(product) && <FreeDownload product={product} />}
-            {isPaidFile(product) && <BuyFile product={product} inCart={inCart} />}
+            {owned ? (
+                <OwnedFile product={product} owned={owned} />
+            ) : (
+                isPaidFile(product) && <BuyFile product={product} inCart={inCart} />
+            )}
             {offersPrint(product) && (
                 <Offer
                     icon={<Printer aria-hidden />}
@@ -177,7 +202,45 @@ function BuyFile({ product, inCart }: { product: CatalogProduct; inCart: boolean
     );
 }
 
-/** One download button per file. Plain links: the download route redirects to the file, and the page stays. */
+/** Counted the same way for free files and bought ones. */
+const trackDownload = (product: CatalogProduct) => (file: DownloadableFile) =>
+    track('model_downloaded', {
+        model: product.slug,
+        model_title: product.title,
+        category: product.category?.slug ?? null,
+        file_format: file.format,
+        file_id: file.id,
+    });
+
+/** A model the visitor bought: its files to download instead of "Add to cart". */
+function OwnedFile({ product, owned }: { product: CatalogProduct; owned: LibraryItem }) {
+    return (
+        <div className='flex flex-col gap-2'>
+            <div>
+                <p className='flex items-center gap-2 font-medium [&_svg]:size-4'>
+                    <Library aria-hidden />
+                    In your library
+                </p>
+                <p className='text-sm text-muted-foreground'>
+                    You own this model. Download it as often as you like, or find it any time in{' '}
+                    <Link to='/library' className='underline underline-offset-4 hover:text-foreground'>
+                        your library
+                    </Link>
+                    .
+                </p>
+            </div>
+            {owned.files.length === 0 ? (
+                <p className='text-sm text-muted-foreground'>
+                    This model has no files right now. Contact us and we&apos;ll sort it out.
+                </p>
+            ) : (
+                <FileDownloads slug={product.slug} files={owned.files} onDownload={trackDownload(product)} />
+            )}
+        </div>
+    );
+}
+
+/** One download button per file, for anyone. */
 function FreeDownload({ product }: { product: CatalogProduct }) {
     const count = product.downloadCount;
     return (
@@ -192,36 +255,7 @@ function FreeDownload({ product }: { product: CatalogProduct }) {
                     {count > 0 && ` Downloaded ${count.toLocaleString('en-IE')} ${count === 1 ? 'time' : 'times'}.`}
                 </p>
             </div>
-            <ul className='flex flex-col gap-2'>
-                {product.files.map((file) => (
-                    <li key={file.id} className='flex flex-wrap items-center justify-between gap-2'>
-                        <span className='min-w-0 truncate text-sm'>
-                            {file.filename}{' '}
-                            <span className='text-muted-foreground'>
-                                ({file.format.toUpperCase()}, {formatBytes(file.sizeBytes)})
-                            </span>
-                        </span>
-                        <a
-                            href={`/models/${product.slug}/download/${file.id}`}
-                            rel='nofollow'
-                            className={buttonVariants({ size: 'sm' })}
-                            aria-label={`Download ${file.filename}`}
-                            onClick={() =>
-                                track('model_downloaded', {
-                                    model: product.slug,
-                                    model_title: product.title,
-                                    category: product.category?.slug ?? null,
-                                    file_format: file.format,
-                                    file_id: file.id,
-                                })
-                            }
-                        >
-                            <Download aria-hidden />
-                            Download
-                        </a>
-                    </li>
-                ))}
-            </ul>
+            <FileDownloads slug={product.slug} files={product.files} onDownload={trackDownload(product)} />
         </div>
     );
 }

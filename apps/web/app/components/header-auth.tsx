@@ -1,10 +1,10 @@
 import { Show, SignInButton, UserButton, useUser } from '@clerk/react-router';
-import { LayoutDashboard } from 'lucide-react';
+import { LayoutDashboard, Library } from 'lucide-react';
 import { Link } from 'react-router';
 
 import { Button } from '~/components/ui/button';
 
-/** Sign-in button for visitors; admin link and user menu for signed-in users. */
+/** Sign-in button for visitors; library, admin link and user menu for signed-in users. */
 export function HeaderAuth() {
     return (
         <>
@@ -14,6 +14,12 @@ export function HeaderAuth() {
                 </SignInButton>
             </Show>
             <Show when='signed-in'>
+                <Button asChild variant='ghost' size='sm'>
+                    <Link to='/library'>
+                        <Library aria-hidden />
+                        Library
+                    </Link>
+                </Button>
                 <AdminLink />
                 <UserButton />
             </Show>

@@ -55,6 +55,7 @@ test('a paid order thanks the buyer and has a download link per file', () => {
     expect(html).toContain('€4.50');
     expect(html).toContain('Includes VAT 25.5 %');
     expect(html).toContain('€0.91');
+    expect(html).toContain('href="/library"');
 });
 
 test('a pending order says the payment is being confirmed, with no downloads', () => {

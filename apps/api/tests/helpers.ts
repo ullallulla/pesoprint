@@ -7,6 +7,7 @@ import type { CartService } from '../src/services/cart.ts';
 import type { CatalogService } from '../src/services/catalog.ts';
 import type { CategoriesService } from '../src/services/categories.ts';
 import type { DownloadsService } from '../src/services/downloads.ts';
+import type { LibraryService } from '../src/services/library.ts';
 import type { OrdersService } from '../src/services/orders.ts';
 import type { ProductMediaService } from '../src/services/product-media.ts';
 import type { ProductsService } from '../src/services/products.ts';
@@ -69,6 +70,7 @@ export function buildApp(overrides: Partial<AppOptions> = {}) {
         cart: unusedService<CartService>('cart'),
         downloads: unusedService<DownloadsService>('downloads'),
         orders: unusedService<OrdersService>('orders'),
+        library: unusedService<LibraryService>('library'),
         verifyStripeWebhook: null,
         internalApiSecret: undefined,
         version: '1.2.3',

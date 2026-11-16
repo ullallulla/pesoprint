@@ -1,6 +1,6 @@
 import { fileURLToPath } from 'node:url';
 
-import { apiErrorSchema, checkoutStartSchema, orderSchema, type CartItem } from '@app/shared';
+import { apiErrorSchema, checkoutStartSchema, librarySchema, orderSchema, type CartItem } from '@app/shared';
 import { eq, inArray, sql } from 'drizzle-orm';
 import Stripe from 'stripe';
 import { afterAll, beforeAll, beforeEach, describe, expect, test } from 'vite-plus/test';
@@ -23,6 +23,7 @@ import {
     type Payments,
 } from '../src/integrations/stripe.ts';
 import { createCartService } from '../src/services/cart.ts';
+import { createLibraryService } from '../src/services/library.ts';
 import { CHECKOUT_EXPIRY_MINUTES, createOrdersService } from '../src/services/orders.ts';
 import { bearer, buildApp, createFakeStorage, tokens } from './helpers.ts';
 
@@ -142,6 +143,7 @@ describe.skipIf(!url)('checkout and orders (integration)', () => {
         return buildApp({
             cart,
             orders: createOrdersService(db, cart, paymentsOrNull, { siteUrl: SITE, now: () => NOW }),
+            library: createLibraryService(db, storage),
             verifyStripeWebhook: paymentsOrNull?.verifyWebhook ?? null,
         });
     }
@@ -458,6 +460,21 @@ describe.skipIf(!url)('checkout and orders (integration)', () => {
             expect((await ownedBy(BUYER_ID)).toSorted()).toEqual([hook.id, stand.id].toSorted());
             const grants = await db.select().from(entitlements).where(eq(entitlements.orderId, orderId));
             expect(grants).toHaveLength(2);
+        });
+
+        test("a paid purchase shows up in the buyer's library, ready to download", async () => {
+            const hook = await model({ title: 'Hook' });
+            const { orderId, sessionId } = await startCheckout([digital(hook.id)]);
+            const library = async () =>
+                librarySchema.parse(await (await app.request('/api/library', bearer(tokens.customer))).json()).items;
+            expect(await library()).toEqual([]);
+
+            payments.pay(sessionId);
+            expect((await signedWebhook(sessionEvent('checkout.session.completed', sessionId))).status).toBe(200);
+
+            expect(await library()).toMatchObject([
+                { productId: hook.id, title: 'Hook', listed: true, orderId, files: [{ id: hook.file.id }] },
+            ]);
         });
 
         test('an expired session cancels the order', async () => {

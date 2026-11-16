@@ -226,7 +226,7 @@ Each milestone ends with: CI green, deployed to staging, and a short demo you co
 - Our own checkout page: order summary and VAT. Then a Stripe Checkout Session is created on the server and the buyer is redirected to Stripe's hosted payment page. ✅
 - Stripe webhook (signature verified) → order marked paid + entitlements granted. Handled idempotently, so repeated webhook calls do nothing twice. Failed and expired payments are handled too. ✅
 - A "payment pending" return page, because the buyer may come back before the webhook arrives ✅
-- "My library" page for re-downloading purchased files
+- "My library" page for re-downloading purchased files, and "In your library" on the product page ✅
 - Order confirmation email with a link to the library
 - EU rule for digital content: a checkbox where the buyer agrees to immediate delivery and accepts losing the 14-day right of withdrawal
 - **Done when:** a Stripe test-mode purchase gives the buyer a download in their library, and the webhook is covered by an integration test

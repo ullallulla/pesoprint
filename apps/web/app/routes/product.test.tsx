@@ -1,4 +1,4 @@
-import type { CatalogProduct } from '@app/shared';
+import type { CatalogProduct, LibraryItem } from '@app/shared';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { createRoutesStub } from 'react-router';
 import { expect, test } from 'vite-plus/test';
@@ -25,7 +25,7 @@ const product: CatalogProduct = {
     updatedAt: '2026-11-10T08:00:00.000Z',
 };
 
-function render(model: CatalogProduct, { inCart = false } = {}) {
+function render(model: CatalogProduct, { inCart = false, owned = null as LibraryItem | null } = {}) {
     // oxlint-disable-next-line typescript/no-explicit-any -- the stub supplies the route's props
     const Stub = createRoutesStub([
         { id: 'page', path: '/models/:slug', Component: ProductPage as any, loader: () => null },
@@ -33,7 +33,9 @@ function render(model: CatalogProduct, { inCart = false } = {}) {
     return renderToStaticMarkup(
         <Stub
             initialEntries={['/models/hook']}
-            hydrationData={{ loaderData: { page: { product: model, url: 'https://shop.test/models/hook', inCart } } }}
+            hydrationData={{
+                loaderData: { page: { product: model, url: 'https://shop.test/models/hook', inCart, owned } },
+            }}
         />,
     );
 }
@@ -65,4 +67,26 @@ test('a paid file already in the cart links to the cart instead', () => {
     expect(html).toContain('In your cart');
     expect(html).toContain('href="/cart"');
     expect(html).not.toContain('value="add-to-cart"');
+});
+
+test('a bought model is in the library: its files download instead of "Add to cart"', () => {
+    const paid = { ...product, digitalPriceCents: 450, license: 'standard_digital' } as const;
+    const owned: LibraryItem = {
+        productId: paid.id,
+        slug: paid.slug,
+        title: paid.title,
+        cover: null,
+        listed: true,
+        orderId: '0190b6a0-0000-7000-8000-000000000901',
+        acquiredAt: '2026-11-16T12:00:00.000Z',
+        files: paid.files,
+    };
+    const html = render(paid, { inCart: true, owned });
+    expect(html).toContain('In your library');
+    expect(html).toContain('href="/library"');
+    expect(html).toMatch(
+        /<a href="\/models\/hook\/download\/0190b6a0-0000-7000-8000-000000000201" rel="nofollow"[^>]*aria-label="Download hook.stl"/,
+    );
+    expect(html).not.toContain('value="add-to-cart"');
+    expect(html).not.toContain('In your cart');
 });

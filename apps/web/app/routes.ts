@@ -11,6 +11,8 @@ export default [
     route('checkout', 'routes/checkout.tsx'),
     // Stripe sends buyers here after paying.
     route('orders/:id', 'routes/order.tsx'),
+    // What the signed-in visitor owns, to download again.
+    route('library', 'routes/library.tsx'),
     route('terms', 'routes/terms.tsx'),
     route('privacy', 'routes/privacy.tsx'),
     ...prefix('admin', [

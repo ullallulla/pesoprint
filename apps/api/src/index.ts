@@ -13,6 +13,7 @@ import { createCartService } from './services/cart.ts';
 import { createCatalogService } from './services/catalog.ts';
 import { createCategoriesService } from './services/categories.ts';
 import { createDownloadsService } from './services/downloads.ts';
+import { createLibraryService } from './services/library.ts';
 import { createOrdersService } from './services/orders.ts';
 import { createProductMediaService } from './services/product-media.ts';
 import { createProductsService } from './services/products.ts';
@@ -59,6 +60,7 @@ const app = createApp({
     catalog: createCatalogService(db, storage),
     cart,
     orders,
+    library: createLibraryService(db, storage),
     verifyStripeWebhook: payments?.verifyWebhook ?? null,
     downloads,
     internalApiSecret: env.INTERNAL_API_SECRET,
