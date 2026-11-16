@@ -8,6 +8,7 @@ import { loadEnv } from './env.ts';
 import { createStorageFromEnv } from './integrations/s3.ts';
 import { createClerkTokenVerifier } from './lib/auth.ts';
 import { createIpHasher } from './lib/client-ip.ts';
+import { createCartService } from './services/cart.ts';
 import { createCatalogService } from './services/catalog.ts';
 import { createCategoriesService } from './services/categories.ts';
 import { createDownloadsService } from './services/downloads.ts';
@@ -42,6 +43,7 @@ const app = createApp({
     products: createProductsService(db, storage),
     productMedia: createProductMediaService(db, storage),
     catalog: createCatalogService(db, storage),
+    cart: createCartService(db, storage),
     downloads,
     internalApiSecret: env.INTERNAL_API_SECRET,
     version: packageJson.version,

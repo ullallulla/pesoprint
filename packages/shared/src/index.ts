@@ -1,4 +1,5 @@
 export * from './auth.ts';
+export * from './cart.ts';
 export * from './catalog.ts';
 export * from './categories.ts';
 export * from './downloads.ts';
@@ -10,3 +11,4 @@ export * from './orders.ts';
 export * from './pricing.ts';
 export * from './products.ts';
 export * from './slug.ts';
+export * from './vat.ts';

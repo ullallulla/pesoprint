@@ -46,6 +46,14 @@ export interface AnalyticsEvents {
         file_format: string;
         file_id: string;
     };
+    /** A visitor put something in their cart. */
+    added_to_cart: {
+        model: string;
+        model_title: string;
+        item_type: 'digital';
+        /** The price shown when it was added, in euro cents incl. VAT. */
+        price_cents: number;
+    };
 }
 
 /**

@@ -9,9 +9,11 @@ import {
     Scripts,
     ScrollRestoration,
     useNavigation,
+    useRouteLoaderData,
 } from 'react-router';
 
 import { Analytics } from '~/components/analytics';
+import { CartLink } from '~/components/cart-link';
 import { HeaderAuth } from '~/components/header-auth';
 import { SiteFooter } from '~/components/site-footer';
 import { SiteHeader } from '~/components/site-header';
@@ -19,9 +21,11 @@ import { StartingUp } from '~/components/starting-up';
 import { Button } from '~/components/ui/button';
 import { getEnv } from '~/env.server';
 import { isApiUnavailable } from '~/lib/api-unavailable';
+import { readCart } from '~/lib/cart.server';
 import { readConsent } from '~/lib/consent';
 
 import type { Route } from './+types/root';
+import type { loader as cartLoader } from './routes/cart';
 // Served from this site rather than Google Fonts, so no visitor data goes to Google.
 import '@fontsource-variable/inter/opsz.css';
 import '@fontsource-variable/inter/opsz-italic.css';
@@ -30,11 +34,12 @@ import './app.css';
 // Clerk reads the session cookie on every request; rootAuthLoader passes the auth state to the browser.
 export const middleware: Route.MiddlewareFunction[] = [clerkMiddleware()];
 export const loader = (args: Route.LoaderArgs) =>
-    rootAuthLoader(args, ({ request }) => {
+    rootAuthLoader(args, async ({ request }) => {
         const { POSTHOG_KEY, POSTHOG_HOST } = getEnv();
         return {
             analytics: POSTHOG_KEY ? { key: POSTHOG_KEY, host: POSTHOG_HOST } : null,
             consent: readConsent(request.headers.get('cookie')),
+            cartCount: (await readCart(request)).length,
         };
     });
 
@@ -57,11 +62,17 @@ export function Layout({ children }: { children: React.ReactNode }) {
 }
 
 export default function App({ loaderData }: Route.ComponentProps) {
+    // On the cart page, count what can actually be bought: it has just dropped what's no longer for sale,
+    // and this loader read the cookie before that.
+    const cart = useRouteLoaderData<typeof cartLoader>('routes/cart');
+    const cartCount = cart ? (cart.quote?.lines.length ?? 0) : loaderData.cartCount;
+
     return (
         <ClerkProvider loaderData={loaderData}>
             <Analytics config={loaderData.analytics} initialConsent={loaderData.consent}>
                 <NavigationProgress />
                 <SiteHeader>
+                    <CartLink count={cartCount} />
                     <HeaderAuth />
                 </SiteHeader>
                 <div className='flex flex-1 flex-col'>

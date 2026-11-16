@@ -71,20 +71,27 @@ type CardRow = {
     categoryName: string | null;
 };
 
-export function createCatalogService(db: Database, storage: Storage | null): CatalogService {
-    const image = (row: ProductImage): CatalogImage | null =>
-        storage ? { url: storage.publicUrl(row.storageKey), alt: row.alt, width: row.width, height: row.height } : null;
+/** A stored image as the public sees it. `null` while file storage isn't configured. */
+export function catalogImage(storage: Storage | null, row: ProductImage): CatalogImage | null {
+    return storage
+        ? { url: storage.publicUrl(row.storageKey), alt: row.alt, width: row.width, height: row.height }
+        : null;
+}
 
-    /** Cover image (lowest position) for each product, in one query. */
-    async function coversFor(productIds: string[]): Promise<Map<string, ProductImage>> {
-        if (productIds.length === 0) return new Map();
-        const rows = await db
-            .selectDistinctOn([productImages.productId])
-            .from(productImages)
-            .where(inArray(productImages.productId, productIds))
-            .orderBy(productImages.productId, asc(productImages.position), asc(productImages.id));
-        return new Map(rows.map((row) => [row.productId, row]));
-    }
+/** Cover image (lowest position) for each product, in one query. */
+export async function coverImages(db: Database, productIds: string[]): Promise<Map<string, ProductImage>> {
+    if (productIds.length === 0) return new Map();
+    const rows = await db
+        .selectDistinctOn([productImages.productId])
+        .from(productImages)
+        .where(inArray(productImages.productId, productIds))
+        .orderBy(productImages.productId, asc(productImages.position), asc(productImages.id));
+    return new Map(rows.map((row) => [row.productId, row]));
+}
+
+export function createCatalogService(db: Database, storage: Storage | null): CatalogService {
+    const image = (row: ProductImage) => catalogImage(storage, row);
+    const coversFor = (productIds: string[]) => coverImages(db, productIds);
 
     async function toCards(rows: CardRow[]): Promise<CatalogProductCard[]> {
         const covers = await coversFor(rows.map((row) => row.id));
@@ -245,6 +252,7 @@ export function createCatalogService(db: Database, storage: Storage | null): Cat
             const { sizeXMm: x, sizeYMm: y, sizeZMm: z } = product;
 
             return {
+                id: product.id,
                 slug: product.slug,
                 title: product.title,
                 description: product.description,

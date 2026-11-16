@@ -3,6 +3,7 @@ import type { AppOptions } from '../src/app.ts';
 import { createApp } from '../src/app.ts';
 import type { AuthContext } from '../src/lib/auth.ts';
 import type { Bucket, Storage } from '../src/lib/storage.ts';
+import type { CartService } from '../src/services/cart.ts';
 import type { CatalogService } from '../src/services/catalog.ts';
 import type { CategoriesService } from '../src/services/categories.ts';
 import type { DownloadsService } from '../src/services/downloads.ts';
@@ -64,6 +65,7 @@ export function buildApp(overrides: Partial<AppOptions> = {}) {
         products: unusedService<ProductsService>('products'),
         productMedia: unusedService<ProductMediaService>('productMedia'),
         catalog: unusedService<CatalogService>('catalog'),
+        cart: unusedService<CartService>('cart'),
         downloads: unusedService<DownloadsService>('downloads'),
         internalApiSecret: undefined,
         version: '1.2.3',

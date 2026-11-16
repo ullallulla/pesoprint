@@ -68,6 +68,8 @@ export type CatalogProductCard = z.infer<typeof catalogProductCardSchema>;
 
 export const catalogProductSchema = catalogProductCardSchema
     .extend({
+        /** What the cart stores: unlike the slug, it never changes. */
+        id: z.uuid(),
         /** Markdown. Render without raw HTML. */
         description: z.string(),
         category: categoryRefSchema.extend({ parent: categoryRefSchema.nullable() }).nullable(),

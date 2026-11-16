@@ -164,7 +164,7 @@ favourites       user_id, product_id, created_at
     - a user with an entitlement to the model (they bought it)
     - a user with a delivered print order for the model
     - for free models, a signed-in user who downloaded it while signed in
-- **The cart** is stored in the browser (localStorage) for the MVP. The server re-validates everything when it creates the order and the Mollie payment.
+- **The cart** is stored in the browser, in a first-party cookie (`pesoprint_cart`, 30 days, at most 25 items) that holds only product ids, never prices. A cookie rather than localStorage, so the server sees it: the cart page and the header's count are in the first render, and adding to the cart works before the page's JavaScript has loaded. `POST /api/cart/quote` prices it on every view and drops what's no longer for sale or already owned. The server prices everything again when it creates the order and the Mollie payment.
 - **Checkout flow (Mollie):**
     1. Our checkout page collects the shipping address (only for print items) and the shipping method.
     2. The server re-prices everything, calculates VAT, and creates an order with status `pending`.
@@ -221,7 +221,7 @@ Each milestone ends with: CI green, deployed to staging, and a short demo you co
 
 ### M3 – Paid digital files
 
-- Cart (digital items)
+- Cart (digital items) ✅
 - Our own checkout page: order summary and VAT. Then a Mollie payment is created on the server and the buyer is redirected to Mollie's hosted payment page.
 - Mollie webhook → fetch the payment from Mollie → order marked paid + entitlements granted. Handled idempotently, so repeated webhook calls do nothing twice. Failed, expired and cancelled payments are handled too.
 - A "payment pending" return page, because the buyer may come back before the webhook arrives

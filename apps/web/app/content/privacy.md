@@ -35,10 +35,11 @@ The legal basis is your consent (GDPR Article 6(1)(a)). You can withdraw it at a
 ## Cookies {#cookies}
 
 - **`pesoprint_consent`**, set by us: remembers your answer to the cookie banner. Kept for 6 months.
+- **`pesoprint_cart`**, set by us when you add something to your cart: which models are in it, nothing else. Kept for 30 days, or until the cart is empty.
 - **`__session`, `__client_uat`** and similar names starting with `__client` or `__clerk`, set by Clerk: keep you signed in and protect the sign-in. Clerk sets how long they last.
 - **`ph_…_posthog`**, set by PostHog only if you allow statistics: the random ID used to count visits. PostHog also keeps a copy in your browser's local storage. Kept for 1 year.
 
-The first two are strictly necessary for the site to work, so they don't need consent. PostHog's cookie is only set after you click "Allow".
+The first three are strictly necessary for the site to work, so they don't need consent. PostHog's cookie is only set after you click "Allow".
 
 ## Who processes the data for us
 

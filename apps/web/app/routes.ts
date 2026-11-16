@@ -7,6 +7,7 @@ export default [
     // Download buttons link here; it redirects to a short-lived file link.
     route('models/:slug/download/:fileId', 'routes/download.tsx'),
     route('categories/:slug', 'routes/category.tsx'),
+    route('cart', 'routes/cart.tsx'),
     route('terms', 'routes/terms.tsx'),
     route('privacy', 'routes/privacy.tsx'),
     ...prefix('admin', [
