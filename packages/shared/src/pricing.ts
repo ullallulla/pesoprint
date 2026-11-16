@@ -4,7 +4,8 @@ import { z } from 'zod';
  * Catalogue prices are integer euro cents, including VAT.
  *
  * `digitalPriceCents`: `null` = no file offered, `0` = free download, `> 0` = paid file.
- * `printBasePriceCents`: `null` = not offered as a print, otherwise > 0.
+ * `printBasePriceCents`: `null` = not offered as a print, otherwise > 0: the lowest price among the model's
+ * active materials (the API keeps it up to date), shown as "Print from €X".
  *
  * Always use the helpers below instead of testing the prices for truthiness:
  * `!product.digitalPriceCents` is true both for a free download and for "no file at all".

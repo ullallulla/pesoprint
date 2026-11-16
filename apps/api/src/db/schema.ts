@@ -5,6 +5,7 @@ import {
     ORDER_ITEM_TYPES,
     ORDER_STATUSES,
     OWN_LICENSES,
+    PARCEL_SIZES,
     PRODUCT_FILE_FORMATS,
     PRODUCT_FILE_KINDS,
     PRODUCT_STATUSES,
@@ -91,6 +92,7 @@ export type NewCategory = typeof categories.$inferInsert;
 
 export const productStatus = pgEnum('product_status', PRODUCT_STATUSES);
 export const license = pgEnum('license', LICENSE_IDS);
+export const parcelSize = pgEnum('parcel_size', PARCEL_SIZES);
 
 const tsvector = customType<{ data: string }>({
     dataType: () => 'tsvector',
@@ -122,15 +124,21 @@ export const products = pgTable(
          * Don't test it for truthiness: `0` and `null` mean different things.
          */
         digitalPriceCents: integer('digital_price_cents'),
-        /** Price of a physical print before the material surcharge. `null` = not offered as a print. */
+        /**
+         * The lowest price of a print among the model's active materials (`product_materials`), shown as
+         * "Print from €X" and used to sort and filter. `null` = can't be ordered as a print. The products
+         * service keeps it up to date; never set it directly.
+         */
         printBasePriceCents: integer('print_base_price_cents'),
+        /** The parcel a print ships in. Required to publish a model that can be printed. */
+        parcelSize: parcelSize('parcel_size'),
         /** Required to publish when a file is offered. Paid files must use one of the shop's own licences. */
         license: license('license'),
         /** Printed size in millimetres. */
         sizeXMm: integer('size_x_mm'),
         sizeYMm: integer('size_y_mm'),
         sizeZMm: integer('size_z_mm'),
-        /** Filament weight in grams, for shipping weight and a later pricing formula. */
+        /** Filament weight in grams. */
         printWeightG: integer('print_weight_g'),
         /** `null` = not featured. Home page shows featured products newest-first by this. */
         featuredAt: timestamp('featured_at', { withTimezone: true }),
@@ -165,6 +173,7 @@ export const products = pgTable(
                 AND ${t.categoryId} IS NOT NULL
                 AND (${t.digitalPriceCents} IS NOT NULL OR ${t.printBasePriceCents} IS NOT NULL)
                 AND (${t.digitalPriceCents} IS NULL OR ${t.license} IS NOT NULL)
+                AND (${t.printBasePriceCents} IS NULL OR ${t.parcelSize} IS NOT NULL)
             )`,
         ),
         index('products_status_published_at_idx').on(t.status, t.publishedAt.desc()),
@@ -432,3 +441,25 @@ export const colours = pgTable(
 
 export type Colour = typeof colours.$inferSelect;
 export type NewColour = typeof colours.$inferInsert;
+
+/** The materials a model can be printed in, and the price of a print in each (euro cents, VAT included). */
+export const productMaterials = pgTable(
+    'product_materials',
+    {
+        productId: uuid('product_id')
+            .notNull()
+            .references(() => products.id, { onDelete: 'cascade' }),
+        /** A material in use can't be deleted, only made inactive. */
+        materialId: uuid('material_id')
+            .notNull()
+            .references(() => materials.id, { onDelete: 'restrict' }),
+        priceCents: integer('price_cents').notNull(),
+    },
+    (t) => [
+        primaryKey({ columns: [t.productId, t.materialId] }),
+        index('product_materials_material_id_idx').on(t.materialId),
+        check('product_materials_price_positive', sql`${t.priceCents} > 0`),
+    ],
+);
+
+export type ProductMaterial = typeof productMaterials.$inferSelect;

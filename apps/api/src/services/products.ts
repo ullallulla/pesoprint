@@ -6,13 +6,23 @@ import {
     type AdminProductListQuery,
     type AdminProductSummary,
     type CreateProduct,
+    type PrintOption,
     type UpdateProduct,
 } from '@app/shared';
-import { and, asc, count, desc, eq, ilike, or, type SQL } from 'drizzle-orm';
+import { and, asc, count, desc, eq, ilike, inArray, or, sql, type SQL } from 'drizzle-orm';
 
 import type { Database } from '../db/client.ts';
 import { isPgError, PgErrorCode } from '../db/errors.ts';
-import { entitlements, orderItems, productFiles, productImages, products, type Product } from '../db/schema.ts';
+import {
+    entitlements,
+    materials,
+    orderItems,
+    productFiles,
+    productImages,
+    productMaterials,
+    products,
+    type Product,
+} from '../db/schema.ts';
 import { conflict, invalidField, notFound } from '../lib/errors.ts';
 import { definedFields } from '../lib/patch.ts';
 import { deleteStoredFiles, type Storage } from '../lib/storage.ts';
@@ -53,6 +63,7 @@ function toSummary(row: Product): AdminProductSummary {
         categoryId: row.categoryId,
         digitalPriceCents: row.digitalPriceCents,
         printBasePriceCents: row.printBasePriceCents,
+        parcelSize: row.parcelSize,
         license: row.license,
         sizeXMm: row.sizeXMm,
         sizeYMm: row.sizeYMm,
@@ -76,9 +87,16 @@ async function toDetail(tx: Executor, row: Product, storage: Storage | null): Pr
         .from(productFiles)
         .where(eq(productFiles.productId, row.id))
         .orderBy(asc(productFiles.position), asc(productFiles.id));
+    const printOptions = await tx
+        .select({ materialId: productMaterials.materialId, priceCents: productMaterials.priceCents })
+        .from(productMaterials)
+        .innerJoin(materials, eq(materials.id, productMaterials.materialId))
+        .where(eq(productMaterials.productId, row.id))
+        .orderBy(asc(materials.position), asc(materials.name));
     return {
         ...toSummary(row),
         description: row.description,
+        printOptions,
         images: images.map((image) => toAdminImage(image, storage)),
         files: files.map((file) => toAdminFile(file, storage)),
     };
@@ -110,6 +128,59 @@ function assertLicenseAllowed(product: Pick<Product, 'digitalPriceCents' | 'lice
     if (issue) {
         throw invalidField(issue.path, issue.message);
     }
+}
+
+/**
+ * The "Print from €X" price for these print options: the lowest among the active materials, `null` when
+ * none is active. Refuses a material that doesn't exist.
+ */
+async function printPriceFor(tx: Executor, options: PrintOption[]): Promise<number | null> {
+    if (options.length === 0) return null;
+    const ids = options.map((option) => option.materialId);
+    // FOR SHARE: the materials can't be deleted or switched off until this transaction ends.
+    const rows = await tx
+        .select({ id: materials.id, active: materials.active })
+        .from(materials)
+        .where(inArray(materials.id, ids))
+        .for('share');
+    if (rows.length !== new Set(ids).size) {
+        throw invalidField('printOptions', 'One of the materials no longer exists. Reload the page and try again.');
+    }
+    const active = new Set(rows.filter((row) => row.active).map((row) => row.id));
+    const prices = options.filter((option) => active.has(option.materialId)).map((option) => option.priceCents);
+    return prices.length > 0 ? Math.min(...prices) : null;
+}
+
+/** Makes the product's print options exactly these. */
+async function replacePrintOptions(tx: Pick<Database, 'delete' | 'insert'>, productId: string, options: PrintOption[]) {
+    await tx.delete(productMaterials).where(eq(productMaterials.productId, productId));
+    if (options.length > 0) {
+        await tx.insert(productMaterials).values(options.map((option) => ({ ...option, productId })));
+    }
+}
+
+/**
+ * Works out the "Print from €X" price again for every model that can be printed in the material, after
+ * the material was switched on or off. A published model left with nothing to sell breaks the database's
+ * publishing rule, so the change fails (a check violation) and nothing is saved.
+ */
+export async function refreshPrintPrices(tx: Pick<Database, 'update'>, materialId: string): Promise<void> {
+    await tx
+        .update(products)
+        .set({
+            printBasePriceCents: sql`(
+                SELECT min(${productMaterials.priceCents})
+                FROM ${productMaterials}
+                JOIN ${materials} ON ${materials.id} = ${productMaterials.materialId}
+                WHERE ${productMaterials.productId} = ${products.id} AND ${materials.active}
+            )`,
+        })
+        .where(
+            inArray(
+                products.id,
+                sql`(SELECT ${productMaterials.productId} FROM ${productMaterials} WHERE ${productMaterials.materialId} = ${materialId})`,
+            ),
+        );
 }
 
 /** Turns constraint errors from an insert or update into API errors; rethrows anything else. */
@@ -167,17 +238,19 @@ export function createProductsService(db: Database, storage: Storage | null): Pr
             return detail(db, row);
         },
 
-        async create(creatorId, input) {
+        async create(creatorId, { printOptions = [], ...input }) {
             assertLicenseAllowed({
                 digitalPriceCents: input.digitalPriceCents ?? null,
                 license: input.license ?? null,
             });
             return db.transaction(async (tx) => {
+                const printBasePriceCents = await printPriceFor(tx, printOptions);
                 try {
                     const [row] = await tx
                         .insert(products)
-                        .values({ ...input, creatorId })
+                        .values({ ...input, printBasePriceCents, creatorId })
                         .returning();
+                    await replacePrintOptions(tx, row!.id, printOptions);
                     return await detail(tx, row!);
                 } catch (error) {
                     rethrowWriteError(error, input.slug);
@@ -188,7 +261,11 @@ export function createProductsService(db: Database, storage: Storage | null): Pr
         async update(id, input) {
             return db.transaction(async (tx) => {
                 const current = await lockProduct(tx, id);
-                const changes = definedFields(input);
+                const { printOptions, ...fields } = definedFields(input);
+                const changes: Partial<Product> = fields;
+                if (printOptions !== undefined) {
+                    changes.printBasePriceCents = await printPriceFor(tx, printOptions);
+                }
 
                 // Links, search results and shares point at the slug, so it's fixed once the product has been public.
                 if (changes.slug !== undefined && changes.slug !== current.slug && current.publishedAt !== null) {
@@ -206,6 +283,9 @@ export function createProductsService(db: Database, storage: Storage | null): Pr
                     }
                 }
 
+                if (printOptions !== undefined) {
+                    await replacePrintOptions(tx, id, printOptions);
+                }
                 if (Object.keys(changes).length === 0) {
                     return detail(tx, current);
                 }

@@ -7,6 +7,7 @@ import {
     type ApiErrorIssue,
     type CreateColour,
     type CreateMaterial,
+    type PrintOption,
     type UpdateCategory,
     type UpdateProduct,
 } from '@app/shared';
@@ -84,6 +85,11 @@ const optionalInt = (form: FormData, name: string): number | null => {
 
 type Parsed<T> = { ok: true; data: T } | { ok: false; issues: ApiErrorIssue[] };
 
+/** The product form's checkbox for printing in a material is `print:<materialId>`. */
+export const PRINT_MATERIAL_PREFIX = 'print:';
+/** The price input (and its error path) for printing in a material. */
+export const printPriceField = (materialId: string) => `printPrice:${materialId}`;
+
 /** The product form → a PATCH body with every field, so the saved product matches the form exactly. */
 export function parseProductForm(form: FormData): Parsed<UpdateProduct> {
     const issues: ApiErrorIssue[] = [];
@@ -111,12 +117,15 @@ export function parseProductForm(form: FormData): Parsed<UpdateProduct> {
         }
     }
 
-    let printBasePriceCents: number | null = null;
-    if (form.get('offerPrint') === 'on') {
-        printBasePriceCents = price('printPrice', 'printBasePriceCents', 'Enter the starting price of a print.');
-        if (printBasePriceCents === 0) {
-            issues.push({ path: 'printBasePriceCents', message: 'A print costs more than €0.' });
-        }
+    // A ticked `print:<materialId>` box offers prints in that material, at the price in `printPrice:<materialId>`.
+    const printOptions: PrintOption[] = [];
+    for (const [key, value] of form.entries()) {
+        if (!key.startsWith(PRINT_MATERIAL_PREFIX) || value !== 'on') continue;
+        const materialId = key.slice(PRINT_MATERIAL_PREFIX.length);
+        const field = printPriceField(materialId);
+        const cents = price(field, field, 'Enter the price of a print in this material.');
+        if (cents === 0) issues.push({ path: field, message: 'A print costs more than €0.' });
+        if (cents) printOptions.push({ materialId, priceCents: cents });
     }
 
     const input = {
@@ -126,7 +135,8 @@ export function parseProductForm(form: FormData): Parsed<UpdateProduct> {
         description: formValue(form, 'description').replace(/\r\n/g, '\n'),
         categoryId: text(form, 'categoryId') || null,
         digitalPriceCents,
-        printBasePriceCents,
+        printOptions,
+        parcelSize: text(form, 'parcelSize') || null,
         license: text(form, 'license') || null,
         sizeXMm: optionalInt(form, 'sizeXMm'),
         sizeYMm: optionalInt(form, 'sizeYMm'),

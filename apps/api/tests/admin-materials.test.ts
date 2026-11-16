@@ -11,7 +11,7 @@ import {
 import { afterAll, beforeAll, beforeEach, describe, expect, test } from 'vite-plus/test';
 
 import { createDatabase, runMigrations } from '../src/db/client.ts';
-import { colours, materials } from '../src/db/schema.ts';
+import { colours, materials, productMaterials } from '../src/db/schema.ts';
 import { createMaterialsService } from '../src/services/materials.ts';
 import { bearer, buildApp, tokens } from './helpers.ts';
 
@@ -84,7 +84,11 @@ describe.skipIf(!url)('admin material routes (integration)', () => {
         return apiErrorSchema.parse(await res.json()).error;
     }
 
-    const reset = () => db.delete(materials);
+    const reset = async () => {
+        // Models' print options keep materials from being deleted.
+        await db.delete(productMaterials);
+        await db.delete(materials);
+    };
 
     beforeAll(async () => {
         await runMigrations(db, fileURLToPath(new URL('../drizzle', import.meta.url)));

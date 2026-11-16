@@ -236,7 +236,7 @@ Each milestone ends with: CI green, deployed to staging, and a short demo you co
 
 ### M4 – Physical print orders
 
-- Admin: manage materials and colours, mark colours out of stock. Per model: which materials it can be printed in, its price in each, and its parcel size (S/M/L)
+- Admin: manage materials and colours, mark colours out of stock. Per model: which materials it can be printed in, its price in each, and its parcel size (S/M/L) ✅
 - Admin: manage shipping rates (a price per zone and parcel size, based on the carrier's real prices)
 - Product page: pick material + colour; the price is that material's price, from the server
 - Cart with both digital and print items. Our checkout page collects the shipping address and prices shipping from the `shipping_rates` table (the order's largest parcel size and the address's zone). The Stripe Checkout Session includes the order lines and the shipping cost.

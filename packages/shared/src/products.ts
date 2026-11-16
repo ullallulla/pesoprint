@@ -5,11 +5,12 @@ import { isOwnLicense, licenseSchema, type License } from './licenses.ts';
 import {
     digitalPriceCentsSchema,
     isPaidFile,
+    MAX_PRICE_CENTS,
     offersFile,
     offersPrint,
-    printBasePriceCentsSchema,
     type ProductOffers,
 } from './pricing.ts';
+import { parcelSizeSchema, type ParcelSize } from './shipping.ts';
 import { slugSchema } from './slug.ts';
 
 // The database enums are built from these tuples, so changing one needs a migration.
@@ -29,6 +30,23 @@ export type ProductFileFormat = z.infer<typeof productFileFormatSchema>;
 
 const millimetresSchema = z.int().min(1).max(10_000).nullable();
 
+/** A material the model can be printed in, and the price of a print in it (euro cents, VAT included). */
+export const printOptionSchema = z
+    .object({
+        materialId: z.uuid(),
+        priceCents: z.int().min(1).max(MAX_PRICE_CENTS),
+    })
+    .meta({ id: 'PrintOption' });
+export type PrintOption = z.infer<typeof printOptionSchema>;
+
+/** At most one price per material. Empty: not offered as a print. */
+export const printOptionsSchema = z
+    .array(printOptionSchema)
+    .max(50)
+    .refine((options) => new Set(options.map((option) => option.materialId)).size === options.length, {
+        message: 'Each material can only be listed once.',
+    });
+
 const productInputFields = z.object({
     slug: slugSchema,
     title: z.string().trim().min(1).max(200),
@@ -36,7 +54,10 @@ const productInputFields = z.object({
     description: z.string().max(20_000),
     categoryId: z.uuid().nullable(),
     digitalPriceCents: digitalPriceCentsSchema,
-    printBasePriceCents: printBasePriceCentsSchema,
+    /** Replaces the model's print options. The print's "from" price is worked out from them. */
+    printOptions: printOptionsSchema,
+    /** Required to publish a model that can be printed. */
+    parcelSize: parcelSizeSchema.nullable(),
     license: licenseSchema.nullable(),
     sizeXMm: millimetresSchema,
     sizeYMm: millimetresSchema,
@@ -79,7 +100,9 @@ export const adminProductSummarySchema = z
         creatorId: z.string(),
         categoryId: z.uuid().nullable(),
         digitalPriceCents: z.int().nullable(),
+        /** The lowest price among the model's active materials. `null`: it can't be ordered as a print. */
         printBasePriceCents: z.int().nullable(),
+        parcelSize: parcelSizeSchema.nullable(),
         license: licenseSchema.nullable(),
         sizeXMm: z.int().nullable(),
         sizeYMm: z.int().nullable(),
@@ -124,6 +147,8 @@ export type AdminProductFile = z.infer<typeof adminProductFileSchema>;
 export const adminProductSchema = adminProductSummarySchema
     .extend({
         description: z.string(),
+        /** Every material the model can be printed in, active or not, in the materials' order. */
+        printOptions: z.array(printOptionSchema),
         /** Ordered by position; the first is the cover. */
         images: z.array(adminProductImageSchema),
         files: z.array(adminProductFileSchema),
@@ -146,6 +171,7 @@ export type AdminProductList = z.infer<typeof adminProductListSchema>;
 
 export interface PublishCheckInput extends ProductOffers {
     categoryId: string | null;
+    parcelSize: ParcelSize | null;
     license: License | null;
     imageCount: number;
     downloadFileCount: number;
@@ -170,6 +196,9 @@ export function publishProblems(product: PublishCheckInput): ApiErrorIssue[] {
     }
     if (!offersFile(product) && !offersPrint(product)) {
         issues.push({ path: 'digitalPriceCents', message: 'Offer the file, a print, or both.' });
+    }
+    if (offersPrint(product) && product.parcelSize === null) {
+        issues.push({ path: 'parcelSize', message: 'Choose a parcel size for prints.' });
     }
     if (offersFile(product) && product.license === null) {
         issues.push({ path: 'license', message: 'Choose a licence for the file.' });

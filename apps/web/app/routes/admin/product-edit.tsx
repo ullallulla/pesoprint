@@ -1,10 +1,13 @@
 import {
     adminCategoryListSchema,
+    adminMaterialListSchema,
     adminProductFileSchema,
     adminProductImageSchema,
     adminProductSchema,
+    PARCEL_SIZES,
     publishProblems,
     type AdminCategory,
+    type AdminMaterial,
     type AdminProduct,
     type AdminProductFile,
     type AdminProductImage,
@@ -29,11 +32,14 @@ import {
     fileOfferOf,
     formValue,
     parseProductForm,
+    PRINT_MATERIAL_PREFIX,
+    printPriceField,
     reorderImages,
     type ImageMove,
 } from '~/lib/admin-forms';
 import { adminApi, invalid, noContent, runAction, type ActionResult } from '~/lib/admin.server';
 import { formatBytes } from '~/lib/format';
+import { PARCEL_SIZE_LABELS } from '~/lib/parcel-sizes';
 
 import type { Route } from './+types/product-edit';
 
@@ -47,11 +53,12 @@ export async function loader(args: Route.LoaderArgs) {
     if (!z.uuid().safeParse(args.params.id).success) {
         throw data('Product not found', { status: 404 });
     }
-    const [product, { categories }] = await Promise.all([
+    const [product, { categories }, { materials }] = await Promise.all([
         adminApi(args, `/api/admin/products/${encodeURIComponent(args.params.id)}`, adminProductSchema),
         adminApi(args, '/api/admin/categories', adminCategoryListSchema),
+        adminApi(args, '/api/admin/materials', adminMaterialListSchema),
     ]);
-    return { product, categories };
+    return { product, categories, materials };
 }
 
 export async function action(args: Route.ActionArgs) {
@@ -135,7 +142,7 @@ export async function action(args: Route.ActionArgs) {
 }
 
 export default function EditProduct({ loaderData }: Route.ComponentProps) {
-    const { product, categories } = loaderData;
+    const { product, categories, materials } = loaderData;
 
     return (
         <main className='flex flex-col gap-6'>
@@ -162,7 +169,7 @@ export default function EditProduct({ loaderData }: Route.ComponentProps) {
 
             <div className='grid items-start gap-8 lg:grid-cols-[1fr_20rem]'>
                 <div className='flex min-w-0 flex-col gap-10'>
-                    <DetailsForm product={product} categories={categories} />
+                    <DetailsForm product={product} categories={categories} materials={materials} />
                     <Images product={product} />
                     <Files product={product} />
                 </div>
@@ -181,7 +188,8 @@ const DETAIL_FIELDS = [
     'categoryId',
     'description',
     'digitalPriceCents',
-    'printBasePriceCents',
+    'printOptions',
+    'parcelSize',
     'license',
     'sizeXMm',
     'sizeYMm',
@@ -200,7 +208,15 @@ function categoryOptions(categories: AdminCategory[]) {
         ]);
 }
 
-function DetailsForm({ product, categories }: { product: AdminProduct; categories: AdminCategory[] }) {
+function DetailsForm({
+    product,
+    categories,
+    materials,
+}: {
+    product: AdminProduct;
+    categories: AdminCategory[];
+    materials: AdminMaterial[];
+}) {
     const fetcher = useFetcher<ActionResult>({ key: `product-details-${product.id}` });
     const result = fetcher.data;
     const errors = result && !result.ok ? fieldErrors(result.issues) : {};
@@ -319,33 +335,7 @@ function DetailsForm({ product, categories }: { product: AdminProduct; categorie
                         </Field>
                     </fieldset>
 
-                    <fieldset className='grid content-start gap-3 rounded-lg border p-4'>
-                        <legend className='px-1 text-sm font-medium'>Print</legend>
-                        <label className='flex items-center gap-2 text-sm'>
-                            <input
-                                type='checkbox'
-                                name='offerPrint'
-                                defaultChecked={product.printBasePriceCents !== null}
-                                className='size-4 accent-primary'
-                            />
-                            Offer printed copies
-                        </label>
-                        <Field
-                            label='Starting price (€, incl. VAT)'
-                            name='printPrice'
-                            error={errors.printBasePriceCents}
-                            hint='The price in the default material and colour.'
-                        >
-                            {(control) => (
-                                <Input
-                                    {...control}
-                                    inputMode='decimal'
-                                    defaultValue={centsToEuros(product.printBasePriceCents)}
-                                    placeholder='12.90'
-                                />
-                            )}
-                        </Field>
-                    </fieldset>
+                    <PrintFieldset product={product} materials={materials} errors={errors} />
                 </div>
 
                 <fieldset className='grid gap-4 rounded-lg border p-4 sm:grid-cols-4'>
@@ -370,10 +360,130 @@ function DetailsForm({ product, categories }: { product: AdminProduct; categorie
                     <Button type='submit' name='intent' value='save' disabled={fetcher.state !== 'idle'}>
                         {fetcher.state === 'idle' ? 'Save details' : 'Saving…'}
                     </Button>
-                    <FormStatus result={result} fields={DETAIL_FIELDS.filter((path) => errors[path])} />
+                    <FormStatus
+                        result={result}
+                        fields={Object.keys(errors).filter(
+                            (path) => DETAIL_FIELDS.includes(path) || path.startsWith('printPrice:'),
+                        )}
+                    />
                 </div>
             </fetcher.Form>
         </section>
+    );
+}
+
+/** Which materials the model can be printed in, its price in each, and the parcel it ships in. */
+function PrintFieldset({
+    product,
+    materials,
+    errors,
+}: {
+    product: AdminProduct;
+    materials: AdminMaterial[];
+    errors: Record<string, string>;
+}) {
+    const prices = new Map(product.printOptions.map((option) => [option.materialId, option.priceCents]));
+
+    return (
+        <fieldset className='grid content-start gap-3 rounded-lg border p-4'>
+            <legend className='px-1 text-sm font-medium'>Print</legend>
+            {materials.length === 0 ? (
+                <p className='text-sm text-muted-foreground'>
+                    No materials yet.{' '}
+                    <Link to='/admin/materials' className='text-primary underline-offset-4 hover:underline'>
+                        Add them under Materials
+                    </Link>{' '}
+                    to offer prints.
+                </p>
+            ) : (
+                <>
+                    <p className='text-sm text-muted-foreground'>
+                        Tick the materials it can be printed in, and set the price of a print in each (€, incl. VAT).
+                        Leave all unticked to not offer prints.
+                    </p>
+                    <ul className='grid gap-2'>
+                        {materials.map((material) => (
+                            <PrintMaterialRow
+                                key={material.id}
+                                material={material}
+                                priceCents={prices.get(material.id) ?? null}
+                                error={errors[printPriceField(material.id)]}
+                            />
+                        ))}
+                    </ul>
+                    {errors.printOptions && <p className='text-sm text-destructive'>{errors.printOptions}</p>}
+                </>
+            )}
+            <Field
+                label='Parcel size'
+                name='parcelSize'
+                error={errors.parcelSize}
+                hint={
+                    product.parcelSize
+                        ? PARCEL_SIZE_LABELS[product.parcelSize].hint
+                        : 'Needed to publish a model that can be printed. Shipping is priced by it.'
+                }
+            >
+                {(control) => (
+                    <Select {...control} defaultValue={product.parcelSize ?? ''}>
+                        <option value=''>Not set</option>
+                        {PARCEL_SIZES.map((size) => (
+                            <option key={size} value={size}>
+                                {PARCEL_SIZE_LABELS[size].name} ({size})
+                            </option>
+                        ))}
+                    </Select>
+                )}
+            </Field>
+        </fieldset>
+    );
+}
+
+function PrintMaterialRow({
+    material,
+    priceCents,
+    error,
+}: {
+    material: AdminMaterial;
+    priceCents: number | null;
+    error: string | undefined;
+}) {
+    const priceId = `print-price-${material.id}`;
+    const errorId = `${priceId}-error`;
+
+    return (
+        <li className='grid gap-1'>
+            <div className='flex items-center gap-3'>
+                <label className='flex min-w-0 flex-1 items-center gap-2 text-sm'>
+                    <input
+                        type='checkbox'
+                        name={`${PRINT_MATERIAL_PREFIX}${material.id}`}
+                        defaultChecked={priceCents !== null}
+                        className='size-4 accent-primary'
+                    />
+                    <span className='truncate font-medium'>{material.name}</span>
+                    {!material.active && <Badge variant='secondary'>Inactive</Badge>}
+                </label>
+                <label htmlFor={priceId} className='sr-only'>
+                    Price of a print in {material.name} (€)
+                </label>
+                <Input
+                    id={priceId}
+                    name={printPriceField(material.id)}
+                    inputMode='decimal'
+                    defaultValue={centsToEuros(priceCents)}
+                    placeholder='12.90'
+                    aria-invalid={error ? true : undefined}
+                    aria-describedby={error ? errorId : undefined}
+                    className='w-24'
+                />
+            </div>
+            {error && (
+                <p id={errorId} className='text-sm text-destructive'>
+                    {error}
+                </p>
+            )}
+        </li>
     );
 }
 

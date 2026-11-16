@@ -14,11 +14,16 @@ import { isPgError, PgErrorCode } from '../db/errors.ts';
 import { colours, materials } from '../db/schema.ts';
 import { conflict, notFound } from '../lib/errors.ts';
 import { definedFields } from '../lib/patch.ts';
+import { refreshPrintPrices } from './products.ts';
 
 export interface MaterialsService {
     /** Every material with all its colours, each ordered by position then name. */
     list(): Promise<AdminMaterial[]>;
     create(input: CreateMaterial): Promise<Material>;
+    /**
+     * Switching `active` also updates the "Print from €X" price of the models that use the material.
+     * Refused (409) if that would leave a published model with nothing to sell.
+     */
     update(id: string, input: UpdateMaterial): Promise<Material>;
     /** Deletes the material and its colours. Refused (409) once anything refers to them. */
     remove(id: string): Promise<void>;
@@ -91,17 +96,27 @@ export function createMaterialsService(db: Database): MaterialsService {
         async update(id, input) {
             const changes = definedFields(input);
             try {
-                const [updated] =
-                    Object.keys(changes).length === 0
-                        ? await db.select(materialColumns).from(materials).where(eq(materials.id, id))
-                        : await db
-                              .update(materials)
-                              .set(changes)
-                              .where(eq(materials.id, id))
-                              .returning(materialColumns);
-                if (!updated) throw notFound('Material not found.');
-                return updated;
+                return await db.transaction(async (tx) => {
+                    const [updated] =
+                        Object.keys(changes).length === 0
+                            ? await tx.select(materialColumns).from(materials).where(eq(materials.id, id))
+                            : await tx
+                                  .update(materials)
+                                  .set(changes)
+                                  .where(eq(materials.id, id))
+                                  .returning(materialColumns);
+                    if (!updated) throw notFound('Material not found.');
+                    // Switching it on or off changes the "Print from €X" price of the models that use it.
+                    if (changes.active !== undefined) await refreshPrintPrices(tx, id);
+                    return updated;
+                });
             } catch (error) {
+                if (isPgError(error, PgErrorCode.checkViolation, 'products_publishable')) {
+                    const message =
+                        'Some published models can only be printed in this material and have no file to sell. ' +
+                        'Give them another material, or archive them, first.';
+                    throw conflict(message, [{ path: 'active', message }]);
+                }
                 rethrowNameTaken(error, input.name);
             }
         },

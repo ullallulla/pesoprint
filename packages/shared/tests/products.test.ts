@@ -5,6 +5,7 @@ import {
     createProductSchema,
     licenseIssue,
     publishProblems,
+    updateProductSchema,
     type PublishCheckInput,
 } from '../src/index.ts';
 
@@ -12,6 +13,7 @@ const ready: PublishCheckInput = {
     categoryId: '0190a6d2-3b7e-7000-8000-000000000000',
     digitalPriceCents: 0,
     printBasePriceCents: null,
+    parcelSize: null,
     license: 'cc_by',
     imageCount: 1,
     downloadFileCount: 1,
@@ -30,10 +32,15 @@ describe('publishProblems', () => {
                 ...ready,
                 digitalPriceCents: null,
                 printBasePriceCents: 2500,
+                parcelSize: 'M',
                 license: null,
                 downloadFileCount: 0,
             }),
         ).toEqual([]);
+    });
+
+    test('a model that can be printed needs a parcel size', () => {
+        expect(paths({ ...ready, printBasePriceCents: 2500 })).toEqual(['parcelSize']);
     });
 
     test('an empty draft lists every problem', () => {
@@ -42,6 +49,7 @@ describe('publishProblems', () => {
                 categoryId: null,
                 digitalPriceCents: null,
                 printBasePriceCents: null,
+                parcelSize: null,
                 license: null,
                 imageCount: 0,
                 downloadFileCount: 0,
@@ -84,5 +92,28 @@ describe('product request schemas', () => {
     test('list query coerces numbers from the query string and applies defaults', () => {
         expect(adminProductListQuerySchema.parse({ page: '3' })).toEqual({ page: 3, pageSize: 20 });
         expect(adminProductListQuerySchema.safeParse({ pageSize: '500' }).success).toBe(false);
+    });
+});
+
+describe('print options', () => {
+    test('a material can only be listed once', () => {
+        const materialId = '0190a6d2-3b7e-7000-8000-000000000001';
+        const result = updateProductSchema.safeParse({
+            printOptions: [
+                { materialId, priceCents: 1290 },
+                { materialId, priceCents: 1490 },
+            ],
+        });
+        expect(result.success).toBe(false);
+        expect(result.error?.issues.map((issue) => [issue.path.join('.'), issue.message])).toEqual([
+            ['printOptions', 'Each material can only be listed once.'],
+        ]);
+    });
+
+    test('a print costs more than nothing', () => {
+        const result = updateProductSchema.safeParse({
+            printOptions: [{ materialId: '0190a6d2-3b7e-7000-8000-000000000001', priceCents: 0 }],
+        });
+        expect(result.error?.issues[0]?.path).toEqual(['printOptions', 0, 'priceCents']);
     });
 });

@@ -29,6 +29,17 @@ const ham: AdminCategory = {
 };
 const categories = [gadgets, ham];
 
+const pla: AdminMaterial = {
+    id: '0190b6a0-0000-7000-8000-000000000301',
+    name: 'PLA',
+    description: null,
+    active: true,
+    position: 0,
+    colours: [],
+};
+const nylon: AdminMaterial = { ...pla, id: '0190b6a0-0000-7000-8000-000000000302', name: 'Nylon', active: false };
+const materials = [pla, nylon];
+
 const draft: AdminProduct = {
     id: '0190b6a0-0000-7000-8000-000000000001',
     slug: 'cable-clip',
@@ -38,6 +49,7 @@ const draft: AdminProduct = {
     categoryId: null,
     digitalPriceCents: 450,
     printBasePriceCents: null,
+    parcelSize: null,
     license: 'cc_by',
     sizeXMm: 20,
     sizeYMm: null,
@@ -48,6 +60,7 @@ const draft: AdminProduct = {
     createdAt: '2026-11-10T08:00:00.000Z',
     updatedAt: '2026-11-11T08:00:00.000Z',
     description: 'A **clip**.',
+    printOptions: [],
     images: [
         {
             id: '0190b6a0-0000-7000-8000-000000000101',
@@ -68,6 +81,8 @@ const published: AdminProduct = {
     categoryId: ham.id,
     digitalPriceCents: 0,
     printBasePriceCents: 1290,
+    parcelSize: 'S',
+    printOptions: [{ materialId: '0190b6a0-0000-7000-8000-000000000301', priceCents: 1290 }],
     publishedAt: '2026-11-11T09:00:00.000Z',
     featuredAt: '2026-11-11T10:00:00.000Z',
     files: [
@@ -122,7 +137,7 @@ describe('product editor', () => {
                 },
             ],
         };
-        const html = render('/admin/products/:id', EditProduct, { product: withPreview, categories });
+        const html = render('/admin/products/:id', EditProduct, { product: withPreview, categories, materials });
 
         // Server rendering only shows the placeholder; three.js never runs on the server.
         expect(html).toContain('Loading the 3D viewer…');
@@ -132,7 +147,7 @@ describe('product editor', () => {
     });
 
     test('a draft lists what is missing before it can be published', () => {
-        const html = render('/admin/products/:id', EditProduct, { product: draft, categories });
+        const html = render('/admin/products/:id', EditProduct, { product: draft, categories, materials });
 
         expect(html).toContain('Before it can be published:');
         expect(html).toContain('Choose a category.');
@@ -149,7 +164,7 @@ describe('product editor', () => {
     });
 
     test('a published product locks its slug and must be archived before it can be deleted', () => {
-        const html = render('/admin/products/:id', EditProduct, { product: published, categories });
+        const html = render('/admin/products/:id', EditProduct, { product: published, categories, materials });
 
         expect(inputAttributes(html, 'slug')).toHaveProperty('readonly');
         expect(html).toContain('href="/models/cable-clip"');
@@ -158,6 +173,12 @@ describe('product editor', () => {
         expect(html).not.toContain('Delete product');
         expect(html).toContain('To delete it, archive it first.');
         expect(inputAttributes(html, 'fileOffer', 'free')).toHaveProperty('checked');
+        // Printed in PLA at €12.90; Nylon is offered to tick, marked inactive.
+        expect(inputAttributes(html, `print:${pla.id}`)).toHaveProperty('checked');
+        expect(inputAttributes(html, `printPrice:${pla.id}`).value).toBe('12.90');
+        expect(inputAttributes(html, `print:${nylon.id}`)).not.toHaveProperty('checked');
+        expect(html).toContain('Inactive');
+        expect(html).toMatch(/<option value="S" selected="">Small \(S\)<\/option>/);
         expect(html).toContain('cable-clip.stl');
         // An STL is there, so the preview can be made from it.
         expect(html).toContain('Make from STL');

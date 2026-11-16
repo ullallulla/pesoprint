@@ -13,5 +13,6 @@ export * from './media.ts';
 export * from './orders.ts';
 export * from './pricing.ts';
 export * from './products.ts';
+export * from './shipping.ts';
 export * from './slug.ts';
 export * from './vat.ts';

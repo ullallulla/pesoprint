@@ -92,6 +92,7 @@ describe.skipIf(!url)('public catalogue (integration)', () => {
             categoryId: printInPlace!.id,
             digitalPriceCents: 0,
             printBasePriceCents: 2490,
+            parcelSize: 'M',
             license: 'cc_by',
             sizeXMm: 180,
             sizeYMm: 60,
@@ -115,6 +116,7 @@ describe.skipIf(!url)('public catalogue (integration)', () => {
             title: 'Yo-yo',
             categoryId: toys!.id,
             printBasePriceCents: 990,
+            parcelSize: 'S',
             publishedAt: new Date(now - 2 * DAY),
             featuredAt: new Date(now - DAY),
         });

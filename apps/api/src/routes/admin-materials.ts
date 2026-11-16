@@ -78,7 +78,9 @@ export function adminMaterialRoutes(deps: AdminMaterialDeps) {
             400: errorResponse('Invalid input.'),
             ...adminAuthResponses,
             404: errorResponse('No material with this id.'),
-            409: errorResponse('A material with this name already exists.'),
+            409: errorResponse(
+                'A material with this name already exists, or switching it off would leave a published model with nothing to sell.',
+            ),
         },
     });
 

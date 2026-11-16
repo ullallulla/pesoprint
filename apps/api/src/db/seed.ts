@@ -1,20 +1,24 @@
 import { readFile } from 'node:fs/promises';
 
-import { MODEL_CONTENT_TYPES, publishProblems, type License, type ProductStatus } from '@app/shared';
-import { eq, inArray } from 'drizzle-orm';
+import { MODEL_CONTENT_TYPES, publishProblems, type License, type ParcelSize, type ProductStatus } from '@app/shared';
+import { eq, inArray, sql } from 'drizzle-orm';
 
 import { bucketForFileKind } from '../services/product-media.ts';
+import { refreshPrintPrices } from '../services/products.ts';
 import type { Storage } from '../lib/storage.ts';
 import type { Database } from './client.ts';
 import type { SeedAsset } from './seed-assets.ts';
 import { sampleModel, type SampleModel } from './seed-models.ts';
 import {
     categories,
+    colours,
     entitlements,
+    materials,
     orderItems,
     orders,
     productFiles,
     productImages,
+    productMaterials,
     products,
     users,
     type NewProduct,
@@ -287,6 +291,50 @@ const SEED_PRODUCTS: SeedProduct[] = [
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
+interface SeedMaterial {
+    name: string;
+    description: string;
+    /** Added to a model's print price to get its price in this material. */
+    extraCents: number;
+    colours: { name: string; hex: string; inStock?: boolean }[];
+}
+
+/**
+ * Materials for the sample models. Added if missing (matched by name), never changed: once they exist,
+ * they're yours to edit in the admin.
+ */
+const SEED_MATERIALS: SeedMaterial[] = [
+    {
+        name: 'PLA',
+        description: 'Easy to print, crisp details and a matte finish. For indoor use: it softens in a hot car.',
+        extraCents: 0,
+        colours: [
+            { name: 'Black', hex: '#1c1c1c' },
+            { name: 'White', hex: '#f4f4f0' },
+            { name: 'Grey', hex: '#8a8d91' },
+            { name: 'Signal red', hex: '#c8102e' },
+            { name: 'Ocean blue', hex: '#1f5fa8', inStock: false },
+        ],
+    },
+    {
+        name: 'PETG',
+        description: 'Tough and slightly flexible, and it takes heat and sun. Good for parts that take a knock.',
+        extraCents: 300,
+        colours: [
+            { name: 'Black', hex: '#141414' },
+            { name: 'Orange', hex: '#f26b1d' },
+            { name: 'Clear', hex: '#dfe8ea' },
+        ],
+    },
+];
+
+/** The parcel a print of this size ships in, from its longest side in millimetres. */
+export function parcelSizeFor(size: readonly (number | null)[] | undefined): ParcelSize {
+    const longest = Math.max(0, ...(size ?? []).slice(0, 3).map((mm) => mm ?? 0));
+    if (longest === 0) return 'M';
+    return longest <= 120 ? 'S' : longest <= 250 ? 'M' : 'L';
+}
+
 function description(product: SeedProduct): string {
     return [
         `_Sample product for development. The photos, files and prices are placeholders._`,
@@ -355,6 +403,7 @@ function assertAssetsPublishable(assets: SeedAsset[]): void {
             categoryId: source.category,
             digitalPriceCents: source.digitalPriceCents ?? null,
             printBasePriceCents: source.printBasePriceCents ?? null,
+            parcelSize: parcelSizeFor(source.size),
             license: source.license ?? null,
             imageCount: asset.images.length,
             downloadFileCount: asset.files.filter((file) => file.kind === 'download').length,
@@ -464,6 +513,35 @@ export async function seedDatabase(db: Database, options: SeedOptions = {}): Pro
             }
         }
 
+        // Materials and colours: only the missing ones are added, so your edits in the admin stay.
+        const materialIds: { id: string; extraCents: number }[] = [];
+        for (const [position, material] of SEED_MATERIALS.entries()) {
+            await tx
+                .insert(materials)
+                .values({ name: material.name, description: material.description, position })
+                .onConflictDoNothing();
+            const [row] = await tx
+                .select({ id: materials.id })
+                .from(materials)
+                .where(sql`lower(${materials.name}) = lower(${material.name})`);
+            materialIds.push({ id: row!.id, extraCents: material.extraCents });
+            await tx
+                .insert(colours)
+                .values(material.colours.map((colour, index) => ({ ...colour, materialId: row!.id, position: index })))
+                .onConflictDoNothing();
+        }
+        /** A sample model that can be printed comes in every seed material, dearer in the tougher ones. */
+        const addPrintOptions = async (productId: string, printCents: number | null) => {
+            if (printCents === null) return;
+            await tx.insert(productMaterials).values(
+                materialIds.map(({ id, extraCents }) => ({
+                    productId,
+                    materialId: id,
+                    priceCents: printCents + extraCents,
+                })),
+            );
+        };
+
         // Products: replace every product owned by the seed creator (images and files cascade). Orders keep
         // products from being deleted, so test orders of sample products go first: the seed never runs in
         // production, so these can only be test-mode orders. An order with a sample product is removed whole.
@@ -507,6 +585,7 @@ export async function seedDatabase(db: Database, options: SeedOptions = {}): Pro
                     status: 'published',
                     digitalPriceCents: source.digitalPriceCents ?? null,
                     printBasePriceCents: source.printBasePriceCents ?? null,
+                    parcelSize: source.printBasePriceCents ? parcelSizeFor(source.size) : null,
                     license: source.license ?? null,
                     sizeXMm: width,
                     sizeYMm: depth,
@@ -519,6 +598,7 @@ export async function seedDatabase(db: Database, options: SeedOptions = {}): Pro
                 .returning({ id: products.id });
             const productId = product!.id;
             result.products++;
+            await addPrintOptions(productId, source.printBasePriceCents ?? null);
 
             if (asset.images.length > 0) {
                 await tx.insert(productImages).values(
@@ -567,6 +647,7 @@ export async function seedDatabase(db: Database, options: SeedOptions = {}): Pro
                 status,
                 digitalPriceCents: seed.file,
                 printBasePriceCents: seed.print,
+                parcelSize: seed.print === null ? null : parcelSizeFor(seed.size),
                 license: seed.license ?? null,
                 sizeXMm: width,
                 sizeYMm: depth,
@@ -580,6 +661,7 @@ export async function seedDatabase(db: Database, options: SeedOptions = {}): Pro
             const [product] = await tx.insert(products).values(values).returning({ id: products.id });
             const productId = product!.id;
             result.products++;
+            await addPrintOptions(productId, seed.print);
 
             const imageCount = seed.images ?? 0;
             if (imageCount > 0) {
@@ -617,6 +699,9 @@ export async function seedDatabase(db: Database, options: SeedOptions = {}): Pro
             );
             result.files += files.length;
         }
+
+        // The prices above assume every seed material is active; correct them if you've switched one off.
+        for (const { id } of materialIds) await refreshPrintPrices(tx, id);
 
         return result;
     });

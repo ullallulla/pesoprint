@@ -8,6 +8,7 @@ import { createDatabase, runMigrations } from '../src/db/client.ts';
 import {
     categories,
     entitlements,
+    materials,
     orderItems,
     orders,
     productFiles,
@@ -15,6 +16,7 @@ import {
     products,
     users,
 } from '../src/db/schema.ts';
+import { createMaterialsService } from '../src/services/materials.ts';
 import { createProductsService } from '../src/services/products.ts';
 import { bearer, buildApp, tokens } from './helpers.ts';
 
@@ -56,7 +58,7 @@ const url = process.env.TEST_DATABASE_URL;
 // Runs against a real Postgres. Start it with `vp run db:up` (local) — CI provides one as a service.
 describe.skipIf(!url)('admin product routes (integration)', () => {
     const { db, pool } = createDatabase(url ?? '');
-    const app = buildApp({ products: createProductsService(db, null) });
+    const app = buildApp({ products: createProductsService(db, null), materials: createMaterialsService(db) });
     /** The user id the fake verifier returns for `tokens.admin`. */
     const ADMIN_ID = 'user_admin';
     let categoryId: string;
@@ -119,6 +121,7 @@ describe.skipIf(!url)('admin product routes (integration)', () => {
         await db.delete(entitlements);
         await db.delete(orders);
         await db.delete(products);
+        await db.delete(materials);
         await db.delete(categories).where(sql`${categories.parentId} IS NOT NULL`);
         await db.delete(categories);
     }
@@ -244,12 +247,12 @@ describe.skipIf(!url)('admin product routes (integration)', () => {
 
     describe('update', () => {
         test('changes only the fields that are sent, and clears with null', async () => {
-            const { id } = await create({ slug: 'dragon', title: 'Dragon', printBasePriceCents: 2500, sizeXMm: 120 });
+            const { id } = await create({ slug: 'dragon', title: 'Dragon', parcelSize: 'M', sizeXMm: 120 });
 
             const updated = await expectProduct(
-                await call('PATCH', `/${id}`, { title: 'Flexi dragon', printBasePriceCents: null }),
+                await call('PATCH', `/${id}`, { title: 'Flexi dragon', parcelSize: null }),
             );
-            expect(updated).toMatchObject({ title: 'Flexi dragon', printBasePriceCents: null, sizeXMm: 120 });
+            expect(updated).toMatchObject({ title: 'Flexi dragon', parcelSize: null, sizeXMm: 120 });
         });
 
         test('a draft can change its slug', async () => {
@@ -321,6 +324,141 @@ describe.skipIf(!url)('admin product routes (integration)', () => {
 
             const republished = await expectProduct(await call('POST', `/${first.id}/publish`));
             expect(republished).toMatchObject({ status: 'published', publishedAt: first.publishedAt });
+        });
+    });
+
+    describe('print options', () => {
+        async function material(name: string, active = true) {
+            const res = await app.request('/api/admin/materials', {
+                method: 'POST',
+                headers: { ...bearer(tokens.admin).headers, 'content-type': 'application/json' },
+                body: JSON.stringify({ name, active }),
+            });
+            expect(res.status).toBe(201);
+            return (await res.json()) as { id: string };
+        }
+
+        function setActive(materialId: string, active: boolean) {
+            return app.request(`/api/admin/materials/${materialId}`, {
+                method: 'PATCH',
+                headers: { ...bearer(tokens.admin).headers, 'content-type': 'application/json' },
+                body: JSON.stringify({ active }),
+            });
+        }
+
+        /** A published model sold only as a print, in these materials. */
+        async function publishedPrint(options: { materialId: string; priceCents: number }[]) {
+            const product = await create({ slug: 'vase', title: 'Vase', categoryId, printOptions: options });
+            await addContent(product.id);
+            await expectProduct(await call('PATCH', `/${product.id}`, { parcelSize: 'M' }));
+            return expectProduct(await call('POST', `/${product.id}/publish`));
+        }
+
+        test('the print price is the lowest among the active materials, and options list in material order', async () => {
+            const pla = await material('PLA');
+            const petg = await material('PETG');
+            const nylon = await material('Nylon', false);
+            const { id } = await create({ slug: 'vase', title: 'Vase' });
+
+            const saved = await expectProduct(
+                await call('PATCH', `/${id}`, {
+                    printOptions: [
+                        { materialId: nylon.id, priceCents: 990 },
+                        { materialId: petg.id, priceCents: 1590 },
+                        { materialId: pla.id, priceCents: 1290 },
+                    ],
+                }),
+            );
+            // Nylon is cheapest, but inactive.
+            expect(saved.printBasePriceCents).toBe(1290);
+            // Same position, so by name: Nylon, PETG, PLA.
+            expect(saved.printOptions.map((option) => option.priceCents)).toEqual([990, 1590, 1290]);
+
+            const cleared = await expectProduct(await call('PATCH', `/${id}`, { printOptions: [] }));
+            expect(cleared).toMatchObject({ printBasePriceCents: null, printOptions: [] });
+        });
+
+        test('only inactive materials: the model is not offered as a print', async () => {
+            const nylon = await material('Nylon', false);
+            const created = await create({
+                slug: 'vase',
+                title: 'Vase',
+                printOptions: [{ materialId: nylon.id, priceCents: 990 }],
+            });
+            expect(created.printBasePriceCents).toBeNull();
+            expect(created.printOptions).toHaveLength(1);
+        });
+
+        test('400 for a material that does not exist, or one listed twice', async () => {
+            const pla = await material('PLA');
+            const { id } = await create({ slug: 'vase', title: 'Vase' });
+
+            const missing = await expectError(
+                await call('PATCH', `/${id}`, {
+                    printOptions: [{ materialId: '0190a6d2-3b7e-7000-8000-000000000000', priceCents: 990 }],
+                }),
+                400,
+                'validation_failed',
+            );
+            expect(missing.issues?.map((issue) => issue.path)).toEqual(['printOptions']);
+            const twice = await call('PATCH', `/${id}`, {
+                printOptions: [
+                    { materialId: pla.id, priceCents: 990 },
+                    { materialId: pla.id, priceCents: 1090 },
+                ],
+            });
+            expect(twice.status).toBe(400);
+        });
+
+        test('a model that can be printed needs a parcel size to publish', async () => {
+            const pla = await material('PLA');
+            const product = await create({
+                slug: 'vase',
+                title: 'Vase',
+                categoryId,
+                printOptions: [{ materialId: pla.id, priceCents: 1290 }],
+            });
+            await addContent(product.id);
+
+            const error = await expectError(await call('POST', `/${product.id}/publish`), 409, 'conflict');
+            expect(error.issues?.map((issue) => issue.path)).toEqual(['parcelSize']);
+        });
+
+        test('switching a material off or on updates the print price of the models using it', async () => {
+            const pla = await material('PLA');
+            const petg = await material('PETG');
+            const vase = await publishedPrint([
+                { materialId: pla.id, priceCents: 1290 },
+                { materialId: petg.id, priceCents: 1590 },
+            ]);
+
+            expect((await setActive(pla.id, false)).status).toBe(200);
+            expect((await expectProduct(await call('GET', `/${vase.id}`))).printBasePriceCents).toBe(1590);
+            expect((await setActive(pla.id, true)).status).toBe(200);
+            expect((await expectProduct(await call('GET', `/${vase.id}`))).printBasePriceCents).toBe(1290);
+        });
+
+        test("a material can't be switched off if a published model would have nothing left to sell", async () => {
+            const pla = await material('PLA');
+            const vase = await publishedPrint([{ materialId: pla.id, priceCents: 1290 }]);
+
+            const error = await expectError(await setActive(pla.id, false), 409, 'conflict');
+            expect(error.issues?.map((issue) => issue.path)).toEqual(['active']);
+            const [row] = await db.select().from(materials).where(eq(materials.id, pla.id));
+            expect(row?.active).toBe(true);
+            expect((await expectProduct(await call('GET', `/${vase.id}`))).printBasePriceCents).toBe(1290);
+        });
+
+        test("a material in use can't be deleted", async () => {
+            const pla = await material('PLA');
+            await create({ slug: 'vase', title: 'Vase', printOptions: [{ materialId: pla.id, priceCents: 1290 }] });
+
+            const res = await app.request(`/api/admin/materials/${pla.id}`, {
+                method: 'DELETE',
+                ...bearer(tokens.admin),
+            });
+            expect(res.status).toBe(409);
+            expect((await db.select().from(materials)).map((row) => row.name)).toEqual(['PLA']);
         });
     });
 

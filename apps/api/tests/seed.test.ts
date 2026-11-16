@@ -12,15 +12,18 @@ import { createDatabase, runMigrations } from '../src/db/client.ts';
 import { loadSeedAssets } from '../src/db/seed-assets.ts';
 import {
     categories,
+    colours,
     entitlements,
+    materials,
     orderItems,
     orders,
     productFiles,
     productImages,
+    productMaterials,
     products,
     users,
 } from '../src/db/schema.ts';
-import { SEED_CREATOR, seedDatabase } from '../src/db/seed.ts';
+import { parcelSizeFor, SEED_CREATOR, seedDatabase } from '../src/db/seed.ts';
 import { createFakeStorage } from './helpers.ts';
 import { TINY_PNG, tinyStl, validSource, writeAsset } from './seed-fixtures.ts';
 
@@ -35,6 +38,7 @@ describe.skipIf(!url)('seedDatabase (integration)', () => {
         await db.delete(entitlements);
         await db.delete(orders);
         await db.delete(products);
+        await db.delete(materials);
         await db.delete(categories).where(sql`${categories.parentId} IS NOT NULL`);
         await db.delete(categories);
         await db.delete(users).where(sql`${users.id} IN (${SEED_CREATOR.id}, ${OWNER_ID})`);
@@ -58,6 +62,40 @@ describe.skipIf(!url)('seedDatabase (integration)', () => {
         expect(second).toEqual(first);
         const [total] = await db.select({ value: count() }).from(products);
         expect(total?.value).toBe(first.products);
+    });
+
+    test('sample prints come in every seed material, from the lowest price, and the materials are added once', async () => {
+        await seedDatabase(db);
+        const allMaterials = await db.select().from(materials);
+        expect(allMaterials.map((m) => m.name).sort()).toEqual(['PETG', 'PLA']);
+        const [colourCount] = await db.select({ value: count() }).from(colours);
+        expect(colourCount?.value).toBe(8);
+
+        const printable = await db
+            .select()
+            .from(products)
+            .where(sql`${products.printBasePriceCents} IS NOT NULL`);
+        expect(printable.length).toBeGreaterThan(0);
+        for (const product of printable) {
+            const prices = await db
+                .select({ priceCents: productMaterials.priceCents })
+                .from(productMaterials)
+                .where(eq(productMaterials.productId, product.id));
+            expect({ slug: product.slug, prices: prices.map((p) => p.priceCents).sort((a, b) => a - b) }).toEqual({
+                slug: product.slug,
+                prices: [product.printBasePriceCents, product.printBasePriceCents! + 300],
+            });
+            expect(product.parcelSize).not.toBeNull();
+        }
+    });
+
+    test.each([
+        [[100, 100, 6], 'S'],
+        [[300, 80, 60], 'L'],
+        [[180, 60, 25], 'M'],
+        [undefined, 'M'],
+    ] as const)('a print sized %j ships in parcel %s', (size, parcel) => {
+        expect(parcelSizeFor(size)).toBe(parcel);
     });
 
     test('every published sample product passes the publishing rules the API enforces', async () => {

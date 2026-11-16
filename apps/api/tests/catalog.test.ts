@@ -147,7 +147,9 @@ describe.skipIf(!url)('catalogue schema (integration)', () => {
         test('publishes a complete free download and a print-only product', async () => {
             await expect(insertProduct(published())).resolves.toBeDefined();
             await expect(
-                insertProduct(published({ digitalPriceCents: null, license: null, printBasePriceCents: 2500 })),
+                insertProduct(
+                    published({ digitalPriceCents: null, license: null, printBasePriceCents: 2500, parcelSize: 'M' }),
+                ),
             ).resolves.toBeDefined();
         });
 
@@ -156,6 +158,7 @@ describe.skipIf(!url)('catalogue schema (integration)', () => {
             ['without a category', { categoryId: null }],
             ['without any offer', { digitalPriceCents: null, printBasePriceCents: null }],
             ['offering a file without a licence', { license: null }],
+            ['offering a print without a parcel size', { printBasePriceCents: 2500, parcelSize: null }],
         ])('refuses to publish %s', async (_, overrides) => {
             await expect(insertProduct(published(overrides))).rejects.toMatchObject(CHECK_VIOLATION);
         });

@@ -65,6 +65,8 @@ describe('euro prices', () => {
 });
 
 describe('parseProductForm', () => {
+    const PLA = '0190b6a0-0000-7000-8000-000000000301';
+    const PETG = '0190b6a0-0000-7000-8000-000000000302';
     const base = {
         title: ' Cable Clip ',
         slug: 'cable-clip',
@@ -90,7 +92,8 @@ describe('parseProductForm', () => {
                 description: 'Line one\nLine two',
                 categoryId: null,
                 digitalPriceCents: null,
-                printBasePriceCents: null,
+                printOptions: [],
+                parcelSize: null,
                 license: null,
                 sizeXMm: null,
                 sizeYMm: null,
@@ -111,8 +114,11 @@ describe('parseProductForm', () => {
                 ...base,
                 fileOffer: 'paid',
                 digitalPrice: '4,50',
-                offerPrint: 'on',
-                printPrice: '12.90',
+                [`print:${PLA}`]: 'on',
+                [`printPrice:${PLA}`]: '12.90',
+                // Not ticked: the price is ignored.
+                [`printPrice:${PETG}`]: '14.90',
+                parcelSize: 'S',
                 license: 'standard_digital',
                 sizeXMm: '20',
                 sizeYMm: '15',
@@ -122,7 +128,8 @@ describe('parseProductForm', () => {
         );
         expect(result.ok && result.data).toMatchObject({
             digitalPriceCents: 450,
-            printBasePriceCents: 1290,
+            printOptions: [{ materialId: PLA, priceCents: 1290 }],
+            parcelSize: 'S',
             license: 'standard_digital',
             sizeXMm: 20,
             printWeightG: 8,
@@ -131,13 +138,30 @@ describe('parseProductForm', () => {
 
     test('explains price mistakes in euros, once per field', () => {
         const result = parseProductForm(
-            formData({ ...base, fileOffer: 'paid', digitalPrice: '', offerPrint: 'on', printPrice: 'lots' }),
+            formData({
+                ...base,
+                fileOffer: 'paid',
+                digitalPrice: '',
+                [`print:${PLA}`]: 'on',
+                [`printPrice:${PLA}`]: 'lots',
+            }),
         );
         expect(result.ok).toBe(false);
         const errors = fieldErrors(result.ok ? [] : result.issues);
         expect(errors).toEqual({
             digitalPriceCents: 'Enter the price of the file.',
-            printBasePriceCents: 'Enter an amount in euros, like 4.50 (at most €10,000).',
+            [`printPrice:${PLA}`]: 'Enter an amount in euros, like 4.50 (at most €10,000).',
+        });
+    });
+
+    test('a ticked material needs a price above €0', () => {
+        const empty = parseProductForm(formData({ ...base, [`print:${PLA}`]: 'on', [`printPrice:${PLA}`]: '' }));
+        const zero = parseProductForm(formData({ ...base, [`print:${PETG}`]: 'on', [`printPrice:${PETG}`]: '0' }));
+        expect(fieldErrors(empty.ok ? [] : empty.issues)).toEqual({
+            [`printPrice:${PLA}`]: 'Enter the price of a print in this material.',
+        });
+        expect(fieldErrors(zero.ok ? [] : zero.issues)).toEqual({
+            [`printPrice:${PETG}`]: 'A print costs more than €0.',
         });
     });
 

@@ -213,6 +213,7 @@ describe.skipIf(!url)('cart quote (integration)', () => {
             digitalPriceCents: null,
             license: null,
             printBasePriceCents: 1290,
+            parcelSize: 'S',
         });
         const archived = await model({ title: 'Old hook', status: 'archived' });
         const draft = await model({ title: 'Secret hook', status: 'draft', publishedAt: null });
