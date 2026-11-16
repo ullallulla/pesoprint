@@ -227,7 +227,6 @@ Each milestone ends with: CI green, deployed to staging, and a short demo you co
 - Stripe webhook (signature verified) → order marked paid + entitlements granted. Handled idempotently, so repeated webhook calls do nothing twice. Failed and expired payments are handled too. ✅
 - A "payment pending" return page, because the buyer may come back before the webhook arrives ✅
 - "My library" page for re-downloading purchased files, and "In your library" on the product page ✅
-- Order confirmation email with a link to the library
 - EU rule for digital content: a checkbox where the buyer agrees to immediate delivery and accepts losing the 14-day right of withdrawal
 - **Done when:** a Stripe test-mode purchase gives the buyer a download in their library, and the webhook is covered by an integration test
 
@@ -237,9 +236,8 @@ Each milestone ends with: CI green, deployed to staging, and a short demo you co
 - Product page: pick material + colour; the live price comes from the server
 - Cart with both digital and print items. Our checkout page collects the shipping address and offers shipping rates from the `shipping_rates` table (start with fixed rates per region). The Stripe Checkout Session includes the order lines and the shipping cost.
 - Admin order queue: paid → printing → shipped (carrier + tracking number) → delivered, with filters
-- Emails: order received, order shipped (with tracking)
 - Customer "My orders" page showing each order's status
-- **Done when:** you can complete a test print order end to end, from checkout to the "shipped" email
+- **Done when:** you can complete a test print order end to end, from checkout to "shipped", with the tracking number showing on the customer's "My orders" page
 
 ### M5 – Reviews & favourites
 
@@ -253,6 +251,7 @@ Each milestone ends with: CI green, deployed to staging, and a short demo you co
 - Decide market, VAT and company form (§9). Fill the `vat_rates` table and make sure invoices and receipts show VAT correctly. Stripe doesn't do this for us (Stripe Tax isn't used).
 - Terms of sale, refund and returns policy for prints. Update the privacy policy, and fill in who runs the shop (`apps/web/app/lib/legal.ts`) and the company details in the footer.
 - Own domain. Production environment: its own database, R2 buckets, secrets, Clerk production instance (needs the domain) and webhook, and paid hosting so the site doesn't sleep. Moved here from M2.
+- Emails (Resend + React Email): the order confirmation with a link to the library (moved from M3), and "order received" and "order shipped" with tracking for print orders (moved from M4). They are sent from the Stripe webhook and when an order is marked shipped. Sending fails without a verified domain, so they moved here on 2026-11-16 and come after the domain purchase. Verify a sending subdomain in Resend (SPF/DKIM). Use the Resend SDK over HTTPS, not SMTP (Render's free plan blocks SMTP ports). Send each email at most once per order, and a failed send must not stop the order from being updated (e.g. marked paid or shipped).
 - Sentry, uptime monitoring (moved here from M2), database backups (and test restoring one)
 - Production deploy. Activate the Stripe account (business details and verification) and switch to the live keys and a live webhook.
 - Accessibility pass and Lighthouse pass
@@ -300,12 +299,12 @@ Each milestone ends with: CI green, deployed to staging, and a short demo you co
 
 ## 8. Hosting path
 
-| Stage           | Setup                                                                                                                                                                                                  | Cost |
-| --------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ---- |
-| Local           | Docker Compose: Postgres. File storage uses a separate R2 dev bucket (decided in M1; MinIO no longer ships prebuilt images). `stripe listen` (the Stripe CLI) forwards Stripe's webhooks to localhost. | 0 €  |
-| Staging (M0–M5) | Render (two Docker web services, free plan; the API runs `node dist/start.mjs` to migrate on start), Neon Postgres (Frankfurt), R2 staging buckets with their own token, Clerk/Resend/Stripe test mode | ~0 € |
-| Production (M6) | **Option A:** the same managed setup on paid tiers (~10–25 €/mo). **Option B:** a Hetzner VPS (~5 €/mo) with Docker Compose (app + Postgres + Caddy for HTTPS) and nightly backups to R2.              |      |
-| Later           | The same Docker image runs on AWS ECS/App Runner, Azure Container Apps or Google Cloud Run if you want cloud experience on your CV                                                                     |      |
+| Stage           | Setup                                                                                                                                                                                                               | Cost |
+| --------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---- |
+| Local           | Docker Compose: Postgres. File storage uses a separate R2 dev bucket (decided in M1; MinIO no longer ships prebuilt images). `stripe listen` (the Stripe CLI) forwards Stripe's webhooks to localhost.              | 0 €  |
+| Staging (M0–M5) | Render (two Docker web services, free plan; the API runs `node dist/start.mjs` to migrate on start), Neon Postgres (Frankfurt), R2 staging buckets with their own token, Clerk/Stripe test mode (no email until M6) | ~0 € |
+| Production (M6) | **Option A:** the same managed setup on paid tiers (~10–25 €/mo). **Option B:** a Hetzner VPS (~5 €/mo) with Docker Compose (app + Postgres + Caddy for HTTPS) and nightly backups to R2.                           |      |
+| Later           | The same Docker image runs on AWS ECS/App Runner, Azure Container Apps or Google Cloud Run if you want cloud experience on your CV                                                                                  |      |
 
 The Docker image and the S3-compatible storage are what keep you free to move between these.
 
