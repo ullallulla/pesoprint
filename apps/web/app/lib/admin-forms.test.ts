@@ -93,6 +93,7 @@ describe('parseProductForm', () => {
                 categoryId: null,
                 digitalPriceCents: null,
                 printOptions: [],
+                colourOptions: [],
                 parcelSize: null,
                 license: null,
                 sizeXMm: null,
@@ -162,6 +163,40 @@ describe('parseProductForm', () => {
         });
         expect(fieldErrors(zero.ok ? [] : zero.issues)).toEqual({
             [`printPrice:${PETG}`]: 'A print costs more than €0.',
+        });
+    });
+
+    test('colour options: each row of menus is one option, its chosen colours in order; empty rows are skipped', () => {
+        const RED = '0190b6a0-0000-7000-8000-000000000311';
+        const BLACK = '0190b6a0-0000-7000-8000-000000000312';
+        const form = formData(base);
+        for (const [row, value] of [
+            ['0', RED],
+            ['0', ''],
+            ['0', BLACK],
+            ['1', ''],
+            ['2', BLACK],
+        ] as const) {
+            form.append(`colourOption:${row}`, value);
+        }
+        const result = parseProductForm(form);
+        expect(result.ok && result.data.colourOptions).toEqual([{ colourIds: [RED, BLACK] }, { colourIds: [BLACK] }]);
+        // No rows at all: printed in the colours shown.
+        const none = parseProductForm(formData(base));
+        expect(none.ok && none.data.colourOptions).toEqual([]);
+    });
+
+    test('a colour twice in an option, or the same option twice, is explained on its row', () => {
+        const RED = '0190b6a0-0000-7000-8000-000000000311';
+        const form = formData(base);
+        form.append('colourOption:0', RED);
+        form.append('colourOption:0', RED);
+        form.append('colourOption:1', RED);
+        form.append('colourOption:2', RED);
+        const result = parseProductForm(form);
+        expect(fieldErrors(result.ok ? [] : result.issues)).toEqual({
+            'colourOption:0': 'Use each colour once in an option.',
+            'colourOption:2': 'This option is already listed.',
         });
     });
 
@@ -249,14 +284,18 @@ test('the licence picker offers every licence exactly once', () => {
 });
 
 describe('parseMaterialForm', () => {
-    test('reads the active box, defaults the position and clears an empty description', () => {
-        expect(parseMaterialForm(formData({ name: ' PETG ', description: '', position: '', active: 'on' }))).toEqual({
+    test('reads the active and multicolour boxes, defaults the position and clears an empty description', () => {
+        expect(
+            parseMaterialForm(
+                formData({ name: ' PETG ', description: '', position: '', active: 'on', multicolour: 'on' }),
+            ),
+        ).toEqual({
             ok: true,
-            data: { name: 'PETG', description: null, active: true, position: 0 },
+            data: { name: 'PETG', description: null, active: true, multicolour: true, position: 0 },
         });
         expect(parseMaterialForm(formData({ name: 'PLA', position: '2' }))).toMatchObject({
             ok: true,
-            data: { active: false, position: 2 },
+            data: { active: false, multicolour: false, position: 2 },
         });
     });
 
@@ -267,14 +306,14 @@ describe('parseMaterialForm', () => {
 });
 
 describe('parseColourForm', () => {
-    test('lowercases the swatch and reads the stock box', () => {
+    test('lowercases the swatch and defaults the position', () => {
         expect(parseColourForm(formData({ name: 'Signal red', hex: '#FF0000', position: '1' }))).toEqual({
             ok: true,
-            data: { name: 'Signal red', hex: '#ff0000', inStock: false, position: 1 },
+            data: { name: 'Signal red', hex: '#ff0000', position: 1 },
         });
-        expect(parseColourForm(formData({ name: 'Black', hex: '#000000', inStock: 'on' }))).toMatchObject({
+        expect(parseColourForm(formData({ name: 'Black', hex: '#000000' }))).toMatchObject({
             ok: true,
-            data: { inStock: true, position: 0 },
+            data: { position: 0 },
         });
     });
 

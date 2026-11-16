@@ -1,11 +1,25 @@
 import { fileURLToPath } from 'node:url';
 
-import { apiErrorSchema, cartQuoteSchema, MAX_CART_ITEMS, type CartItem } from '@app/shared';
+import { apiErrorSchema, cartQuoteSchema, MAX_CART_ITEMS, MAX_PRINT_LINES, type CartItem } from '@app/shared';
 import { inArray, sql } from 'drizzle-orm';
 import { afterAll, beforeAll, beforeEach, describe, expect, test } from 'vite-plus/test';
 
 import { createDatabase, runMigrations } from '../src/db/client.ts';
-import { categories, entitlements, orders, productImages, products, users, type NewProduct } from '../src/db/schema.ts';
+import {
+    categories,
+    colours,
+    entitlements,
+    materialColours,
+    materials,
+    orders,
+    productColourOptionColours,
+    productColourOptions,
+    productImages,
+    productMaterials,
+    products,
+    users,
+    type NewProduct,
+} from '../src/db/schema.ts';
 import { createCartService } from '../src/services/cart.ts';
 import { bearer, buildApp, createFakeStorage, tokens } from './helpers.ts';
 
@@ -23,7 +37,41 @@ describe('cart quote validation', () => {
     test.each([
         ['no items array', {}],
         ['a product id that is not a UUID', { items: [{ productId: 'hook', type: 'digital' }] }],
-        ['an unknown item type', { items: [{ productId: UNKNOWN_ID, type: 'print' }] }],
+        ['an unknown item type', { items: [{ productId: UNKNOWN_ID, type: 'sticker' }] }],
+        [
+            'a print without a material',
+            { items: [{ productId: UNKNOWN_ID, type: 'print', colourOptionId: null, quantity: 1 }] },
+        ],
+        [
+            'a print without a colour option (null when the model has none)',
+            { items: [{ productId: UNKNOWN_ID, type: 'print', materialId: UNKNOWN_ID, quantity: 1 }] },
+        ],
+        [
+            'a print of 11 copies',
+            {
+                items: [
+                    {
+                        productId: UNKNOWN_ID,
+                        type: 'print',
+                        materialId: UNKNOWN_ID,
+                        colourOptionId: null,
+                        quantity: 11,
+                    },
+                ],
+            },
+        ],
+        [
+            `more than ${MAX_PRINT_LINES} different prints`,
+            {
+                items: Array.from({ length: MAX_PRINT_LINES + 1 }, () => ({
+                    productId: UNKNOWN_ID,
+                    type: 'print',
+                    materialId: UNKNOWN_ID,
+                    colourOptionId: null,
+                    quantity: 1,
+                })),
+            },
+        ],
         [
             `more than ${MAX_CART_ITEMS} items`,
             { items: Array.from({ length: MAX_CART_ITEMS + 1 }, () => ({ productId: UNKNOWN_ID, type: 'digital' })) },
@@ -60,6 +108,8 @@ describe.skipIf(!url)('cart quote (integration)', () => {
         await db.delete(entitlements);
         await db.delete(orders);
         await db.delete(products);
+        await db.delete(materials);
+        await db.delete(colours);
         await db.delete(categories).where(sql`${categories.parentId} IS NOT NULL`);
         await db.delete(categories);
     }
@@ -124,6 +174,8 @@ describe.skipIf(!url)('cart quote (integration)', () => {
             removed: [],
             currency: 'EUR',
             subtotalCents: 0,
+            parcelSize: null,
+            shippingCents: 0,
             totalCents: 0,
             taxCents: 0,
             vatCountry: 'FI',
@@ -161,16 +213,21 @@ describe.skipIf(!url)('cart quote (integration)', () => {
             {
                 productId: stand.id,
                 type: 'digital',
+                materialId: null,
+                colourOptionId: null,
                 slug: 'stand',
                 title: 'Stand',
                 cover: null,
                 license: 'commercial',
+                print: null,
                 unitPriceCents: 1290,
                 quantity: 1,
             },
             {
                 productId: hook.id,
                 type: 'digital',
+                materialId: null,
+                colourOptionId: null,
                 slug: 'hook',
                 title: 'Hook',
                 cover: {
@@ -180,6 +237,7 @@ describe.skipIf(!url)('cart quote (integration)', () => {
                     height: 900,
                 },
                 license: 'standard_digital',
+                print: null,
                 unitPriceCents: 450,
                 quantity: 1,
             },
@@ -224,12 +282,21 @@ describe.skipIf(!url)('cart quote (integration)', () => {
         );
 
         expect(result.lines.map((line) => line.title)).toEqual(['Hook']);
+        const gone = (productId: string, title: string | null) => ({
+            productId,
+            type: 'digital',
+            materialId: null,
+            colourOptionId: null,
+            title,
+            option: null,
+            reason: 'unavailable',
+        });
         expect(result.removed).toEqual([
-            { productId: free.id, type: 'digital', title: 'Free hook', reason: 'unavailable' },
-            { productId: printOnly.id, type: 'digital', title: 'Print only', reason: 'unavailable' },
-            { productId: archived.id, type: 'digital', title: 'Old hook', reason: 'unavailable' },
-            { productId: draft.id, type: 'digital', title: null, reason: 'unavailable' },
-            { productId: UNKNOWN_ID, type: 'digital', title: null, reason: 'unavailable' },
+            gone(free.id, 'Free hook'),
+            gone(printOnly.id, 'Print only'),
+            gone(archived.id, 'Old hook'),
+            gone(draft.id, null),
+            gone(UNKNOWN_ID, null),
         ]);
         expect(result.totalCents).toBe(450);
     });
@@ -243,12 +310,259 @@ describe.skipIf(!url)('cart quote (integration)', () => {
         const signedIn = await quote(items, bearer(tokens.customer).headers);
         expect(signedIn.lines.map((line) => line.title)).toEqual(['Other hook']);
         expect(signedIn.removed).toEqual([
-            { productId: owned.id, type: 'digital', title: 'Owned hook', reason: 'owned' },
+            {
+                productId: owned.id,
+                type: 'digital',
+                materialId: null,
+                colourOptionId: null,
+                title: 'Owned hook',
+                option: null,
+                reason: 'owned',
+            },
         ]);
         expect(signedIn.totalCents).toBe(300);
 
         const visitor = await quote(items);
         expect(visitor.lines).toHaveLength(2);
         expect(visitor.totalCents).toBe(750);
+    });
+
+    describe('prints', () => {
+        /**
+         * A model printed in PLA and PETG, shipping in `parcelSize`, with the colour options black, blue, and
+         * black and orange. PLA comes in all three colours, blue out of stock; PETG only in black and orange,
+         * and can't mix them.
+         */
+        async function printable(parcelSize: 'S' | 'M' | 'L' = 'S', overrides: Partial<NewProduct> = {}) {
+            const tag = Math.random().toString(36).slice(2, 8);
+            const [pla, petg] = await db
+                .insert(materials)
+                .values([{ name: `PLA ${tag}` }, { name: `PETG ${tag}`, multicolour: false }])
+                .returning();
+            const [black, blue, orange] = await db
+                .insert(colours)
+                .values([
+                    { name: `Black ${tag}`, hex: '#000000' },
+                    { name: `Ocean blue ${tag}`, hex: '#1f5fa8' },
+                    { name: `Orange ${tag}`, hex: '#f26b1d' },
+                ])
+                .returning();
+            await db.insert(materialColours).values([
+                { materialId: pla!.id, colourId: black!.id },
+                { materialId: pla!.id, colourId: blue!.id, inStock: false },
+                { materialId: pla!.id, colourId: orange!.id },
+                { materialId: petg!.id, colourId: black!.id },
+                { materialId: petg!.id, colourId: orange!.id },
+            ]);
+            const product = await model({
+                title: 'Vase',
+                digitalPriceCents: null,
+                license: null,
+                printBasePriceCents: 1290,
+                parcelSize,
+                ...overrides,
+            });
+            await db.insert(productMaterials).values([
+                { productId: product.id, materialId: pla!.id, priceCents: 1290 },
+                { productId: product.id, materialId: petg!.id, priceCents: 1590 },
+            ]);
+            const option = async (position: number, ...colourIds: string[]) => {
+                const [row] = await db
+                    .insert(productColourOptions)
+                    .values({ productId: product.id, position })
+                    .returning();
+                await db
+                    .insert(productColourOptionColours)
+                    .values(colourIds.map((colourId, index) => ({ optionId: row!.id, colourId, position: index })));
+                return row!;
+            };
+            const inBlack = await option(0, black!.id);
+            const inBlue = await option(1, blue!.id);
+            const inBlackAndOrange = await option(2, black!.id, orange!.id);
+            return {
+                product,
+                pla: pla!,
+                petg: petg!,
+                black: black!,
+                blue: blue!,
+                orange: orange!,
+                inBlack,
+                inBlue,
+                inBlackAndOrange,
+            };
+        }
+
+        const print = (
+            productId: string,
+            materialId: string,
+            colourOptionId: string | null,
+            quantity = 1,
+        ): CartItem => ({
+            productId,
+            type: 'print',
+            materialId,
+            colourOptionId,
+            quantity,
+        });
+
+        test("prices each print at the model's price in its material, times the copies, plus one parcel's shipping", async () => {
+            const { product, pla, petg, black, orange, inBlack, inBlackAndOrange } = await printable('S');
+
+            const result = await quote([
+                print(product.id, pla.id, inBlack.id, 2),
+                print(product.id, pla.id, inBlackAndOrange.id),
+                print(product.id, petg.id, inBlack.id),
+            ]);
+
+            expect(
+                result.lines.map(({ materialId, colourOptionId, print, unitPriceCents, quantity, license }) => ({
+                    materialId,
+                    colourOptionId,
+                    print,
+                    unitPriceCents,
+                    quantity,
+                    license,
+                })),
+            ).toEqual([
+                {
+                    materialId: pla.id,
+                    colourOptionId: inBlack.id,
+                    print: {
+                        materialName: pla.name,
+                        colourName: black.name,
+                        colours: [{ name: black.name, hex: '#000000' }],
+                    },
+                    unitPriceCents: 1290,
+                    quantity: 2,
+                    license: null,
+                },
+                {
+                    materialId: pla.id,
+                    colourOptionId: inBlackAndOrange.id,
+                    print: {
+                        materialName: pla.name,
+                        colourName: `${black.name} / ${orange.name}`,
+                        colours: [
+                            { name: black.name, hex: '#000000' },
+                            { name: orange.name, hex: '#f26b1d' },
+                        ],
+                    },
+                    unitPriceCents: 1290,
+                    quantity: 1,
+                    license: null,
+                },
+                {
+                    materialId: petg.id,
+                    colourOptionId: inBlack.id,
+                    print: expect.objectContaining({ materialName: petg.name, colourName: black.name }),
+                    unitPriceCents: 1590,
+                    quantity: 1,
+                    license: null,
+                },
+            ]);
+            // 2 × 12.90 + 12.90 + 15.90 = 54.60, and a small parcel: 2.90.
+            expect(result).toMatchObject({
+                subtotalCents: 5460,
+                parcelSize: 'S',
+                shippingCents: 290,
+                totalCents: 5750,
+            });
+        });
+
+        test('the same print in the same material and colour is one line, its copies added up (at most 10)', async () => {
+            const { product, pla, petg, inBlack } = await printable();
+            const result = await quote([
+                print(product.id, pla.id, inBlack.id, 6),
+                print(product.id, pla.id, inBlack.id, 7),
+                print(product.id, petg.id, inBlack.id, 1),
+            ]);
+            expect(result.lines.map((line) => line.quantity)).toEqual([10, 1]);
+        });
+
+        test('a model without colour options is ordered by material alone, printed in the colours shown', async () => {
+            const { product, pla, inBlack } = await printable();
+            await db.delete(productColourOptions).where(inArray(productColourOptions.productId, [product.id]));
+
+            const result = await quote([print(product.id, pla.id, null), print(product.id, pla.id, inBlack.id)]);
+
+            expect(result.lines.map((line) => [line.colourOptionId, line.print])).toEqual([
+                [null, { materialName: pla.name, colourName: null, colours: [] }],
+            ]);
+            // Its colour options are gone, so a cart that still holds one is told so.
+            expect(result.removed.map(({ reason, option }) => [reason, option])).toEqual([
+                ['option_unavailable', pla.name],
+            ]);
+        });
+
+        test('the order ships in the largest parcel, and files ship nothing', async () => {
+            const small = await printable('S');
+            const large = await printable('L');
+            const file = await model({ title: 'Hook' });
+
+            expect((await quote([digital(file.id)])).shippingCents).toBe(0);
+            const mixed = await quote([
+                digital(file.id),
+                print(small.product.id, small.pla.id, small.inBlack.id),
+                print(large.product.id, large.pla.id, large.inBlack.id),
+            ]);
+            expect(mixed).toMatchObject({ parcelSize: 'L', shippingCents: 990 });
+            // 4.50 + 12.90 + 12.90 + 9.90.
+            expect(mixed.totalCents).toBe(4020);
+        });
+
+        test("takes out prints the material can't make, or that are out of stock or not offered", async () => {
+            const { product, pla, petg, black, blue, orange, inBlack, inBlue, inBlackAndOrange } = await printable();
+            const other = await printable('M');
+
+            const result = await quote([
+                // PLA is out of blue.
+                print(product.id, pla.id, inBlue.id),
+                // PETG doesn't come in blue, and can't mix colours.
+                print(product.id, petg.id, inBlue.id),
+                print(product.id, petg.id, inBlackAndOrange.id),
+                // Another model's material and colour option: this model isn't offered in them.
+                print(product.id, other.pla.id, inBlack.id),
+                print(product.id, pla.id, other.inBlack.id),
+                // The model has colour options, so one must be chosen.
+                print(product.id, pla.id, null),
+                print(product.id, UNKNOWN_ID, UNKNOWN_ID),
+            ]);
+
+            expect(result.lines).toEqual([]);
+            expect(result.removed.map(({ reason, option }) => [reason, option])).toEqual([
+                ['option_unavailable', `${pla.name}, ${blue.name}`],
+                ['option_unavailable', `${petg.name}, ${blue.name}`],
+                ['option_unavailable', `${petg.name}, ${black.name} / ${orange.name}`],
+                ['option_unavailable', `${other.pla.name}, ${black.name}`],
+                ['option_unavailable', pla.name],
+                ['option_unavailable', pla.name],
+                ['option_unavailable', null],
+            ]);
+            expect(result.shippingCents).toBe(0);
+
+            // A material switched off.
+            await db
+                .update(materials)
+                .set({ active: false })
+                .where(inArray(materials.id, [petg.id]));
+            const off = await quote([print(product.id, petg.id, inBlack.id)]);
+            expect(off.removed.map(({ reason, option }) => [reason, option])).toEqual([
+                ['option_unavailable', `${petg.name}, ${black.name}`],
+            ]);
+        });
+
+        test('a model no longer printed is taken out', async () => {
+            // It still sells its file, so it stays published.
+            const { product, pla, inBlack } = await printable('S', {
+                digitalPriceCents: 450,
+                license: 'standard_digital',
+            });
+            await db
+                .update(products)
+                .set({ printBasePriceCents: null })
+                .where(inArray(products.id, [product.id]));
+            const result = await quote([print(product.id, pla.id, inBlack.id)]);
+            expect(result.removed.map((item) => item.reason)).toEqual(['unavailable']);
+        });
     });
 });

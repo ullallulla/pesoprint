@@ -1,4 +1,4 @@
-import type { AdminCategory, AdminMaterial, AdminProduct, AdminProductList } from '@app/shared';
+import type { AdminCategory, AdminMaterial, AdminProduct, AdminProductList, Colour } from '@app/shared';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { createRoutesStub } from 'react-router';
 import { describe, expect, test } from 'vite-plus/test';
@@ -29,15 +29,42 @@ const ham: AdminCategory = {
 };
 const categories = [gadgets, ham];
 
+const red: Colour = {
+    id: '0190b6a0-0000-7000-8000-000000000311',
+    name: 'Signal red',
+    hex: '#cc0000',
+    position: 0,
+};
+const black: Colour = {
+    ...red,
+    id: '0190b6a0-0000-7000-8000-000000000312',
+    name: 'Galaxy black',
+    hex: '#111111',
+    position: 1,
+};
+const colours = [red, black];
+
+/** PLA comes in both colours, black out of stock. Nylon only in red, and can't mix. */
 const pla: AdminMaterial = {
     id: '0190b6a0-0000-7000-8000-000000000301',
     name: 'PLA',
     description: null,
     active: true,
+    multicolour: true,
     position: 0,
-    colours: [],
+    colours: [
+        { colourId: red.id, name: red.name, hex: red.hex, inStock: true },
+        { colourId: black.id, name: black.name, hex: black.hex, inStock: false },
+    ],
 };
-const nylon: AdminMaterial = { ...pla, id: '0190b6a0-0000-7000-8000-000000000302', name: 'Nylon', active: false };
+const nylon: AdminMaterial = {
+    ...pla,
+    id: '0190b6a0-0000-7000-8000-000000000302',
+    name: 'Nylon',
+    active: false,
+    multicolour: false,
+    colours: [{ colourId: red.id, name: red.name, hex: red.hex, inStock: true }],
+};
 const materials = [pla, nylon];
 
 const draft: AdminProduct = {
@@ -61,6 +88,7 @@ const draft: AdminProduct = {
     updatedAt: '2026-11-11T08:00:00.000Z',
     description: 'A **clip**.',
     printOptions: [],
+    colourOptions: [],
     images: [
         {
             id: '0190b6a0-0000-7000-8000-000000000101',
@@ -83,6 +111,7 @@ const published: AdminProduct = {
     printBasePriceCents: 1290,
     parcelSize: 'S',
     printOptions: [{ materialId: '0190b6a0-0000-7000-8000-000000000301', priceCents: 1290 }],
+    colourOptions: [{ id: '0190b6a0-0000-7000-8000-000000000321', colourIds: [red.id, black.id] }],
     publishedAt: '2026-11-11T09:00:00.000Z',
     featuredAt: '2026-11-11T10:00:00.000Z',
     files: [
@@ -137,7 +166,12 @@ describe('product editor', () => {
                 },
             ],
         };
-        const html = render('/admin/products/:id', EditProduct, { product: withPreview, categories, materials });
+        const html = render('/admin/products/:id', EditProduct, {
+            product: withPreview,
+            categories,
+            materials,
+            colours,
+        });
 
         // Server rendering only shows the placeholder; three.js never runs on the server.
         expect(html).toContain('Loading the 3D viewer…');
@@ -147,7 +181,7 @@ describe('product editor', () => {
     });
 
     test('a draft lists what is missing before it can be published', () => {
-        const html = render('/admin/products/:id', EditProduct, { product: draft, categories, materials });
+        const html = render('/admin/products/:id', EditProduct, { product: draft, categories, materials, colours });
 
         expect(html).toContain('Before it can be published:');
         expect(html).toContain('Choose a category.');
@@ -164,7 +198,7 @@ describe('product editor', () => {
     });
 
     test('a published product locks its slug and must be archived before it can be deleted', () => {
-        const html = render('/admin/products/:id', EditProduct, { product: published, categories, materials });
+        const html = render('/admin/products/:id', EditProduct, { product: published, categories, materials, colours });
 
         expect(inputAttributes(html, 'slug')).toHaveProperty('readonly');
         expect(html).toContain('href="/models/cable-clip"');
@@ -179,6 +213,23 @@ describe('product editor', () => {
         expect(inputAttributes(html, `print:${nylon.id}`)).not.toHaveProperty('checked');
         expect(html).toContain('Inactive');
         expect(html).toMatch(/<option value="S" selected="">Small \(S\)<\/option>/);
+        // One multicolour option, its colours in order, then an empty row to add another.
+        const menus = [...html.matchAll(/<select[^>]*name="colourOption:(\d)"[^>]*>(.*?)<\/select>/gs)].map(
+            ([, row, options]) => [row, /<option value="([^"]*)" selected="">/.exec(options!)?.[1] ?? ''],
+        );
+        expect(menus).toEqual([
+            ['0', red.id],
+            ['0', black.id],
+            ['0', ''],
+            ['0', ''],
+            ['1', ''],
+            ['1', ''],
+            ['1', ''],
+            ['1', ''],
+        ]);
+        expect(html).toContain('Signal red / Galaxy black');
+        // The model is printed in PLA, which is out of black.
+        expect(html).toContain('In PLA (out of stock).');
         expect(html).toContain('cable-clip.stl');
         // An STL is there, so the preview can be made from it.
         expect(html).toContain('Make from STL');
@@ -212,47 +263,39 @@ test('the product list shows status, category and offers', () => {
     expect(html).toContain('File €4.50');
 });
 
-test('the material manager shows each material with its colours, and which are out of stock', () => {
+test('the materials page lists each material with the colours it comes in, and their stock', () => {
     const petg: AdminMaterial = {
-        id: '0190b6a0-0000-7000-8000-000000000301',
+        ...pla,
         name: 'PETG',
         description: 'Tough and slightly flexible.',
         active: false,
-        position: 0,
-        colours: [
-            {
-                id: '0190b6a0-0000-7000-8000-000000000311',
-                materialId: '0190b6a0-0000-7000-8000-000000000301',
-                name: 'Signal red',
-                hex: '#cc0000',
-                inStock: true,
-                position: 0,
-            },
-            {
-                id: '0190b6a0-0000-7000-8000-000000000312',
-                materialId: '0190b6a0-0000-7000-8000-000000000301',
-                name: 'Galaxy black',
-                hex: '#111111',
-                inStock: false,
-                position: 1,
-            },
-        ],
+        multicolour: false,
+        colours: [{ colourId: red.id, name: red.name, hex: red.hex, inStock: false }],
     };
-    const html = render('/admin/materials', AdminMaterials, { materials: [petg] });
+    const html = render('/admin/materials', AdminMaterials, { materials: [pla, petg], colours });
 
     expect(html).toContain('Inactive');
+    expect(html).toContain('Single colour only');
     expect(html).toContain('2 colours, 1 in stock');
+    expect(html).toContain('1 colour, 0 in stock');
     expect(html.indexOf('Signal red')).toBeLessThan(html.indexOf('Galaxy black'));
-    expect(html).toContain('background-color:#cc0000');
+    expect(html).toContain('background:#cc0000');
     expect(html).toContain('Out of stock');
     expect(html).toContain('Mark in stock');
     expect(html).toContain('Mark out of stock');
-    expect(inputAttributes(html, 'active')).not.toHaveProperty('checked');
+    expect(html).toContain('aria-label="Remove Signal red from PETG"');
+    // PLA has every colour; PETG can still be added in black.
+    expect(html).toContain('Every colour');
+    expect(html).toMatch(
+        /<select[^>]*name="colourId"[^>]*><option value="0190b6a0-0000-7000-8000-000000000312">Galaxy black/,
+    );
+    expect(inputAttributes(html, 'multicolour')).toHaveProperty('checked');
     expect(html).toContain('Add colour');
     expect(html).toContain('Add material');
 });
 
-test('the material manager says when there are no materials yet', () => {
-    const html = render('/admin/materials', AdminMaterials, { materials: [] });
+test('the materials page says when there are no materials or colours yet', () => {
+    const html = render('/admin/materials', AdminMaterials, { materials: [], colours: [] });
     expect(html).toContain('No materials yet. Add the first one.');
+    expect(html).toContain('No colours yet. Add the first one.');
 });

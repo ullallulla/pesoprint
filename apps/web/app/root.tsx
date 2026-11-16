@@ -21,7 +21,7 @@ import { StartingUp } from '~/components/starting-up';
 import { Button } from '~/components/ui/button';
 import { getEnv } from '~/env.server';
 import { isApiUnavailable } from '~/lib/api-unavailable';
-import { readCart } from '~/lib/cart.server';
+import { cartCount, readCart } from '~/lib/cart.server';
 import { readConsent } from '~/lib/consent';
 
 import type { Route } from './+types/root';
@@ -38,7 +38,7 @@ export const loader = (args: Route.LoaderArgs) =>
         return {
             analytics: POSTHOG_KEY ? { key: POSTHOG_KEY, host: POSTHOG_HOST } : null,
             consent: readConsent(request.headers.get('cookie')),
-            cartCount: (await readCart(request)).length,
+            cartCount: cartCount(await readCart(request)),
         };
     });
 

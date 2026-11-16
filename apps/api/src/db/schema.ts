@@ -24,6 +24,7 @@ import {
     primaryKey,
     text,
     timestamp,
+    unique,
     uniqueIndex,
     uuid,
     type AnyPgColumn,
@@ -405,6 +406,8 @@ export const materials = pgTable(
         /** A line for buyers about what the material is good for. */
         description: text('description'),
         active: boolean('active').notNull().default(true),
+        /** Several colours can be combined in one print. Off: only single-colour options are offered. */
+        multicolour: boolean('multicolour').notNull().default(true),
         /** Order in lists, lowest first. */
         position: integer('position').notNull().default(0),
         createdAt: createdAt(),
@@ -416,31 +419,50 @@ export const materials = pgTable(
 export type Material = typeof materials.$inferSelect;
 export type NewMaterial = typeof materials.$inferInsert;
 
-/** A material's colours. An out-of-stock colour stays listed but can't be ordered. */
+/** The colours prints come in. Which materials you have in each colour is in `material_colours`. */
 export const colours = pgTable(
     'colours',
     {
         id: id(),
-        materialId: uuid('material_id')
-            .notNull()
-            .references(() => materials.id, { onDelete: 'cascade' }),
         name: text('name').notNull(),
         /** `#rrggbb`, lowercase. */
         hex: text('hex').notNull(),
-        inStock: boolean('in_stock').notNull().default(true),
-        /** Order among the material's colours, lowest first. */
+        /** Order in lists, lowest first. */
         position: integer('position').notNull().default(0),
         createdAt: createdAt(),
         updatedAt: updatedAt(),
     },
     (t) => [
         check('colours_hex_format', sql`${t.hex} ~ '${sql.raw(HEX_COLOUR_PATTERN)}'`),
-        uniqueIndex('colours_material_id_name_unique').on(t.materialId, sql`lower(${t.name})`),
+        uniqueIndex('colours_name_unique').on(sql`lower(${t.name})`),
     ],
 );
 
 export type Colour = typeof colours.$inferSelect;
 export type NewColour = typeof colours.$inferInsert;
+
+/**
+ * The colours you have each material in: its filaments. An out-of-stock one stays listed but can't be
+ * ordered.
+ */
+export const materialColours = pgTable(
+    'material_colours',
+    {
+        materialId: uuid('material_id')
+            .notNull()
+            .references(() => materials.id, { onDelete: 'cascade' }),
+        colourId: uuid('colour_id')
+            .notNull()
+            .references(() => colours.id, { onDelete: 'cascade' }),
+        inStock: boolean('in_stock').notNull().default(true),
+    },
+    (t) => [
+        primaryKey({ columns: [t.materialId, t.colourId] }),
+        index('material_colours_colour_id_idx').on(t.colourId),
+    ],
+);
+
+export type MaterialColourRow = typeof materialColours.$inferSelect;
 
 /** The materials a model can be printed in, and the price of a print in each (euro cents, VAT included). */
 export const productMaterials = pgTable(
@@ -463,3 +485,42 @@ export const productMaterials = pgTable(
 );
 
 export type ProductMaterial = typeof productMaterials.$inferSelect;
+
+/**
+ * The colours a buyer can order a model's print in. A model without any is printed in the colours shown, and
+ * the buyer only chooses the material.
+ */
+export const productColourOptions = pgTable(
+    'product_colour_options',
+    {
+        id: id(),
+        productId: uuid('product_id')
+            .notNull()
+            .references(() => products.id, { onDelete: 'cascade' }),
+        /** Order on the product page, lowest first. */
+        position: integer('position').notNull().default(0),
+    },
+    (t) => [index('product_colour_options_product_id_idx').on(t.productId)],
+);
+
+export type ProductColourOption = typeof productColourOptions.$inferSelect;
+
+/** The colours of a colour option, in order: one, or several for a multicolour print. */
+export const productColourOptionColours = pgTable(
+    'product_colour_option_colours',
+    {
+        optionId: uuid('option_id')
+            .notNull()
+            .references(() => productColourOptions.id, { onDelete: 'cascade' }),
+        /** A colour in use can't be deleted, only marked out of stock. */
+        colourId: uuid('colour_id')
+            .notNull()
+            .references(() => colours.id, { onDelete: 'restrict' }),
+        position: integer('position').notNull(),
+    },
+    (t) => [
+        primaryKey({ columns: [t.optionId, t.position] }),
+        unique('product_colour_option_colours_option_id_colour_id_unique').on(t.optionId, t.colourId),
+        index('product_colour_option_colours_colour_id_idx').on(t.colourId),
+    ],
+);

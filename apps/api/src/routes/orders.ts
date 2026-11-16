@@ -39,7 +39,7 @@ export function orderRoutes(deps: OrderDeps) {
             400: errorResponse('Invalid items, or model files without `immediateDeliveryConsent`.'),
             401: errorResponse('Sign in required.'),
             409: errorResponse(
-                'The cart changed (something is no longer for sale, or already owned) or is empty, or the account is still being set up.',
+                'The cart changed (something is no longer for sale, or already owned) or is empty, it has prints (not yet payable), or the account is still being set up.',
             ),
             502: errorResponse("Stripe couldn't be reached. Nothing was charged."),
             503: errorResponse('Payments are not configured on this server.'),

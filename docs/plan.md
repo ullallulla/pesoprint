@@ -8,7 +8,7 @@ _Drafted 2026-11-09 from the [prototype review](./prototype-review.md) and the p
 
 - **download free models** without an account
 - **buy digital model files** (STL/3MF) and download them from their account library
-- **order physical prints** in a colour and material of their choice, which you print and ship yourself
+- **order physical prints** in a material of their choice, and a colour where the model offers one, which you print and ship yourself
 
 At first you are the only seller. The data model is designed so other creators can be added later without a rewrite.
 
@@ -20,21 +20,21 @@ At first you are the only seller. The data model is designed so other creators c
 
 ### Decisions from your answers
 
-| Topic         | Decision                                                                                                                       |
-| ------------- | ------------------------------------------------------------------------------------------------------------------------------ |
-| Goal          | Portfolio + real business                                                                                                      |
-| Products      | Free models, paid digital files, physical prints                                                                               |
-| Sellers       | Only you at first; data model ready for more creators                                                                          |
-| Print options | Customer picks material + colour. The author sets a price per material for each model; colour doesn't change it                |
-| Shipping      | The shop sets a rate per parcel size (S/M/L) and zone, based on real carrier prices                                            |
-| Returns       | EU consumer rules: 14-day right of withdrawal for prints, buyer pays the return shipping; defects and transit damage are on us |
-| Accounts      | Free downloads need no account. Buying requires an account (Clerk).                                                            |
-| Reviews       | Verified buyers only                                                                                                           |
-| Fulfilment    | You print and ship; the admin has an order queue with tracking numbers                                                         |
-| MVP scope     | Catalogue + search, checkout + downloads, print orders + shipping, reviews + favourites                                        |
-| Pace          | No dates; plan by milestones                                                                                                   |
-| Hosting       | Free tiers first; must be portable to a VPS or AWS/Azure/GCP later                                                             |
-| Market        | Undecided. Default: EUR, English UI, ship to Finland first, then the EU (see §9)                                               |
+| Topic         | Decision                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
+| ------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Goal          | Portfolio + real business                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
+| Products      | Free models, paid digital files, physical prints                                                                                                                                                                                                                                                                                                                                                                                                                                              |
+| Sellers       | Only you at first; data model ready for more creators                                                                                                                                                                                                                                                                                                                                                                                                                                         |
+| Print options | Customer picks a material and, if the model offers any, one of its colour options (a single colour, or several for a multicolour print such as "Red / Black"). Each material lists the colours you have it in (each in stock or not) and whether it can mix colours; buyers only see the options their material can print. The author sets a price per material for each model; colour doesn't change it. A model without colour options is printed in the colours shown (decided 2026-11-17) |
+| Shipping      | The shop sets a rate per parcel size (S/M/L) and zone, based on real carrier prices                                                                                                                                                                                                                                                                                                                                                                                                           |
+| Returns       | EU consumer rules: 14-day right of withdrawal for prints, buyer pays the return shipping; defects and transit damage are on us                                                                                                                                                                                                                                                                                                                                                                |
+| Accounts      | Free downloads need no account. Buying requires an account (Clerk).                                                                                                                                                                                                                                                                                                                                                                                                                           |
+| Reviews       | Verified buyers only                                                                                                                                                                                                                                                                                                                                                                                                                                                                          |
+| Fulfilment    | You print and ship; the admin has an order queue with tracking numbers                                                                                                                                                                                                                                                                                                                                                                                                                        |
+| MVP scope     | Catalogue + search, checkout + downloads, print orders + shipping, reviews + favourites                                                                                                                                                                                                                                                                                                                                                                                                       |
+| Pace          | No dates; plan by milestones                                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
+| Hosting       | Free tiers first; must be portable to a VPS or AWS/Azure/GCP later                                                                                                                                                                                                                                                                                                                                                                                                                            |
+| Market        | Undecided. Default: EUR, English UI, ship to Finland first, then the EU (see §9)                                                                                                                                                                                                                                                                                                                                                                                                              |
 
 ---
 
@@ -135,9 +135,12 @@ product_images   id, product_id, storage_key, alt, width, height, size_bytes, po
 product_files    id, product_id, kind (download|preview), format (stl|3mf|step|obj|glb),
                  filename, storage_key, size_bytes, sha256?, position, created_at
 
-materials        id, name (PLA, PETG, …), active
-colours          id, material_id, name, hex, in_stock
+materials        id, name (PLA, PETG, …), active, multicolour (can mix colours in one print)
+colours          id, name, hex
+material_colours material_id, colour_id, in_stock   -- the colours each material comes in (its filaments)
 product_materials product_id, material_id, price_cents   -- which materials each model can be printed in, and its price in each
+product_colour_options        id, product_id, position   -- none: printed in the colours shown
+product_colour_option_colours option_id, colour_id, position   -- one colour, or several for a multicolour print
 
 orders           id, user_id? (kept as null if the account is deleted), email (snapshot),
                  status (pending|paid|cancelled|refunded; M4 adds printing|shipped|delivered),
@@ -147,7 +150,8 @@ orders           id, user_id? (kept as null if the account is deleted), email (s
                  vat_country, vat_rate_bp,   -- VAT rate in basis points, e.g. 2550 = 25.5 %
                  shipping_name, shipping_address (jsonb), carrier, tracking_number,
                  created_at, paid_at, shipped_at
-order_items      id, order_id, product_id, type (digital; M4 adds print), material_id?, colour_id?,
+order_items      id, order_id, product_id, type (digital; M4 adds print), material_id?,
+                 colours (snapshot of the chosen option's colour names and hex; null: as shown),
                  quantity (1 for files), unit_price_cents, title_snapshot, license_snapshot
                  -- a product with order items or entitlements can't be deleted, only archived
 
@@ -236,10 +240,10 @@ Each milestone ends with: CI green, deployed to staging, and a short demo you co
 
 ### M4 – Physical print orders
 
-- Admin: manage materials and colours, mark colours out of stock. Per model: which materials it can be printed in, its price in each, and its parcel size (S/M/L) ✅
-- Admin: manage shipping rates (a price per zone and parcel size, based on the carrier's real prices)
-- Product page: pick material + colour; the price is that material's price, from the server
-- Cart with both digital and print items. Our checkout page collects the shipping address and prices shipping from the `shipping_rates` table (the order's largest parcel size and the address's zone). The Stripe Checkout Session includes the order lines and the shipping cost.
+- Admin: manage materials and colours, which colours each material comes in and their stock, and whether it can print multicolour. Per model: which materials it can be printed in, its price in each, its parcel size (S/M/L), and its colour options (single or multicolour; none = printed as shown) ✅
+- Shipping: interim fixed prices per parcel size, the same for every address: S €2.90, M €4.90, L €9.90 (`INTERIM_SHIPPING_CENTS` in `packages/shared`, decided 2026-11-16). The admin for real rates per zone (`shipping_rates`) waits until carriers and countries are decided (§9 #6). ✅
+- Product page: pick a material, and a colour option if the model has any; the price is that material's price, from the server ✅
+- Cart with both digital and print items (✅ the cart: copies per material and colour, shipping for the largest parcel). Our checkout page collects the shipping address and prices shipping (the interim prices for the order's largest parcel; later from `shipping_rates` by the address's zone). The Stripe Checkout Session includes the order lines and the shipping cost.
 - Admin order queue: paid → printing → shipped (carrier + tracking number) → delivered, with filters
 - Customer "My orders" page showing each order's status
 - **Done when:** you can complete a test print order end to end, from checkout to "shipped", with the tracking number showing on the customer's "My orders" page
@@ -323,5 +327,5 @@ These don't block M0–M2. Decide them before M3 or M4.
 4. ~~**Model licence:** personal use only, or also a commercial-use licence at a higher price?~~ **Decided 2026-11-13:** no commercial licence at a higher price. A paid file has one price; its licence (Standard Digital File or Commercial Use) is chosen per model and doesn't change the price.
 5. ~~**Print pricing formula:**~~ **Decided 2026-11-16:** no formula. The author sets a price per material for each model (`product_materials.price_cents`); colour doesn't change it.
 6. **Shipping:** **rates decided 2026-11-16:** a price per parcel size (S/M/L) and zone, set by the shop from real carrier prices, like Posti's and Matkahuolto's own size classes. Live carrier rates (carrier APIs, Shipit, Sendcloud) can come later. Still open: carriers (Posti, Matkahuolto, DHL…) and which countries (§9 #1). Posti's standard parcel goes to the pickup point nearest the address, so no pickup-point picker is needed at first.
-7. ~~**Returns for printed items:**~~ **Decided 2026-11-16:** follow the EU consumer rules. Treat prints as covered by the 14-day right of withdrawal (picking a material and colour from our list probably doesn't make them "made to the consumer's specifications"). The 14 days start when the buyer receives the parcel. We refund the price and the original shipping within 14 days, and may wait until the print is back; the buyer pays the return shipping. Misprints, defects and damage in transit are our responsibility (the risk passes only when the buyer receives the parcel): ask for a photo, then reprint or refund, usually without needing the print back. Check with KKV or a lawyer before launch (M6).
+7. ~~**Returns for printed items:**~~ **Decided 2026-11-16:** follow the EU consumer rules. Treat prints as covered by the 14-day right of withdrawal (picking a material and colour from our lists probably doesn't make them "made to the consumer's specifications"). The 14 days start when the buyer receives the parcel. We refund the price and the original shipping within 14 days, and may wait until the print is back; the buyer pays the return shipping. Misprints, defects and damage in transit are our responsibility (the risk passes only when the buyer receives the parcel): ask for a photo, then reprint or refund, usually without needing the print back. Check with KKV or a lawyer before launch (M6).
 8. ~~**3D previews of paid models.**~~ **Decided 2026-11-13:** no 3D view for paid models. Only free downloads have one; paid-file and print-only models show photos only.

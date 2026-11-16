@@ -1,14 +1,17 @@
 import {
+    cartItemKey,
     cartItemSchema,
+    cartItemsSchema,
     cartQuoteSchema,
     MAX_CART_ITEMS,
+    MAX_PRINT_LINES,
+    MAX_PRINT_QUANTITY,
     type CartItem,
     type CartQuote,
     type OrderItemType,
 } from '@app/shared';
 import { getAuth } from '@clerk/react-router/server';
 import { createCookie, data, redirect, type LoaderFunctionArgs } from 'react-router';
-import { z } from 'zod';
 
 import { apiFetch } from '~/lib/api.server';
 
@@ -27,12 +30,10 @@ const cartCookie = createCookie(CART_COOKIE, {
     maxAge: CART_MAX_AGE_SECONDS,
 });
 
-const storedCartSchema = z.array(cartItemSchema).max(MAX_CART_ITEMS);
-
 /** The cart in the request's cookie. A missing, old-format or tampered cookie is an empty cart. */
 export async function readCart(request: Request): Promise<CartItem[]> {
     const value: unknown = await cartCookie.parse(request.headers.get('cookie')).catch(() => null);
-    const parsed = storedCartSchema.safeParse(value);
+    const parsed = cartItemsSchema.safeParse(value);
     return parsed.success ? parsed.data : [];
 }
 
@@ -56,21 +57,49 @@ export async function cartChanged(request: Request, items: CartItem[], page: str
         : data({ error: null }, { headers });
 }
 
-const sameItem = (a: CartItem, b: CartItem) => a.productId === b.productId && a.type === b.type;
+const sameItem = (a: CartItem, b: CartItem) => cartItemKey(a) === cartItemKey(b);
 
 export const isInCart = (items: CartItem[], item: CartItem) => items.some((entry) => sameItem(entry, item));
 
-export type AddResult = { ok: true; items: CartItem[] } | { ok: false; reason: 'full' };
+/** What the header shows: every copy counts, a file counts once. */
+export const cartCount = (items: CartItem[]) =>
+    items.reduce((sum, item) => sum + (item.type === 'print' ? item.quantity : 1), 0);
 
-/** Adds an item once; adding it again changes nothing. */
+export type AddResult = { ok: true; items: CartItem[] } | { ok: false; error: string };
+
+/**
+ * Adds an item. A file already in the cart stays as it is; a print already there in the same colour gets
+ * the new copies added (up to the most allowed).
+ */
 export function addToCart(items: CartItem[], item: CartItem): AddResult {
-    if (isInCart(items, item)) return { ok: true, items };
-    if (items.length >= MAX_CART_ITEMS) return { ok: false, reason: 'full' };
+    const existing = items.find((entry) => sameItem(entry, item));
+    if (existing) {
+        if (existing.type !== 'print' || item.type !== 'print') return { ok: true, items };
+        const quantity = Math.min(existing.quantity + item.quantity, MAX_PRINT_QUANTITY);
+        return { ok: true, items: items.map((entry) => (entry === existing ? { ...existing, quantity } : entry)) };
+    }
+    if (items.length >= MAX_CART_ITEMS) {
+        return {
+            ok: false,
+            error: `Your cart is full (${MAX_CART_ITEMS} items). Check out or remove something first.`,
+        };
+    }
+    if (item.type === 'print' && items.filter((entry) => entry.type === 'print').length >= MAX_PRINT_LINES) {
+        return {
+            ok: false,
+            error: `Your cart has ${MAX_PRINT_LINES} different prints, the most one order can hold. Check out first.`,
+        };
+    }
     return { ok: true, items: [...items, item] };
 }
 
 export function removeFromCart(items: CartItem[], item: CartItem): CartItem[] {
     return items.filter((entry) => !sameItem(entry, item));
+}
+
+/** Sets how many copies of a print the cart holds. Files always have one. */
+export function setQuantity(items: CartItem[], item: CartItem, quantity: number): CartItem[] {
+    return items.map((entry) => (entry.type === 'print' && sameItem(entry, item) ? { ...entry, quantity } : entry));
 }
 
 /** Prices the cart through the API, as the visitor: signed in, what they already own is left out. */
@@ -84,8 +113,23 @@ export async function quoteCart(args: LoaderFunctionArgs, items: CartItem[]): Pr
     });
 }
 
-/** Reads a cart item from a submitted form (`productId` and `type`); `null` if it isn't one. */
+/**
+ * Reads a cart item from a submitted form: `productId` and `type`, and for a print `materialId`,
+ * `colourOptionId` (missing or empty when the model has no colour options) and `quantity` (1 if missing).
+ * `null` if it isn't one.
+ */
 export function cartItemFromForm(form: FormData, type: OrderItemType = 'digital'): CartItem | null {
-    const parsed = cartItemSchema.safeParse({ productId: form.get('productId'), type: form.get('type') ?? type });
+    const itemType = form.get('type') ?? type;
+    const parsed = cartItemSchema.safeParse(
+        itemType === 'print'
+            ? {
+                  productId: form.get('productId'),
+                  type: itemType,
+                  materialId: form.get('materialId'),
+                  colourOptionId: form.get('colourOptionId') || null,
+                  quantity: Number(form.get('quantity') ?? 1),
+              }
+            : { productId: form.get('productId'), type: itemType },
+    );
     return parsed.success ? parsed.data : null;
 }

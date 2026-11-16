@@ -1,19 +1,29 @@
-import { MAX_CART_ITEMS, type CartItem } from '@app/shared';
+import { MAX_CART_ITEMS, MAX_PRINT_LINES, MAX_PRINT_QUANTITY, type CartItem } from '@app/shared';
 import { describe, expect, test } from 'vite-plus/test';
 
 import {
     addToCart,
     CART_COOKIE,
     cartChanged,
+    cartCount,
     cartItemFromForm,
     isInCart,
     readCart,
     removeFromCart,
     saveCart,
+    setQuantity,
 } from './cart.server';
 
 const id = (n: number) => `0190b6a0-0000-7000-8000-${String(n).padStart(12, '0')}`;
 const item = (n: number): CartItem => ({ productId: id(n), type: 'digital' });
+/** A print of model `n` in material 800, in colour option `colour` (`null`: the colours shown). */
+const print = (n: number, colour: number | null = 900, quantity = 1): CartItem => ({
+    productId: id(n),
+    type: 'print',
+    materialId: id(800),
+    colourOptionId: colour === null ? null : id(colour),
+    quantity,
+});
 
 /** A request carrying the cookie a `Set-Cookie` header stored. */
 function requestWith(setCookie: string, url = 'https://shop.test/cart') {
@@ -68,6 +78,16 @@ describe('cart cookie', () => {
         expect(setCookie.split(';')[0]!.length).toBeLessThan(3000);
         expect(await readCart(requestWith(setCookie))).toEqual(full);
     });
+
+    test('a full cart with as many prints as allowed still fits in one cookie', async () => {
+        const full = [
+            ...Array.from({ length: MAX_PRINT_LINES }, (_, n) => print(n, 900 + n, MAX_PRINT_QUANTITY)),
+            ...Array.from({ length: MAX_CART_ITEMS - MAX_PRINT_LINES }, (_, n) => item(100 + n)),
+        ];
+        const setCookie = await saveCart(new Request('https://shop.test/'), full);
+        expect(setCookie.split(';')[0]!.length).toBeLessThan(4000);
+        expect(await readCart(requestWith(setCookie))).toEqual(full);
+    });
 });
 
 describe('cart changes', () => {
@@ -79,8 +99,32 @@ describe('cart changes', () => {
 
     test('a full cart takes nothing more, but adding what is already in it is fine', () => {
         const full = Array.from({ length: MAX_CART_ITEMS }, (_, n) => item(n));
-        expect(addToCart(full, item(999))).toEqual({ ok: false, reason: 'full' });
+        expect(addToCart(full, item(999))).toMatchObject({ ok: false, error: expect.stringContaining('full') });
         expect(addToCart(full, item(0))).toEqual({ ok: true, items: full });
+    });
+
+    test('the same print in the same colour adds copies, up to the most allowed; another colour is its own line', () => {
+        expect(addToCart([print(1, 900, 2)], print(1, 900, 3))).toEqual({ ok: true, items: [print(1, 900, 5)] });
+        expect(addToCart([print(1, 900, 8)], print(1, 900, 5))).toEqual({
+            ok: true,
+            items: [print(1, 900, MAX_PRINT_QUANTITY)],
+        });
+        expect(addToCart([print(1, 900)], print(1, 901))).toEqual({ ok: true, items: [print(1, 900), print(1, 901)] });
+        // The file and a print of the same model are different things.
+        expect(isInCart([print(1)], item(1))).toBe(false);
+    });
+
+    test(`at most ${MAX_PRINT_LINES} different prints`, () => {
+        const prints = Array.from({ length: MAX_PRINT_LINES }, (_, n) => print(n, 900 + n));
+        expect(addToCart(prints, print(99))).toMatchObject({ ok: false });
+        expect(addToCart(prints, item(99))).toMatchObject({ ok: true });
+    });
+
+    test('sets the copies of one print, and counts every copy', () => {
+        const items = [item(1), print(2, 900), print(2, 901)];
+        const changed = setQuantity(items, print(2, 901, 4), 4);
+        expect(changed).toEqual([item(1), print(2, 900), print(2, 901, 4)]);
+        expect(cartCount(changed)).toBe(6);
     });
 
     test('removes only the given item', () => {
@@ -99,6 +143,15 @@ describe('cart changes', () => {
         expect(cartItemFromForm(form({ productId: id(1) }))).toEqual(item(1));
         expect(cartItemFromForm(form({ productId: 'hook' }))).toBeNull();
         expect(cartItemFromForm(form({ productId: id(1), type: 'print' }))).toBeNull();
+        const printForm = (fields: Record<string, string>) =>
+            form({ productId: id(1), type: 'print', materialId: id(800), ...fields });
+        expect(cartItemFromForm(printForm({ colourOptionId: id(900), quantity: '3' }))).toEqual(print(1, 900, 3));
+        expect(cartItemFromForm(printForm({ colourOptionId: id(900) }))).toEqual(print(1, 900));
+        // A model without colour options: no colour, or an empty one.
+        expect(cartItemFromForm(printForm({}))).toEqual(print(1, null));
+        expect(cartItemFromForm(printForm({ colourOptionId: '' }))).toEqual(print(1, null));
+        expect(cartItemFromForm(printForm({ colourOptionId: id(900), quantity: '11' }))).toBeNull();
+        expect(cartItemFromForm(form({ productId: id(1), type: 'print', colourOptionId: id(900) }))).toBeNull();
         expect(cartItemFromForm(form({}))).toBeNull();
     });
 });

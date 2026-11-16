@@ -24,6 +24,7 @@ import {
     users,
 } from '../src/db/schema.ts';
 import { parcelSizeFor, SEED_CREATOR, seedDatabase } from '../src/db/seed.ts';
+import { colourOptionsFor } from '../src/services/catalog.ts';
 import { createFakeStorage } from './helpers.ts';
 import { TINY_PNG, tinyStl, validSource, writeAsset } from './seed-fixtures.ts';
 
@@ -39,6 +40,7 @@ describe.skipIf(!url)('seedDatabase (integration)', () => {
         await db.delete(orders);
         await db.delete(products);
         await db.delete(materials);
+        await db.delete(colours);
         await db.delete(categories).where(sql`${categories.parentId} IS NOT NULL`);
         await db.delete(categories);
         await db.delete(users).where(sql`${users.id} IN (${SEED_CREATOR.id}, ${OWNER_ID})`);
@@ -69,7 +71,7 @@ describe.skipIf(!url)('seedDatabase (integration)', () => {
         const allMaterials = await db.select().from(materials);
         expect(allMaterials.map((m) => m.name).sort()).toEqual(['PETG', 'PLA']);
         const [colourCount] = await db.select({ value: count() }).from(colours);
-        expect(colourCount?.value).toBe(8);
+        expect(colourCount?.value).toBe(6);
 
         const printable = await db
             .select()
@@ -87,6 +89,25 @@ describe.skipIf(!url)('seedDatabase (integration)', () => {
             });
             expect(product.parcelSize).not.toBeNull();
         }
+
+        // Most let the buyer choose a colour, one option of them multicolour; the rest come as shown.
+        const options = await colourOptionsFor(
+            db,
+            printable.map((product) => product.id),
+        );
+        const names = printable.map((product) => (options.get(product.id) ?? []).map((option) => option.name));
+        expect(names).toContainEqual(['Black', 'White', 'Signal red', 'Ocean blue', 'Black / Signal red']);
+        expect(names.filter((list) => list.length === 0).length).toBe(Math.floor(printable.length / 4));
+
+        // PETG comes in fewer colours and can't mix them, so it offers fewer of the options.
+        const [pla, petg] = ['PLA', 'PETG'].map((name) => allMaterials.find((m) => m.name === name)!.id);
+        const sample = [...options.values()].find((list) => list.length === 5)!;
+        const offeredIn = (materialId: string) =>
+            sample
+                .filter((option) => option.materials.some((entry) => entry.materialId === materialId))
+                .map((option) => option.name);
+        expect(offeredIn(pla!)).toEqual(['Black', 'White', 'Signal red', 'Ocean blue', 'Black / Signal red']);
+        expect(offeredIn(petg!)).toEqual(['Black', 'White']);
     });
 
     test.each([

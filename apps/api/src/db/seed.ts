@@ -13,9 +13,12 @@ import {
     categories,
     colours,
     entitlements,
+    materialColours,
     materials,
     orderItems,
     orders,
+    productColourOptionColours,
+    productColourOptions,
     productFiles,
     productImages,
     productMaterials,
@@ -296,37 +299,49 @@ interface SeedMaterial {
     description: string;
     /** Added to a model's print price to get its price in this material. */
     extraCents: number;
-    colours: { name: string; hex: string; inStock?: boolean }[];
+    multicolour: boolean;
+    /** The colours you have it in, by name, and those out of stock. */
+    colours: string[];
+    outOfStock?: string[];
 }
 
 /**
- * Materials for the sample models. Added if missing (matched by name), never changed: once they exist,
- * they're yours to edit in the admin.
+ * Materials and colours for the sample models. Added if missing (matched by name), never changed: once they
+ * exist, they're yours to edit in the admin.
  */
 const SEED_MATERIALS: SeedMaterial[] = [
     {
         name: 'PLA',
         description: 'Easy to print, crisp details and a matte finish. For indoor use: it softens in a hot car.',
         extraCents: 0,
-        colours: [
-            { name: 'Black', hex: '#1c1c1c' },
-            { name: 'White', hex: '#f4f4f0' },
-            { name: 'Grey', hex: '#8a8d91' },
-            { name: 'Signal red', hex: '#c8102e' },
-            { name: 'Ocean blue', hex: '#1f5fa8', inStock: false },
-        ],
+        multicolour: true,
+        colours: ['Black', 'White', 'Grey', 'Signal red', 'Ocean blue'],
+        outOfStock: ['Ocean blue'],
     },
     {
         name: 'PETG',
         description: 'Tough and slightly flexible, and it takes heat and sun. Good for parts that take a knock.',
         extraCents: 300,
-        colours: [
-            { name: 'Black', hex: '#141414' },
-            { name: 'Orange', hex: '#f26b1d' },
-            { name: 'Clear', hex: '#dfe8ea' },
-        ],
+        // Shows a material that only offers single-colour prints.
+        multicolour: false,
+        colours: ['Black', 'White', 'Orange'],
     },
 ];
+
+const SEED_COLOURS: { name: string; hex: string }[] = [
+    { name: 'Black', hex: '#1c1c1c' },
+    { name: 'White', hex: '#f4f4f0' },
+    { name: 'Grey', hex: '#8a8d91' },
+    { name: 'Signal red', hex: '#c8102e' },
+    { name: 'Orange', hex: '#f26b1d' },
+    { name: 'Ocean blue', hex: '#1f5fa8' },
+];
+
+/**
+ * The colour options of a sample print, by colour name: single colours, and one multicolour print. Each
+ * material offers those it comes in (and, for several colours, can mix).
+ */
+const SEED_COLOUR_OPTIONS = [['Black'], ['White'], ['Signal red'], ['Ocean blue'], ['Black', 'Signal red']];
 
 /** The parcel a print of this size ships in, from its longest side in millimetres. */
 export function parcelSizeFor(size: readonly (number | null)[] | undefined): ParcelSize {
@@ -513,12 +528,25 @@ export async function seedDatabase(db: Database, options: SeedOptions = {}): Pro
             }
         }
 
-        // Materials and colours: only the missing ones are added, so your edits in the admin stay.
+        // Colours, materials and the colours each comes in: only the missing ones are added, so your edits in
+        // the admin stay.
+        await tx
+            .insert(colours)
+            .values(SEED_COLOURS.map((colour, position) => ({ ...colour, position })))
+            .onConflictDoNothing();
+        const colourRows = await tx.select({ id: colours.id, name: colours.name }).from(colours);
+        const colourId = (name: string) => colourRows.find((row) => row.name.toLowerCase() === name.toLowerCase())!.id;
+
         const materialIds: { id: string; extraCents: number }[] = [];
         for (const [position, material] of SEED_MATERIALS.entries()) {
             await tx
                 .insert(materials)
-                .values({ name: material.name, description: material.description, position })
+                .values({
+                    name: material.name,
+                    description: material.description,
+                    multicolour: material.multicolour,
+                    position,
+                })
                 .onConflictDoNothing();
             const [row] = await tx
                 .select({ id: materials.id })
@@ -526,11 +554,22 @@ export async function seedDatabase(db: Database, options: SeedOptions = {}): Pro
                 .where(sql`lower(${materials.name}) = lower(${material.name})`);
             materialIds.push({ id: row!.id, extraCents: material.extraCents });
             await tx
-                .insert(colours)
-                .values(material.colours.map((colour, index) => ({ ...colour, materialId: row!.id, position: index })))
+                .insert(materialColours)
+                .values(
+                    material.colours.map((name) => ({
+                        materialId: row!.id,
+                        colourId: colourId(name),
+                        inStock: !material.outOfStock?.includes(name),
+                    })),
+                )
                 .onConflictDoNothing();
         }
-        /** A sample model that can be printed comes in every seed material, dearer in the tougher ones. */
+
+        let printable = 0;
+        /**
+         * A sample model that can be printed comes in every seed material, dearer in the tougher ones. Most
+         * let the buyer choose a colour; every fourth is printed in the colours shown.
+         */
         const addPrintOptions = async (productId: string, printCents: number | null) => {
             if (printCents === null) return;
             await tx.insert(productMaterials).values(
@@ -540,6 +579,20 @@ export async function seedDatabase(db: Database, options: SeedOptions = {}): Pro
                     priceCents: printCents + extraCents,
                 })),
             );
+            if (printable++ % 4 === 3) return;
+            for (const [position, names] of SEED_COLOUR_OPTIONS.entries()) {
+                const [option] = await tx
+                    .insert(productColourOptions)
+                    .values({ productId, position })
+                    .returning({ id: productColourOptions.id });
+                await tx.insert(productColourOptionColours).values(
+                    names.map((name, index) => ({
+                        optionId: option!.id,
+                        colourId: colourId(name),
+                        position: index,
+                    })),
+                );
+            }
         };
 
         // Products: replace every product owned by the seed creator (images and files cascade). Orders keep

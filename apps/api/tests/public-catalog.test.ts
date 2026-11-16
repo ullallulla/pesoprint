@@ -12,7 +12,20 @@ import { eq, sql } from 'drizzle-orm';
 import { afterAll, beforeAll, describe, expect, test } from 'vite-plus/test';
 
 import { createDatabase, runMigrations } from '../src/db/client.ts';
-import { categories, productFiles, productImages, products, users, type NewProduct } from '../src/db/schema.ts';
+import {
+    categories,
+    colours,
+    materialColours,
+    materials,
+    productColourOptionColours,
+    productColourOptions,
+    productFiles,
+    productImages,
+    productMaterials,
+    products,
+    users,
+    type NewProduct,
+} from '../src/db/schema.ts';
 import { createCatalogService, prefixTsQuery } from '../src/services/catalog.ts';
 import { buildApp, createFakeStorage } from './helpers.ts';
 
@@ -58,6 +71,7 @@ describe.skipIf(!url)('public catalogue (integration)', () => {
 
     async function resetCatalogue() {
         await db.delete(products);
+        await db.delete(materials);
         await db.delete(categories).where(sql`${categories.parentId} IS NOT NULL`);
         await db.delete(categories);
     }
@@ -327,6 +341,96 @@ describe.skipIf(!url)('public catalogue (integration)', () => {
             } finally {
                 await db.delete(productFiles).where(eq(productFiles.id, preview!.id));
             }
+        });
+
+        test('lists the active materials it is printed in, its colour options, and its parcel', async () => {
+            const [dragon] = await db.select().from(products).where(eq(products.slug, 'articulated-dragon'));
+            const [petg, pla, nylon] = await db
+                .insert(materials)
+                .values([
+                    { name: 'PETG', position: 1 },
+                    { name: 'PLA', position: 0, description: 'Easy to print.' },
+                    { name: 'Nylon', position: 2, active: false },
+                ])
+                .returning();
+            const [white, black, orange, grey] = await db
+                .insert(colours)
+                .values([
+                    { name: 'White', hex: '#ffffff' },
+                    { name: 'Black', hex: '#000000' },
+                    { name: 'Orange', hex: '#f26b1d' },
+                    { name: 'Grey', hex: '#888888' },
+                ])
+                .returning();
+            // PLA is out of black. PETG can't mix colours. Nylon is switched off. None comes in grey.
+            await db.update(materials).set({ multicolour: false }).where(eq(materials.id, petg!.id));
+            await db.insert(materialColours).values([
+                ...[white, black, orange].map((colour) => ({
+                    materialId: pla!.id,
+                    colourId: colour!.id,
+                    inStock: colour !== black,
+                })),
+                ...[white, black, orange].map((colour) => ({ materialId: petg!.id, colourId: colour!.id })),
+                { materialId: nylon!.id, colourId: white!.id },
+            ]);
+            await db.insert(productMaterials).values([
+                { productId: dragon!.id, materialId: petg!.id, priceCents: 2790 },
+                { productId: dragon!.id, materialId: pla!.id, priceCents: 2490 },
+                { productId: dragon!.id, materialId: nylon!.id, priceCents: 3490 },
+            ]);
+            const [second, first, third] = await db
+                .insert(productColourOptions)
+                .values([
+                    { productId: dragon!.id, position: 1 },
+                    { productId: dragon!.id, position: 0 },
+                    { productId: dragon!.id, position: 2 },
+                ])
+                .returning();
+            await db.insert(productColourOptionColours).values([
+                { optionId: first!.id, colourId: white!.id, position: 0 },
+                { optionId: second!.id, colourId: orange!.id, position: 1 },
+                { optionId: second!.id, colourId: black!.id, position: 0 },
+                { optionId: third!.id, colourId: grey!.id, position: 0 },
+            ]);
+            try {
+                const product = catalogProductSchema.parse(await (await get('/products/articulated-dragon')).json());
+                expect(product.parcelSize).toBe('M');
+                expect(product.printOptions).toEqual([
+                    { materialId: pla!.id, name: 'PLA', description: 'Easy to print.', priceCents: 2490 },
+                    { materialId: petg!.id, name: 'PETG', description: null, priceCents: 2790 },
+                ]);
+                // Grey: no material can print it, so it isn't offered.
+                expect(product.colourOptions).toEqual([
+                    {
+                        id: first!.id,
+                        name: 'White',
+                        colours: [{ name: 'White', hex: '#ffffff' }],
+                        materials: [
+                            { materialId: pla!.id, inStock: true },
+                            { materialId: petg!.id, inStock: true },
+                        ],
+                    },
+                    {
+                        id: second!.id,
+                        name: 'Black / Orange',
+                        colours: [
+                            { name: 'Black', hex: '#000000' },
+                            { name: 'Orange', hex: '#f26b1d' },
+                        ],
+                        materials: [{ materialId: pla!.id, inStock: false }],
+                    },
+                ]);
+            } finally {
+                await db.delete(productColourOptions);
+                await db.delete(productMaterials);
+                await db.delete(materials);
+                await db.delete(colours);
+            }
+        });
+
+        test('a model with no material to print in offers no print or colour options', async () => {
+            const product = catalogProductSchema.parse(await (await get('/products/articulated-dragon')).json());
+            expect(product).toMatchObject({ printOptions: [], colourOptions: [], parcelSize: null });
         });
 
         test('a top-level category has no parent', async () => {

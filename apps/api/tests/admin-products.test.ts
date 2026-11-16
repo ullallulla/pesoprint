@@ -7,6 +7,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, test } from 'vite-pl
 import { createDatabase, runMigrations } from '../src/db/client.ts';
 import {
     categories,
+    colours,
     entitlements,
     materials,
     orderItems,
@@ -122,6 +123,7 @@ describe.skipIf(!url)('admin product routes (integration)', () => {
         await db.delete(orders);
         await db.delete(products);
         await db.delete(materials);
+        await db.delete(colours);
         await db.delete(categories).where(sql`${categories.parentId} IS NOT NULL`);
         await db.delete(categories);
     }
@@ -459,6 +461,69 @@ describe.skipIf(!url)('admin product routes (integration)', () => {
             });
             expect(res.status).toBe(409);
             expect((await db.select().from(materials)).map((row) => row.name)).toEqual(['PLA']);
+        });
+    });
+
+    describe('colour options', () => {
+        async function colour(name: string) {
+            const [row] = await db.insert(colours).values({ name, hex: '#000000' }).returning();
+            return row!.id;
+        }
+
+        test('saves them in order; an option listed again with the same colours keeps its id', async () => {
+            const [red, black, white] = [await colour('Red'), await colour('Black'), await colour('White')];
+            const product = await create({
+                slug: 'figure',
+                title: 'Figure',
+                colourOptions: [{ colourIds: [red] }, { colourIds: [red, black] }],
+            });
+            expect(product.colourOptions.map((option) => option.colourIds)).toEqual([[red], [red, black]]);
+            const [inRed, inRedAndBlack] = product.colourOptions;
+
+            const saved = await expectProduct(
+                await call('PATCH', `/${product.id}`, {
+                    colourOptions: [{ colourIds: [white] }, { colourIds: [red, black] }, { colourIds: [red] }],
+                }),
+            );
+            expect(saved.colourOptions).toEqual([
+                { id: expect.any(String), colourIds: [white] },
+                { id: inRedAndBlack!.id, colourIds: [red, black] },
+                { id: inRed!.id, colourIds: [red] },
+            ]);
+
+            // The order of the colours matters: black and red is another option than red and black.
+            const swapped = await expectProduct(
+                await call('PATCH', `/${product.id}`, { colourOptions: [{ colourIds: [black, red] }] }),
+            );
+            expect(swapped.colourOptions).toHaveLength(1);
+            expect(swapped.colourOptions[0]!.id).not.toBe(inRedAndBlack!.id);
+
+            const cleared = await expectProduct(await call('PATCH', `/${product.id}`, { colourOptions: [] }));
+            expect(cleared.colourOptions).toEqual([]);
+        });
+
+        test('refuses an unknown colour, a colour twice in an option, and the same option twice', async () => {
+            const red = await colour('Red');
+            const { id } = await create({ slug: 'figure', title: 'Figure' });
+
+            const unknown = await expectError(
+                await call('PATCH', `/${id}`, { colourOptions: [{ colourIds: [UNKNOWN_ID] }] }),
+                400,
+                'validation_failed',
+            );
+            expect(unknown.issues?.map((issue) => issue.path)).toEqual(['colourOptions']);
+            for (const colourOptions of [[{ colourIds: [red, red] }], [{ colourIds: [red] }, { colourIds: [red] }]]) {
+                await expectError(await call('PATCH', `/${id}`, { colourOptions }), 400, 'validation_failed');
+            }
+        });
+
+        test("a colour that a model offers can't be deleted", async () => {
+            const red = await colour('Red');
+            await create({ slug: 'figure', title: 'Figure', colourOptions: [{ colourIds: [red] }] });
+
+            const res = await app.request(`/api/admin/colours/${red}`, { method: 'DELETE', ...bearer(tokens.admin) });
+            expect(res.status).toBe(409);
+            expect((await db.select().from(colours)).map((row) => row.name)).toEqual(['Red']);
         });
     });
 

@@ -8,10 +8,13 @@ import { afterAll, beforeAll, beforeEach, describe, expect, test } from 'vite-pl
 import { createDatabase, runMigrations } from '../src/db/client.ts';
 import {
     categories,
+    colours,
     entitlements,
+    materials,
     orderItems,
     orders,
     productFiles,
+    productMaterials,
     products,
     users,
     type NewProduct,
@@ -161,6 +164,8 @@ describe.skipIf(!url)('checkout and orders (integration)', () => {
         await db.delete(entitlements);
         await db.delete(orders);
         await db.delete(products);
+        await db.delete(materials);
+        await db.delete(colours);
         await db.delete(categories).where(sql`${categories.parentId} IS NOT NULL`);
         await db.delete(categories);
     }
@@ -369,6 +374,22 @@ describe.skipIf(!url)('checkout and orders (integration)', () => {
             } finally {
                 await db.insert(users).values({ id: BUYER_ID, email: 'buyer@example.com', role: 'customer' });
             }
+        });
+
+        test("refuses prints for now: orders can't hold a shipping address yet", async () => {
+            const [pla] = await db.insert(materials).values({ name: 'PLA' }).returning();
+            const vase = await model({ printBasePriceCents: 1290, parcelSize: 'S' });
+            await db.insert(productMaterials).values({ productId: vase.id, materialId: pla!.id, priceCents: 1290 });
+
+            const res = await checkout([
+                digital(vase.id),
+                { productId: vase.id, type: 'print', materialId: pla!.id, colourOptionId: null, quantity: 1 },
+            ]);
+
+            expect(res.status).toBe(409);
+            expect(apiErrorSchema.parse(await res.json()).error.issues?.map((issue) => issue.path)).toEqual(['print']);
+            expect(await db.select().from(orders)).toEqual([]);
+            expect(payments.created).toEqual([]);
         });
 
         test('answers 503 without Stripe, and 502 if Stripe fails, keeping no order', async () => {

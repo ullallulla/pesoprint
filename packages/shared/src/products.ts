@@ -2,6 +2,7 @@ import { z } from 'zod';
 
 import type { ApiErrorIssue } from './errors.ts';
 import { isOwnLicense, licenseSchema, type License } from './licenses.ts';
+import { MAX_OPTION_COLOURS } from './materials.ts';
 import {
     digitalPriceCentsSchema,
     isPaidFile,
@@ -47,6 +48,32 @@ export const printOptionsSchema = z
         message: 'Each material can only be listed once.',
     });
 
+/** Most colour options per model. */
+export const MAX_COLOUR_OPTIONS = 20;
+
+/**
+ * A colour a buyer can order the print in: one colour, or several for a multicolour print ("Red / Black",
+ * in this order).
+ */
+export const colourOptionInputSchema = z
+    .object({
+        colourIds: z
+            .array(z.uuid())
+            .min(1)
+            .max(MAX_OPTION_COLOURS)
+            .refine((ids) => new Set(ids).size === ids.length, { message: 'Use each colour once in an option.' }),
+    })
+    .meta({ id: 'ColourOptionInput' });
+export type ColourOptionInput = z.infer<typeof colourOptionInputSchema>;
+
+/** Empty: the buyer only chooses the material, and the print comes in the colours shown in the photos. */
+export const colourOptionsSchema = z
+    .array(colourOptionInputSchema)
+    .max(MAX_COLOUR_OPTIONS)
+    .refine((options) => new Set(options.map((option) => option.colourIds.join(','))).size === options.length, {
+        message: 'Each colour option can only be listed once.',
+    });
+
 const productInputFields = z.object({
     slug: slugSchema,
     title: z.string().trim().min(1).max(200),
@@ -56,6 +83,11 @@ const productInputFields = z.object({
     digitalPriceCents: digitalPriceCentsSchema,
     /** Replaces the model's print options. The print's "from" price is worked out from them. */
     printOptions: printOptionsSchema,
+    /**
+     * Replaces the model's colour options, in this order. An option that is listed again with the same
+     * colours keeps its id, so carts that hold it stay valid.
+     */
+    colourOptions: colourOptionsSchema,
     /** Required to publish a model that can be printed. */
     parcelSize: parcelSizeSchema.nullable(),
     license: licenseSchema.nullable(),
@@ -149,6 +181,8 @@ export const adminProductSchema = adminProductSummarySchema
         description: z.string(),
         /** Every material the model can be printed in, active or not, in the materials' order. */
         printOptions: z.array(printOptionSchema),
+        /** The colours a buyer can choose from, in order. Empty: printed in the colours shown. */
+        colourOptions: z.array(z.object({ id: z.uuid(), colourIds: z.array(z.uuid()) })),
         /** Ordered by position; the first is the cover. */
         images: z.array(adminProductImageSchema),
         files: z.array(adminProductFileSchema),

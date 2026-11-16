@@ -2,6 +2,7 @@ import { z } from 'zod';
 
 import { licenseSchema } from './licenses.ts';
 import { productFileFormatSchema } from './products.ts';
+import { parcelSizeSchema } from './shipping.ts';
 
 /**
  * The public catalogue: what anyone can see without signing in. Only published products appear here.
@@ -57,7 +58,7 @@ export const catalogProductCardSchema = z
         cover: catalogImageSchema.nullable(),
         /** `null` = no file, `0` = free download, `> 0` = paid file. */
         digitalPriceCents: z.int().nullable(),
-        /** Print price before the material surcharge (shown as "from"). `null` = not offered as a print. */
+        /** The cheapest print, among the active materials (shown as "from"). `null` = not offered as a print. */
         printBasePriceCents: z.int().nullable(),
         /** How many times visitors downloaded the model's files. */
         downloadCount: z.int().nonnegative(),
@@ -65,6 +66,35 @@ export const catalogProductCardSchema = z
     })
     .meta({ id: 'CatalogProductCard' });
 export type CatalogProductCard = z.infer<typeof catalogProductCardSchema>;
+
+/** A material a model can be printed in, and the price of a print in it. */
+export const catalogPrintOptionSchema = z
+    .object({
+        materialId: z.uuid(),
+        name: z.string(),
+        description: z.string().nullable(),
+        /** Price of one print in this material, euro cents incl. VAT. */
+        priceCents: z.int().positive(),
+    })
+    .meta({ id: 'CatalogPrintOption' });
+export type CatalogPrintOption = z.infer<typeof catalogPrintOptionSchema>;
+
+/** A colour a print can be ordered in: one colour, or several for a multicolour print. */
+export const catalogColourOptionSchema = z
+    .object({
+        id: z.uuid(),
+        /** e.g. "Signal red", or "Black / Signal red" for a multicolour print. */
+        name: z.string(),
+        /** `#rrggbb` swatches, in order. */
+        colours: z.array(z.object({ name: z.string(), hex: z.string() })),
+        /**
+         * The model's materials that can print it. Others don't come in all its colours, or can't mix them.
+         * `inStock: false` when one of its filaments is out of stock: shown, but can't be ordered.
+         */
+        materials: z.array(z.object({ materialId: z.uuid(), inStock: z.boolean() })),
+    })
+    .meta({ id: 'CatalogColourOption' });
+export type CatalogColourOption = z.infer<typeof catalogColourOptionSchema>;
 
 export const catalogProductSchema = catalogProductCardSchema
     .extend({
@@ -77,6 +107,16 @@ export const catalogProductSchema = catalogProductCardSchema
         /** Printed size in mm. */
         size: z.object({ x: z.int(), y: z.int(), z: z.int() }).nullable(),
         printWeightG: z.int().nullable(),
+        /** The active materials it can be printed in, in the shop's order. Empty when it isn't offered as a print. */
+        printOptions: z.array(catalogPrintOptionSchema),
+        /**
+         * The colours the buyer chooses from, out-of-stock ones included; each says which materials can print
+         * it. Empty: the buyer only chooses the material, and the print comes in the colours shown. Always
+         * empty when it isn't offered as a print.
+         */
+        colourOptions: z.array(catalogColourOptionSchema),
+        /** The parcel a print ships in. `null` when it isn't offered as a print. */
+        parcelSize: parcelSizeSchema.nullable(),
         /** The gallery, cover first. */
         images: z.array(catalogImageSchema),
         /** The decimated GLB for the 3D viewer. */

@@ -5,6 +5,7 @@ import {
     type AdminProductList,
     type AdminProductListQuery,
     type AdminProductSummary,
+    type ColourOptionInput,
     type CreateProduct,
     type PrintOption,
     type UpdateProduct,
@@ -14,10 +15,13 @@ import { and, asc, count, desc, eq, ilike, inArray, or, sql, type SQL } from 'dr
 import type { Database } from '../db/client.ts';
 import { isPgError, PgErrorCode } from '../db/errors.ts';
 import {
+    colours,
     entitlements,
     materials,
     orderItems,
     productFiles,
+    productColourOptions,
+    productColourOptionColours,
     productImages,
     productMaterials,
     products,
@@ -50,6 +54,7 @@ export interface ProductsService {
 
 /** A database handle or an open transaction. */
 export type Executor = Pick<Database, 'select'>;
+type Writer = Pick<Database, 'select' | 'insert' | 'update' | 'delete'>;
 
 const iso = (date: Date | null) => date?.toISOString() ?? null;
 
@@ -97,6 +102,7 @@ async function toDetail(tx: Executor, row: Product, storage: Storage | null): Pr
         ...toSummary(row),
         description: row.description,
         printOptions,
+        colourOptions: await colourOptionsOf(tx, row.id),
         images: images.map((image) => toAdminImage(image, storage)),
         files: files.map((file) => toAdminFile(file, storage)),
     };
@@ -156,6 +162,69 @@ async function replacePrintOptions(tx: Pick<Database, 'delete' | 'insert'>, prod
     await tx.delete(productMaterials).where(eq(productMaterials.productId, productId));
     if (options.length > 0) {
         await tx.insert(productMaterials).values(options.map((option) => ({ ...option, productId })));
+    }
+}
+
+/** The model's colour options in order, each with its colours in order. */
+async function colourOptionsOf(tx: Executor, productId: string): Promise<{ id: string; colourIds: string[] }[]> {
+    const rows = await tx
+        .select({ id: productColourOptions.id, colourId: productColourOptionColours.colourId })
+        .from(productColourOptions)
+        .innerJoin(productColourOptionColours, eq(productColourOptionColours.optionId, productColourOptions.id))
+        .where(eq(productColourOptions.productId, productId))
+        .orderBy(
+            asc(productColourOptions.position),
+            asc(productColourOptions.id),
+            asc(productColourOptionColours.position),
+        );
+    const options = new Map<string, string[]>();
+    for (const row of rows) {
+        options.set(row.id, [...(options.get(row.id) ?? []), row.colourId]);
+    }
+    return [...options].map(([id, colourIds]) => ({ id, colourIds }));
+}
+
+/**
+ * Makes the model's colour options exactly these, in this order. An option with the same colours as one the
+ * model already has keeps its id, so carts holding it stay valid. Refuses a colour that doesn't exist.
+ */
+async function replaceColourOptions(tx: Writer, productId: string, options: ColourOptionInput[]) {
+    const colourIds = [...new Set(options.flatMap((option) => option.colourIds))];
+    if (colourIds.length > 0) {
+        // FOR SHARE: the colours can't be deleted until this transaction ends.
+        const found = await tx
+            .select({ id: colours.id })
+            .from(colours)
+            .where(inArray(colours.id, colourIds))
+            .for('share');
+        if (found.length !== colourIds.length) {
+            throw invalidField('colourOptions', 'One of the colours no longer exists. Reload the page and try again.');
+        }
+    }
+
+    const existing = await colourOptionsOf(tx, productId);
+    const kept = new Set<string>();
+    for (const [position, option] of options.entries()) {
+        const same = existing.find(
+            (candidate) => !kept.has(candidate.id) && candidate.colourIds.join() === option.colourIds.join(),
+        );
+        if (same) {
+            kept.add(same.id);
+            await tx.update(productColourOptions).set({ position }).where(eq(productColourOptions.id, same.id));
+            continue;
+        }
+        const [created] = await tx
+            .insert(productColourOptions)
+            .values({ productId, position })
+            .returning({ id: productColourOptions.id });
+        kept.add(created!.id);
+        await tx
+            .insert(productColourOptionColours)
+            .values(option.colourIds.map((colourId, index) => ({ optionId: created!.id, colourId, position: index })));
+    }
+    const removed = existing.filter((option) => !kept.has(option.id)).map((option) => option.id);
+    if (removed.length > 0) {
+        await tx.delete(productColourOptions).where(inArray(productColourOptions.id, removed));
     }
 }
 
@@ -238,7 +307,7 @@ export function createProductsService(db: Database, storage: Storage | null): Pr
             return detail(db, row);
         },
 
-        async create(creatorId, { printOptions = [], ...input }) {
+        async create(creatorId, { printOptions = [], colourOptions = [], ...input }) {
             assertLicenseAllowed({
                 digitalPriceCents: input.digitalPriceCents ?? null,
                 license: input.license ?? null,
@@ -251,6 +320,7 @@ export function createProductsService(db: Database, storage: Storage | null): Pr
                         .values({ ...input, printBasePriceCents, creatorId })
                         .returning();
                     await replacePrintOptions(tx, row!.id, printOptions);
+                    await replaceColourOptions(tx, row!.id, colourOptions);
                     return await detail(tx, row!);
                 } catch (error) {
                     rethrowWriteError(error, input.slug);
@@ -261,7 +331,7 @@ export function createProductsService(db: Database, storage: Storage | null): Pr
         async update(id, input) {
             return db.transaction(async (tx) => {
                 const current = await lockProduct(tx, id);
-                const { printOptions, ...fields } = definedFields(input);
+                const { printOptions, colourOptions, ...fields } = definedFields(input);
                 const changes: Partial<Product> = fields;
                 if (printOptions !== undefined) {
                     changes.printBasePriceCents = await printPriceFor(tx, printOptions);
@@ -285,6 +355,9 @@ export function createProductsService(db: Database, storage: Storage | null): Pr
 
                 if (printOptions !== undefined) {
                     await replacePrintOptions(tx, id, printOptions);
+                }
+                if (colourOptions !== undefined) {
+                    await replaceColourOptions(tx, id, colourOptions);
                 }
                 if (Object.keys(changes).length === 0) {
                     return detail(tx, current);

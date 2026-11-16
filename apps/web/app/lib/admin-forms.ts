@@ -5,6 +5,7 @@ import {
     updateCategorySchema,
     updateProductSchema,
     type ApiErrorIssue,
+    type ColourOptionInput,
     type CreateColour,
     type CreateMaterial,
     type PrintOption,
@@ -90,6 +91,30 @@ export const PRINT_MATERIAL_PREFIX = 'print:';
 /** The price input (and its error path) for printing in a material. */
 export const printPriceField = (materialId: string) => `printPrice:${materialId}`;
 
+/**
+ * The product form's colour options: one row of colour menus per option, each named
+ * `colourOption:<row>`. The chosen colours of a row, in order, make the option; an empty menu is skipped.
+ */
+export const COLOUR_OPTION_PREFIX = 'colourOption:';
+
+function colourOptionsFromForm(form: FormData, issues: ApiErrorIssue[]): ColourOptionInput[] {
+    const rows = [...new Set([...form.keys()].filter((key) => key.startsWith(COLOUR_OPTION_PREFIX)))];
+    const options: ColourOptionInput[] = [];
+    for (const row of rows) {
+        const colourIds = form
+            .getAll(row)
+            .filter((value): value is string => typeof value === 'string' && value !== '');
+        if (colourIds.length === 0) continue;
+        if (new Set(colourIds).size !== colourIds.length) {
+            issues.push({ path: row, message: 'Use each colour once in an option.' });
+        } else if (options.some((option) => option.colourIds.join() === colourIds.join())) {
+            issues.push({ path: row, message: 'This option is already listed.' });
+        }
+        options.push({ colourIds });
+    }
+    return options;
+}
+
 /** The product form → a PATCH body with every field, so the saved product matches the form exactly. */
 export function parseProductForm(form: FormData): Parsed<UpdateProduct> {
     const issues: ApiErrorIssue[] = [];
@@ -128,6 +153,10 @@ export function parseProductForm(form: FormData): Parsed<UpdateProduct> {
         if (cents) printOptions.push({ materialId, priceCents: cents });
     }
 
+    const colourIssues: ApiErrorIssue[] = [];
+    const colourOptions = colourOptionsFromForm(form, colourIssues);
+    issues.push(...colourIssues);
+
     const input = {
         title: text(form, 'title'),
         slug: text(form, 'slug'),
@@ -136,6 +165,7 @@ export function parseProductForm(form: FormData): Parsed<UpdateProduct> {
         categoryId: text(form, 'categoryId') || null,
         digitalPriceCents,
         printOptions,
+        colourOptions,
         parcelSize: text(form, 'parcelSize') || null,
         license: text(form, 'license') || null,
         sizeXMm: optionalInt(form, 'sizeXMm'),
@@ -146,9 +176,14 @@ export function parseProductForm(form: FormData): Parsed<UpdateProduct> {
 
     const parsed = updateProductSchema.safeParse(input);
     if (!parsed.success) {
-        // Price problems were already explained in euros; skip zod's messages about cents.
-        const pricePaths = new Set(issues.map((issue) => issue.path));
-        issues.push(...zodIssues(parsed.error).filter((issue) => !pricePaths.has(issue.path)));
+        // Price problems were already explained in euros, and colour problems by row; skip zod's messages.
+        const explained = new Set(issues.map((issue) => issue.path));
+        issues.push(
+            ...zodIssues(parsed.error).filter(
+                (issue) =>
+                    !explained.has(issue.path) && !(colourIssues.length > 0 && issue.path.startsWith('colourOptions')),
+            ),
+        );
     }
     if (issues.length > 0 || !parsed.success) return { ok: false, issues };
     return { ok: true, data: parsed.data };
@@ -190,6 +225,7 @@ export function parseMaterialForm(form: FormData): Parsed<CreateMaterial> {
         name: text(form, 'name'),
         description: text(form, 'description') || null,
         active: form.get('active') === 'on',
+        multicolour: form.get('multicolour') === 'on',
         position: position(form),
     });
     return parsed.success ? { ok: true, data: parsed.data } : { ok: false, issues: zodIssues(parsed.error) };
@@ -200,7 +236,6 @@ export function parseColourForm(form: FormData): Parsed<CreateColour> {
     const parsed = createColourSchema.safeParse({
         name: text(form, 'name'),
         hex: text(form, 'hex'),
-        inStock: form.get('inStock') === 'on',
         position: position(form),
     });
     return parsed.success ? { ok: true, data: parsed.data } : { ok: false, issues: zodIssues(parsed.error) };

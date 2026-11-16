@@ -159,6 +159,11 @@ export function createOrdersService(
             if (quote.lines.length === 0) {
                 throw conflict('Your cart is empty.', [{ path: 'items', message: 'Your cart is empty.' }]);
             }
+            // Orders don't hold a shipping address or shipping cost yet: that's the next part of M4.
+            if (quote.lines.some((line) => line.type === 'print')) {
+                const message = "Printed copies can't be paid for yet. Remove them from your cart to buy the files.";
+                throw conflict(message, [{ path: 'print', message }]);
+            }
             // EU rule: a file can only be delivered before the 14-day withdrawal period ends if the buyer
             // agreed to that, knowing it ends their right of withdrawal.
             const hasFiles = quote.lines.some((line) => line.type === 'digital');

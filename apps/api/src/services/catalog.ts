@@ -1,4 +1,6 @@
 import type {
+    CatalogColourOption,
+    CatalogPrintOption,
     CatalogCategory,
     CatalogHome,
     CatalogImage,
@@ -9,12 +11,24 @@ import type {
     CatalogSitemap,
     CatalogSort,
 } from '@app/shared';
-import { hasPublicPreview } from '@app/shared';
+import { colourOptionName, hasPublicPreview, optionInMaterial } from '@app/shared';
 import { and, asc, count, desc, eq, gt, inArray, isNotNull, sql, type SQL } from 'drizzle-orm';
 import { alias } from 'drizzle-orm/pg-core';
 
 import type { Database } from '../db/client.ts';
-import { categories, productFiles, productImages, products, type ProductImage } from '../db/schema.ts';
+import {
+    categories,
+    colours,
+    materialColours,
+    materials,
+    productColourOptions,
+    productColourOptionColours,
+    productFiles,
+    productImages,
+    productMaterials,
+    products,
+    type ProductImage,
+} from '../db/schema.ts';
 import { notFound } from '../lib/errors.ts';
 import type { Storage } from '../lib/storage.ts';
 
@@ -89,9 +103,96 @@ export async function coverImages(db: Database, productIds: string[]): Promise<M
     return new Map(rows.map((row) => [row.productId, row]));
 }
 
+/**
+ * The colour options of each product, in order, with their colours, and the materials that can print each
+ * (active or not, offered by the product or not: callers narrow it down).
+ */
+export async function colourOptionsFor(
+    db: Pick<Database, 'select'>,
+    productIds: string[],
+): Promise<Map<string, CatalogColourOption[]>> {
+    const byProduct = new Map<string, CatalogColourOption[]>();
+    if (productIds.length === 0) return byProduct;
+    const rows = await db
+        .select({
+            productId: productColourOptions.productId,
+            id: productColourOptions.id,
+            colourId: colours.id,
+            name: colours.name,
+            hex: colours.hex,
+        })
+        .from(productColourOptions)
+        .innerJoin(productColourOptionColours, eq(productColourOptionColours.optionId, productColourOptions.id))
+        .innerJoin(colours, eq(colours.id, productColourOptionColours.colourId))
+        .where(inArray(productColourOptions.productId, productIds))
+        .orderBy(
+            asc(productColourOptions.position),
+            asc(productColourOptions.id),
+            asc(productColourOptionColours.position),
+        );
+    if (rows.length === 0) return byProduct;
+
+    const filaments = await db
+        .select({
+            materialId: materials.id,
+            multicolour: materials.multicolour,
+            colourId: materialColours.colourId,
+            inStock: materialColours.inStock,
+        })
+        .from(materialColours)
+        .innerJoin(materials, eq(materials.id, materialColours.materialId))
+        .where(inArray(materialColours.colourId, [...new Set(rows.map((row) => row.colourId))]))
+        .orderBy(asc(materials.position), asc(materials.name));
+    const materialsById = new Map<string, { multicolour: boolean; colours: typeof filaments }>();
+    for (const filament of filaments) {
+        const material = materialsById.get(filament.materialId) ?? { multicolour: filament.multicolour, colours: [] };
+        material.colours.push(filament);
+        materialsById.set(filament.materialId, material);
+    }
+
+    const options = new Map<string, { productId: string; colours: typeof rows }>();
+    for (const row of rows) {
+        const option = options.get(row.id) ?? { productId: row.productId, colours: [] };
+        option.colours.push(row);
+        options.set(row.id, option);
+    }
+    for (const [id, option] of options) {
+        const colourIds = option.colours.map((colour) => colour.colourId);
+        const printable = [...materialsById].flatMap(([materialId, material]) => {
+            const fit = optionInMaterial({ colourIds }, material);
+            return fit ? [{ materialId, inStock: fit.inStock }] : [];
+        });
+        byProduct.set(option.productId, [
+            ...(byProduct.get(option.productId) ?? []),
+            {
+                id,
+                name: colourOptionName(option.colours),
+                colours: option.colours.map(({ name, hex }) => ({ name, hex })),
+                materials: printable,
+            },
+        ]);
+    }
+    return byProduct;
+}
+
 export function createCatalogService(db: Database, storage: Storage | null): CatalogService {
     const image = (row: ProductImage) => catalogImage(storage, row);
     const coversFor = (productIds: string[]) => coverImages(db, productIds);
+
+    /** The active materials the product is printed in, in the shop's order. */
+    function printOptionsOf(productId: string): Promise<CatalogPrintOption[]> {
+        return db
+            .select({
+                materialId: materials.id,
+                name: materials.name,
+                description: materials.description,
+                priceCents: productMaterials.priceCents,
+            })
+            .from(productMaterials)
+            .innerJoin(materials, eq(materials.id, productMaterials.materialId))
+            .where(and(eq(productMaterials.productId, productId), eq(materials.active, true)))
+            .orderBy(asc(materials.position), asc(materials.name));
+    }
 
     async function toCards(rows: CardRow[]): Promise<CatalogProductCard[]> {
         const covers = await coversFor(rows.map((row) => row.id));
@@ -247,6 +348,19 @@ export function createCatalogService(db: Database, storage: Storage | null): Cat
                 .where(eq(productFiles.productId, product.id))
                 .orderBy(asc(productFiles.position), asc(productFiles.id));
 
+            const printOptions = product.printBasePriceCents === null ? [] : await printOptionsOf(product.id);
+            // Only the options one of its print materials can make, and only those materials.
+            const offered = new Set(printOptions.map((option) => option.materialId));
+            const colourOptions =
+                printOptions.length === 0
+                    ? []
+                    : ((await colourOptionsFor(db, [product.id])).get(product.id) ?? [])
+                          .map((option) => ({
+                              ...option,
+                              materials: option.materials.filter((entry) => offered.has(entry.materialId)),
+                          }))
+                          .filter((option) => option.materials.length > 0);
+
             const gallery = images.map(image).filter((entry): entry is CatalogImage => entry !== null);
             const preview = files.find((file) => file.kind === 'preview');
             const { sizeXMm: x, sizeYMm: y, sizeZMm: z } = product;
@@ -280,6 +394,9 @@ export function createCatalogService(db: Database, storage: Storage | null): Cat
                 license: product.license,
                 size: x !== null && y !== null && z !== null ? { x, y, z } : null,
                 printWeightG: product.printWeightG,
+                printOptions,
+                colourOptions,
+                parcelSize: printOptions.length > 0 ? product.parcelSize : null,
                 publishedAt: product.publishedAt!.toISOString(),
                 updatedAt: product.updatedAt.toISOString(),
             };

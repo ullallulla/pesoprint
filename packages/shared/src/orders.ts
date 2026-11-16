@@ -6,8 +6,8 @@
 export const ORDER_STATUSES = ['pending', 'paid', 'cancelled', 'refunded'] as const;
 export type OrderStatus = (typeof ORDER_STATUSES)[number];
 
-/** What an order line is. Print lines (with material and colour) arrive in M4. */
-export const ORDER_ITEM_TYPES = ['digital'] as const;
+/** What an order line is: the model's file, or a printed copy in a material and colour. */
+export const ORDER_ITEM_TYPES = ['digital', 'print'] as const;
 export type OrderItemType = (typeof ORDER_ITEM_TYPES)[number];
 
 /** Orders are in euros only, for now. */

@@ -50,8 +50,8 @@ export interface AnalyticsEvents {
     added_to_cart: {
         model: string;
         model_title: string;
-        item_type: 'digital';
-        /** The price shown when it was added, in euro cents incl. VAT. */
+        item_type: 'digital' | 'print';
+        /** The price shown when it was added (all copies of a print), in euro cents incl. VAT. */
         price_cents: number;
     };
 }

@@ -1,18 +1,25 @@
 import {
     adminCategoryListSchema,
+    adminColourListSchema,
     adminMaterialListSchema,
     adminProductFileSchema,
     adminProductImageSchema,
     adminProductSchema,
+    colourOptionName,
+    MAX_OPTION_COLOURS,
     PARCEL_SIZES,
     publishProblems,
+    optionInMaterial,
     type AdminCategory,
     type AdminMaterial,
     type AdminProduct,
     type AdminProductFile,
     type AdminProductImage,
+    type Colour,
+    type Material,
 } from '@app/shared';
-import { ArrowLeft, ArrowRight, Box, ExternalLink, ImageOff, Star, Trash2 } from 'lucide-react';
+import { ArrowLeft, ArrowRight, Box, ExternalLink, ImageOff, Plus, Star, Trash2 } from 'lucide-react';
+import { useState } from 'react';
 import { data, Link, redirect, useFetcher } from 'react-router';
 import { z } from 'zod';
 import { cn } from 'cn';
@@ -21,6 +28,7 @@ import { confirmSubmit, Field, FormStatus, Select } from '~/components/admin/for
 import { LICENSE_GROUPS, licenseName } from '~/components/admin/licenses';
 import { FeaturedBadge, StatusBadge } from '~/components/admin/product-status';
 import { UploadButton } from '~/components/admin/upload-button';
+import { ColourSwatch } from '~/components/colour-swatch';
 import { LazyModelViewer } from '~/components/catalog/lazy-model-viewer';
 import { Badge } from '~/components/ui/badge';
 import { Button, buttonVariants } from '~/components/ui/button';
@@ -28,6 +36,7 @@ import { Input } from '~/components/ui/input';
 import { Textarea } from '~/components/ui/textarea';
 import {
     centsToEuros,
+    COLOUR_OPTION_PREFIX,
     fieldErrors,
     fileOfferOf,
     formValue,
@@ -53,12 +62,13 @@ export async function loader(args: Route.LoaderArgs) {
     if (!z.uuid().safeParse(args.params.id).success) {
         throw data('Product not found', { status: 404 });
     }
-    const [product, { categories }, { materials }] = await Promise.all([
+    const [product, { categories }, { materials }, { colours }] = await Promise.all([
         adminApi(args, `/api/admin/products/${encodeURIComponent(args.params.id)}`, adminProductSchema),
         adminApi(args, '/api/admin/categories', adminCategoryListSchema),
         adminApi(args, '/api/admin/materials', adminMaterialListSchema),
+        adminApi(args, '/api/admin/colours', adminColourListSchema),
     ]);
-    return { product, categories, materials };
+    return { product, categories, materials, colours };
 }
 
 export async function action(args: Route.ActionArgs) {
@@ -142,7 +152,7 @@ export async function action(args: Route.ActionArgs) {
 }
 
 export default function EditProduct({ loaderData }: Route.ComponentProps) {
-    const { product, categories, materials } = loaderData;
+    const { product, categories, materials, colours } = loaderData;
 
     return (
         <main className='flex flex-col gap-6'>
@@ -169,7 +179,7 @@ export default function EditProduct({ loaderData }: Route.ComponentProps) {
 
             <div className='grid items-start gap-8 lg:grid-cols-[1fr_20rem]'>
                 <div className='flex min-w-0 flex-col gap-10'>
-                    <DetailsForm product={product} categories={categories} materials={materials} />
+                    <DetailsForm product={product} categories={categories} materials={materials} colours={colours} />
                     <Images product={product} />
                     <Files product={product} />
                 </div>
@@ -189,6 +199,7 @@ const DETAIL_FIELDS = [
     'description',
     'digitalPriceCents',
     'printOptions',
+    'colourOptions',
     'parcelSize',
     'license',
     'sizeXMm',
@@ -212,10 +223,12 @@ function DetailsForm({
     product,
     categories,
     materials,
+    colours,
 }: {
     product: AdminProduct;
     categories: AdminCategory[];
     materials: AdminMaterial[];
+    colours: Colour[];
 }) {
     const fetcher = useFetcher<ActionResult>({ key: `product-details-${product.id}` });
     const result = fetcher.data;
@@ -338,6 +351,8 @@ function DetailsForm({
                     <PrintFieldset product={product} materials={materials} errors={errors} />
                 </div>
 
+                <ColourOptionsFieldset product={product} materials={materials} colours={colours} errors={errors} />
+
                 <fieldset className='grid gap-4 rounded-lg border p-4 sm:grid-cols-4'>
                     <legend className='px-1 text-sm font-medium'>Printed size</legend>
                     {(
@@ -363,7 +378,10 @@ function DetailsForm({
                     <FormStatus
                         result={result}
                         fields={Object.keys(errors).filter(
-                            (path) => DETAIL_FIELDS.includes(path) || path.startsWith('printPrice:'),
+                            (path) =>
+                                DETAIL_FIELDS.includes(path) ||
+                                path.startsWith('printPrice:') ||
+                                path.startsWith(COLOUR_OPTION_PREFIX),
                         )}
                     />
                 </div>
@@ -379,7 +397,7 @@ function PrintFieldset({
     errors,
 }: {
     product: AdminProduct;
-    materials: AdminMaterial[];
+    materials: Material[];
     errors: Record<string, string>;
 }) {
     const prices = new Map(product.printOptions.map((option) => [option.materialId, option.priceCents]));
@@ -439,12 +457,158 @@ function PrintFieldset({
     );
 }
 
+/**
+ * The colours buyers can choose a print in. Each row is one option: a single colour, or up to four for a
+ * multicolour print, in order. None: the print comes in the colours shown in the photos.
+ */
+function ColourOptionsFieldset({
+    product,
+    materials,
+    colours,
+    errors,
+}: {
+    product: AdminProduct;
+    materials: AdminMaterial[];
+    colours: Colour[];
+    errors: Record<string, string>;
+}) {
+    // The model's saved materials: each row says which of them can print it.
+    const printedIn = materials.filter((material) =>
+        product.printOptions.some((option) => option.materialId === material.id),
+    );
+    // One empty row to add an option; with JavaScript, "Add an option" adds more.
+    const [rows, setRows] = useState(product.colourOptions.length + 1);
+
+    return (
+        <fieldset className='grid content-start gap-3 rounded-lg border p-4'>
+            <legend className='px-1 text-sm font-medium'>Colour options</legend>
+            {colours.length === 0 ? (
+                <p className='text-sm text-muted-foreground'>
+                    No colours yet.{' '}
+                    <Link to='/admin/materials' className='text-primary underline-offset-4 hover:underline'>
+                        Add them under Materials &amp; colours
+                    </Link>{' '}
+                    to let buyers choose one.
+                </p>
+            ) : (
+                <>
+                    <p className='text-sm text-muted-foreground'>
+                        The colours buyers choose from, whatever the material. Pick one colour per row, or several for a
+                        multicolour print (in order, e.g. body then details). Leave every row empty to print in the
+                        colours shown in the photos: buyers then only choose the material.
+                    </p>
+                    <ul className='grid gap-2'>
+                        {Array.from({ length: rows }, (_, row) => (
+                            <ColourOptionRow
+                                key={row}
+                                row={row}
+                                colours={colours}
+                                materials={printedIn}
+                                colourIds={product.colourOptions[row]?.colourIds ?? []}
+                                error={errors[`${COLOUR_OPTION_PREFIX}${row}`]}
+                            />
+                        ))}
+                    </ul>
+                    <div>
+                        <Button type='button' variant='outline' size='sm' onClick={() => setRows(rows + 1)}>
+                            <Plus aria-hidden />
+                            Add an option
+                        </Button>
+                    </div>
+                    {errors.colourOptions && <p className='text-sm text-destructive'>{errors.colourOptions}</p>}
+                </>
+            )}
+        </fieldset>
+    );
+}
+
+/** Which of the model's materials can print these colours, for the line under an option. */
+function printableIn(picked: Colour[], materials: AdminMaterial[]): string {
+    const option = { colourIds: picked.map((colour) => colour.id) };
+    const fits = materials.flatMap((material) => {
+        const fit = optionInMaterial(option, material);
+        return fit ? [fit.inStock ? material.name : `${material.name} (out of stock)`] : [];
+    });
+    return fits.length > 0
+        ? `In ${fits.join(', ')}.`
+        : "None of this model's materials comes in these colours, so buyers won't see it.";
+}
+
+function ColourOptionRow({
+    row,
+    colours,
+    materials,
+    colourIds,
+    error,
+}: {
+    row: number;
+    colours: Colour[];
+    materials: AdminMaterial[];
+    colourIds: string[];
+    error: string | undefined;
+}) {
+    // The menus' values, empty ones included, for the preview next to them.
+    const [chosen, setChosen] = useState(() =>
+        Array.from({ length: MAX_OPTION_COLOURS }, (_, slot) => colourIds[slot] ?? ''),
+    );
+    const picked = chosen
+        .map((id) => colours.find((colour) => colour.id === id))
+        .filter((colour): colour is Colour => colour !== undefined);
+    const name = `${COLOUR_OPTION_PREFIX}${row}`;
+    const errorId = `colour-option-${row}-error`;
+
+    return (
+        <li className='grid gap-1'>
+            <div className='flex flex-wrap items-center gap-2'>
+                <span className='w-6 text-sm text-muted-foreground tabular-nums'>{row + 1}.</span>
+                {Array.from({ length: MAX_OPTION_COLOURS }, (_, slot) => (
+                    <Select
+                        key={slot}
+                        name={name}
+                        aria-label={`Option ${row + 1}, colour ${slot + 1}`}
+                        aria-invalid={error ? true : undefined}
+                        aria-describedby={error ? errorId : undefined}
+                        defaultValue={colourIds[slot] ?? ''}
+                        onChange={(event) => {
+                            const next = [...chosen];
+                            next[slot] = event.currentTarget.value;
+                            setChosen(next);
+                        }}
+                        className='h-8 w-36'
+                    >
+                        <option value=''>{slot === 0 ? 'None' : '—'}</option>
+                        {colours.map((colour) => (
+                            <option key={colour.id} value={colour.id}>
+                                {colour.name}
+                            </option>
+                        ))}
+                    </Select>
+                ))}
+                {picked.length > 0 && (
+                    <span className='flex items-center gap-1.5 text-sm'>
+                        <ColourSwatch colours={picked} />
+                        {colourOptionName(picked)}
+                    </span>
+                )}
+            </div>
+            {picked.length > 0 && materials.length > 0 && (
+                <p className='pl-8 text-xs text-muted-foreground'>{printableIn(picked, materials)}</p>
+            )}
+            {error && (
+                <p id={errorId} className='text-sm text-destructive'>
+                    {error}
+                </p>
+            )}
+        </li>
+    );
+}
+
 function PrintMaterialRow({
     material,
     priceCents,
     error,
 }: {
-    material: AdminMaterial;
+    material: Material;
     priceCents: number | null;
     error: string | undefined;
 }) {

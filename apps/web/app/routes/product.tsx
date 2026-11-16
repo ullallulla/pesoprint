@@ -1,20 +1,26 @@
 import {
+    INTERIM_SHIPPING_CENTS,
     isFreeDownload,
     isPaidFile,
     LICENSES,
-    MAX_CART_ITEMS,
+    MAX_PRINT_QUANTITY,
     offersPrint,
+    printCartItemSchema,
     type CatalogProduct,
     type LibraryItem,
 } from '@app/shared';
+import { cn } from 'cn';
 import { Check, Download, FileBox, Library, Printer, ShoppingCart } from 'lucide-react';
+import { useState } from 'react';
 import { data, Link, useFetcher } from 'react-router';
 
 import { Breadcrumbs, type Crumb } from '~/components/catalog/breadcrumbs';
+import { ColourSwatch } from '~/components/colour-swatch';
 import { Markdown } from '~/components/catalog/markdown';
 import { ProductGallery } from '~/components/catalog/product-gallery';
 import { FileDownloads, type DownloadableFile } from '~/components/file-downloads';
 import { Button } from '~/components/ui/button';
+import { Input } from '~/components/ui/input';
 import { track } from '~/lib/analytics';
 import { addToCart, cartChanged, isInCart, readCart } from '~/lib/cart.server';
 import { getProduct } from '~/lib/catalog.server';
@@ -33,25 +39,53 @@ export async function loader(args: Route.LoaderArgs) {
         product,
         url: absoluteUrl(`/models/${product.slug}`),
         inCart: isInCart(cart, { productId: product.id, type: 'digital' }),
+        printsInCart: cart.reduce(
+            (sum, item) => sum + (item.type === 'print' && item.productId === product.id ? item.quantity : 0),
+            0,
+        ),
         owned,
     };
 }
 
-/** "Add to cart" posts here. Works without JavaScript too: the page then reloads, showing it's in the cart. */
+/**
+ * "Add to cart" (the file) and "Add to cart" (a print) post here. Works without JavaScript too: the page
+ * then reloads, showing what's in the cart.
+ */
 export async function action({ params, request }: Route.ActionArgs) {
     const form = await request.formData();
-    if (form.get('intent') !== 'add-to-cart') {
+    const intent = form.get('intent');
+    // The product comes from the page's own slug, so only this page's model can be added, and only if it's sold.
+    const product = await getProduct(params.slug);
+
+    let item;
+    if (intent === 'add-to-cart') {
+        if (!isPaidFile(product)) throw data("This model's file isn't for sale.", { status: 400 });
+        item = { productId: product.id, type: 'digital' as const };
+    } else if (intent === 'add-print') {
+        const materialId = form.get('materialId');
+        if (!product.printOptions.some((option) => option.materialId === materialId)) {
+            return { error: 'Choose a material.' };
+        }
+        // A model without colour options is printed in the colours shown: there's nothing to choose.
+        const colourOptionId = product.colourOptions.length === 0 ? null : form.get('colourOptionId');
+        if (colourOptionId !== null && !colourInStock(product, colourOptionId, materialId)) {
+            return { error: 'Choose a colour that is in stock in this material.' };
+        }
+        const parsed = printCartItemSchema.safeParse({
+            productId: product.id,
+            type: 'print',
+            materialId,
+            colourOptionId,
+            quantity: Number(form.get('quantity')),
+        });
+        if (!parsed.success) return { error: `Choose between 1 and ${MAX_PRINT_QUANTITY} copies.` };
+        item = parsed.data;
+    } else {
         throw data('Unknown action', { status: 400 });
     }
-    // The product comes from the page's own slug, so only this page's file can be added, and only if it's sold.
-    const product = await getProduct(params.slug);
-    if (!isPaidFile(product)) {
-        throw data("This model's file isn't for sale.", { status: 400 });
-    }
-    const added = addToCart(await readCart(request), { productId: product.id, type: 'digital' });
-    if (!added.ok) {
-        return { error: `Your cart is full (${MAX_CART_ITEMS} items). Check out or remove something first.` };
-    }
+
+    const added = addToCart(await readCart(request), item);
+    if (!added.ok) return { error: added.error };
     return cartChanged(request, added.items, `/models/${product.slug}`);
 }
 
@@ -68,7 +102,7 @@ export const meta: Route.MetaFunction = ({ loaderData }) => {
 };
 
 export default function Product({ loaderData }: Route.ComponentProps) {
-    const { product, inCart, owned } = loaderData;
+    const { product, inCart, printsInCart, owned } = loaderData;
     const crumbs: Crumb[] = [
         { label: 'Home', to: '/' },
         { label: 'Models', to: '/models' },
@@ -88,7 +122,7 @@ export default function Product({ loaderData }: Route.ComponentProps) {
 
                 <div className='flex flex-col gap-6'>
                     <h1 className='text-3xl font-bold tracking-tight'>{product.title}</h1>
-                    <GetThisModel product={product} inCart={inCart} owned={owned} />
+                    <GetThisModel product={product} inCart={inCart} printsInCart={printsInCart} owned={owned} />
                     <Details product={product} />
                 </div>
             </div>
@@ -107,14 +141,16 @@ export default function Product({ loaderData }: Route.ComponentProps) {
     );
 }
 
-/** The ways to get the model. Print orders arrive in M4, so that button is disabled. */
+/** The ways to get the model: download it, buy the file, or order a print. */
 function GetThisModel({
     product,
     inCart,
+    printsInCart,
     owned,
 }: {
     product: CatalogProduct;
     inCart: boolean;
+    printsInCart: number;
     owned: LibraryItem | null;
 }) {
     return (
@@ -128,13 +164,8 @@ function GetThisModel({
             ) : (
                 isPaidFile(product) && <BuyFile product={product} inCart={inCart} />
             )}
-            {offersPrint(product) && (
-                <Offer
-                    icon={<Printer aria-hidden />}
-                    label={`Printed for you · from ${formatPrice(product.printBasePriceCents!)}`}
-                    action='Order a print'
-                    note='Print orders open soon. The final price depends on the material and colour.'
-                />
+            {offersPrint(product) && product.printOptions.length > 0 && (
+                <OrderPrint product={product} inCart={printsInCart} />
             )}
             <p className='text-xs text-muted-foreground'>Prices include VAT.</p>
         </section>
@@ -260,17 +291,256 @@ function FreeDownload({ product }: { product: CatalogProduct }) {
     );
 }
 
-function Offer({ icon, label, action, note }: { icon: React.ReactNode; label: string; action: string; note: string }) {
+const PARCEL_NAMES = { S: 'small', M: 'medium', L: 'large' } as const;
+
+type ColourOption = CatalogProduct['colourOptions'][number];
+
+/** How the material has this colour option: `undefined` if it can't print it. */
+const inMaterial = (option: ColourOption, materialId: string) =>
+    option.materials.find((entry) => entry.materialId === materialId);
+
+/** The option is one of the model's, and in stock in the material. */
+function colourInStock(product: CatalogProduct, colourOptionId: unknown, materialId: unknown): boolean {
+    const option = product.colourOptions.find((entry) => entry.id === colourOptionId);
+    return typeof materialId === 'string' && option !== undefined && inMaterial(option, materialId)?.inStock === true;
+}
+
+/** The material chosen at first: the first that has a colour in stock (if the buyer chooses one). */
+function firstMaterial(product: CatalogProduct): string | null {
+    const materials = product.printOptions.map((option) => option.materialId);
+    if (product.colourOptions.length === 0) return materials[0] ?? null;
     return (
-        <div className='flex flex-wrap items-center justify-between gap-3'>
+        materials.find((id) => firstColour(product, id) !== null) ??
+        materials.find((id) => product.colourOptions.some((option) => inMaterial(option, id))) ??
+        null
+    );
+}
+
+/** The material's first colour option in stock. */
+function firstColour(product: CatalogProduct, materialId: string | null): string | null {
+    if (materialId === null) return null;
+    return product.colourOptions.find((option) => inMaterial(option, materialId)?.inStock)?.id ?? null;
+}
+
+/**
+ * Pick a material, a colour if the model offers a choice, and how many copies. Both are radio buttons, so
+ * this works before JavaScript loads. Each material shows its price; the button shows the total once
+ * JavaScript runs.
+ */
+function OrderPrint({ product, inCart }: { product: CatalogProduct; inCart: number }) {
+    const fetcher = useFetcher<typeof action>();
+    const materials = product.printOptions;
+    const colours = product.colourOptions;
+    const choosesColour = colours.length > 0;
+    const [materialId, setMaterialId] = useState<string | null>(() => firstMaterial(product));
+    const [colourOptionId, setColourOptionId] = useState<string | null>(() =>
+        firstColour(product, firstMaterial(product)),
+    );
+    const [quantity, setQuantity] = useState(1);
+    const material = materials.find((option) => option.materialId === materialId);
+    // The colour options this material can print; others are hidden while it's chosen.
+    const shown = colours.filter((option) => materialId !== null && inMaterial(option, materialId) !== undefined);
+    const colour = shown.find((option) => option.id === colourOptionId);
+    const soldOut = choosesColour && !shown.some((option) => inMaterial(option, materialId!)?.inStock);
+    const adding = fetcher.state !== 'idle';
+    const error = fetcher.state === 'idle' ? fetcher.data?.error : null;
+    const validQuantity = Number.isInteger(quantity) && quantity >= 1 && quantity <= MAX_PRINT_QUANTITY;
+    const chosen = material && [material.name, colour?.name].filter(Boolean).join(', ');
+
+    return (
+        <div className='flex flex-col gap-3'>
             <div>
                 <p className='flex items-center gap-2 font-medium [&_svg]:size-4'>
-                    {icon}
-                    {label}
+                    <Printer aria-hidden />
+                    Printed for you · from {formatPrice(product.printBasePriceCents!)}
                 </p>
-                <p className='text-sm text-muted-foreground'>{note}</p>
+                <p className='text-sm text-muted-foreground'>
+                    {inCart > 0 ? (
+                        <span className='inline-flex items-center gap-1'>
+                            <Check className='size-4' aria-hidden />
+                            {inCart} in your cart ·{' '}
+                            <Link to='/cart' className='underline underline-offset-4 hover:text-foreground'>
+                                View cart
+                            </Link>
+                        </span>
+                    ) : choosesColour ? (
+                        'Printed to order in the material and colour you choose.'
+                    ) : (
+                        'Printed to order in the material you choose.'
+                    )}
+                </p>
             </div>
-            <Button disabled>{action}</Button>
+
+            <fetcher.Form
+                method='post'
+                className='flex flex-col gap-4'
+                onChange={(event) => {
+                    const form = new FormData(event.currentTarget);
+                    const value = (name: string) => {
+                        const entry = form.get(name);
+                        return typeof entry === 'string' ? entry : null;
+                    };
+                    const nextMaterial = value('materialId');
+                    const nextColour = value('colourOptionId');
+                    setMaterialId(nextMaterial);
+                    // Keep the colour if the new material has it in stock; otherwise its first one that is.
+                    setColourOptionId(
+                        nextColour && nextMaterial && colourInStock(product, nextColour, nextMaterial)
+                            ? nextColour
+                            : firstColour(product, nextMaterial),
+                    );
+                    setQuantity(Number(form.get('quantity')));
+                }}
+                onSubmit={() =>
+                    material &&
+                    track('added_to_cart', {
+                        model: product.slug,
+                        model_title: product.title,
+                        item_type: 'print',
+                        price_cents: material.priceCents * quantity,
+                    })
+                }
+            >
+                <fieldset className='flex flex-col gap-2'>
+                    <legend className='mb-2 text-sm font-medium'>Material</legend>
+                    {materials.map((option) => {
+                        // With colour options, a material that can print none of them can't be chosen.
+                        const usable = !choosesColour || colours.some((entry) => inMaterial(entry, option.materialId));
+                        return (
+                            <label
+                                key={option.materialId}
+                                className={cn(
+                                    'flex items-start gap-3 rounded-md border p-3 has-checked:border-primary has-checked:bg-primary/5 has-focus-visible:outline-2 has-focus-visible:outline-offset-2 has-focus-visible:outline-ring',
+                                    usable ? 'cursor-pointer' : 'cursor-not-allowed opacity-50',
+                                )}
+                            >
+                                <input
+                                    type='radio'
+                                    name='materialId'
+                                    value={option.materialId}
+                                    required
+                                    disabled={!usable}
+                                    checked={option.materialId === materialId}
+                                    onChange={() => {}}
+                                    className='mt-0.5 size-4 accent-primary'
+                                />
+                                <span className='flex min-w-0 flex-1 flex-col gap-0.5'>
+                                    <span className='flex justify-between gap-3 text-sm font-medium'>
+                                        <span>{option.name}</span>
+                                        <span className='tabular-nums'>{formatPrice(option.priceCents)}</span>
+                                    </span>
+                                    {option.description && (
+                                        <span className='text-xs text-muted-foreground'>{option.description}</span>
+                                    )}
+                                    {!usable && (
+                                        <span className='text-xs text-muted-foreground'>
+                                            Not available in this model&apos;s colours.
+                                        </span>
+                                    )}
+                                </span>
+                            </label>
+                        );
+                    })}
+                </fieldset>
+
+                {choosesColour ? (
+                    <fieldset className='flex flex-col gap-2'>
+                        <legend className='mb-2 text-sm font-medium'>
+                            Colour
+                            {material && <span className='font-normal text-muted-foreground'> in {material.name}</span>}
+                        </legend>
+                        <div className='flex flex-wrap gap-2'>
+                            {shown.map((option) => {
+                                const inStock = inMaterial(option, materialId!)?.inStock === true;
+                                return (
+                                    <label
+                                        key={option.id}
+                                        title={inStock ? option.name : `${option.name} (out of stock)`}
+                                        className={cn('relative', inStock ? 'cursor-pointer' : 'cursor-not-allowed')}
+                                    >
+                                        <input
+                                            type='radio'
+                                            name='colourOptionId'
+                                            value={option.id}
+                                            required
+                                            disabled={!inStock}
+                                            checked={option.id === colourOptionId}
+                                            onChange={() => {}}
+                                            className='peer sr-only'
+                                        />
+                                        <ColourSwatch
+                                            colours={option.colours}
+                                            className='block size-8 border-2 border-background shadow-[0_0_0_1px_var(--color-border)] peer-checked:shadow-[0_0_0_2px_var(--color-primary)] peer-focus-visible:outline-2 peer-focus-visible:outline-offset-2 peer-focus-visible:outline-ring peer-disabled:opacity-40'
+                                        />
+                                        {!inStock && (
+                                            <span
+                                                aria-hidden
+                                                className='pointer-events-none absolute top-1/2 left-0 h-0.5 w-8 -rotate-45 bg-foreground/60'
+                                            />
+                                        )}
+                                        <span className='sr-only'>
+                                            {option.name}
+                                            {!inStock && ' (out of stock)'}
+                                        </span>
+                                    </label>
+                                );
+                            })}
+                        </div>
+                    </fieldset>
+                ) : (
+                    <p className='text-sm'>
+                        <span className='text-muted-foreground'>Colour:</span> as shown in the photos.
+                    </p>
+                )}
+
+                <p className='text-sm' aria-live='polite'>
+                    {soldOut ? (
+                        <span className='text-muted-foreground'>
+                            Every colour is out of stock in {material?.name ?? 'this material'} right now.
+                        </span>
+                    ) : chosen ? (
+                        <>
+                            <span className='text-muted-foreground'>Chosen:</span> {chosen}
+                        </>
+                    ) : null}
+                </p>
+
+                <div className='flex flex-wrap items-end gap-3'>
+                    <div className='flex flex-col gap-1.5'>
+                        <label htmlFor='print-quantity' className='text-sm font-medium'>
+                            Copies
+                        </label>
+                        <Input
+                            id='print-quantity'
+                            name='quantity'
+                            type='number'
+                            min={1}
+                            max={MAX_PRINT_QUANTITY}
+                            defaultValue={1}
+                            required
+                            className='w-20'
+                        />
+                    </div>
+                    <Button type='submit' name='intent' value='add-print' disabled={soldOut || adding}>
+                        <ShoppingCart aria-hidden />
+                        {material && validQuantity
+                            ? `Add to cart · ${formatPrice(material.priceCents * quantity)}`
+                            : 'Add to cart'}
+                    </Button>
+                </div>
+                {product.parcelSize && (
+                    <p className='text-xs text-muted-foreground'>
+                        Ships in a {PARCEL_NAMES[product.parcelSize]} parcel:{' '}
+                        {formatPrice(INTERIM_SHIPPING_CENTS[product.parcelSize])} shipping. Prints in one order share a
+                        parcel, sized for the largest.
+                    </p>
+                )}
+                {error && (
+                    <p role='alert' className='text-sm text-destructive'>
+                        {error}
+                    </p>
+                )}
+            </fetcher.Form>
         </div>
     );
 }

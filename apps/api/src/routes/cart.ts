@@ -1,4 +1,4 @@
-import { cartQuoteRequestSchema, cartQuoteSchema, MAX_CART_ITEMS } from '@app/shared';
+import { cartQuoteRequestSchema, cartQuoteSchema, MAX_CART_ITEMS, MAX_PRINT_LINES } from '@app/shared';
 import { createRoute } from '@hono/zod-openapi';
 
 import type { VerifySessionToken } from '../lib/auth.ts';
@@ -23,9 +23,13 @@ export function cartRoutes(deps: CartDeps) {
         summary: 'Price a cart',
         description: [
             "The cart is kept by the browser and holds no prices. This prices it from today's catalogue: the",
-            'items that can be bought, the total and the VAT it contains (prices include VAT). Items that are no',
-            'longer for sale, or that the signed-in caller already owns, are listed under `removed` instead.',
-            `Duplicates are counted once. At most ${MAX_CART_ITEMS} items.`,
+            'items that can be bought, the shipping, the total and the VAT it contains (prices include VAT).',
+            'Items that are no longer for sale, prints whose material or colour option is no longer offered or',
+            'out of stock, and files the signed-in caller already owns are listed under `removed` instead.',
+            '',
+            "Prints ship in one parcel, the size of the largest print's parcel; files need no shipping. The same",
+            "item twice is one line (a print's quantities are added up).",
+            `At most ${MAX_CART_ITEMS} lines, ${MAX_PRINT_LINES} of them prints.`,
         ].join('\n'),
         request: {
             body: { required: true, content: { 'application/json': { schema: cartQuoteRequestSchema } } },

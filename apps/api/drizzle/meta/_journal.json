@@ -50,6 +50,13 @@
       "when": 1794851669420,
       "tag": "0006_print_options",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1794871415633,
+      "tag": "0007_print_items_and_colours",
+      "breakpoints": true
     }
   ]
 }

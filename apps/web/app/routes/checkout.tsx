@@ -1,4 +1,4 @@
-import { formatVatRate, type CartQuote } from '@app/shared';
+import { cartItemKey, formatVatRate, type CartQuote } from '@app/shared';
 import { SignInButton } from '@clerk/react-router';
 import { getAuth } from '@clerk/react-router/server';
 import { Lock } from 'lucide-react';
@@ -7,6 +7,7 @@ import { Form, Link, redirect, useNavigation } from 'react-router';
 import { Button } from '~/components/ui/button';
 import { ApiRequestError } from '~/lib/api.server';
 import { quoteCart, readCart } from '~/lib/cart.server';
+import { printOptionText } from '~/lib/print-option';
 import { formatPrice } from '~/lib/format';
 import { isCartChanged, startCheckout } from '~/lib/orders.server';
 
@@ -59,6 +60,7 @@ export async function action(args: Route.ActionArgs) {
 
 export default function Checkout({ loaderData, actionData }: Route.ComponentProps) {
     const { quote, signedIn } = loaderData;
+    const hasPrints = quote.lines.some((line) => line.type === 'print');
     const navigation = useNavigation();
     const paying = navigation.state !== 'idle' && navigation.formAction === '/checkout';
 
@@ -75,7 +77,18 @@ export default function Checkout({ loaderData, actionData }: Route.ComponentProp
 
             <OrderSummary quote={quote} />
 
-            {signedIn ? (
+            {hasPrints ? (
+                <div className='flex flex-col gap-2 rounded-lg border bg-muted/50 p-5'>
+                    <p className='font-medium'>Printed copies can&apos;t be paid for just yet</p>
+                    <p className='text-sm text-muted-foreground'>
+                        Print orders open very soon. To buy model files now,{' '}
+                        <Link to='/cart' className='underline underline-offset-4 hover:text-foreground'>
+                            remove the prints from your cart
+                        </Link>
+                        .
+                    </p>
+                </div>
+            ) : signedIn ? (
                 <Form method='post' className='flex flex-col gap-3'>
                     <ImmediateDeliveryConsent invalid={actionData?.consentMissing === true} />
                     {actionData?.error && (
@@ -140,13 +153,23 @@ function OrderSummary({ quote }: { quote: CartQuote }) {
             </h2>
             <ul className='flex flex-col gap-2 border-b pb-4'>
                 {quote.lines.map((line) => (
-                    <li key={`${line.type}:${line.productId}`} className='flex justify-between gap-4'>
+                    <li key={cartItemKey(line)} className='flex justify-between gap-4'>
                         <span>
-                            {line.title} <span className='text-sm text-muted-foreground'>· model file</span>
+                            {line.quantity > 1 && `${line.quantity} × `}
+                            {line.title}{' '}
+                            <span className='text-sm text-muted-foreground'>
+                                · {line.print ? `print, ${printOptionText(line.print)}` : 'model file'}
+                            </span>
                         </span>
-                        <span className='tabular-nums'>{formatPrice(line.unitPriceCents)}</span>
+                        <span className='tabular-nums'>{formatPrice(line.unitPriceCents * line.quantity)}</span>
                     </li>
                 ))}
+                {quote.shippingCents > 0 && (
+                    <li className='flex justify-between gap-4'>
+                        <span>Shipping</span>
+                        <span className='tabular-nums'>{formatPrice(quote.shippingCents)}</span>
+                    </li>
+                )}
             </ul>
             <dl className='grid grid-cols-[1fr_auto] gap-y-1 pt-4'>
                 <dt className='font-semibold'>Total</dt>
