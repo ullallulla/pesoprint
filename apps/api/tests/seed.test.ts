@@ -10,7 +10,16 @@ import { join } from 'node:path';
 
 import { createDatabase, runMigrations } from '../src/db/client.ts';
 import { loadSeedAssets } from '../src/db/seed-assets.ts';
-import { categories, productFiles, productImages, products, users } from '../src/db/schema.ts';
+import {
+    categories,
+    entitlements,
+    orderItems,
+    orders,
+    productFiles,
+    productImages,
+    products,
+    users,
+} from '../src/db/schema.ts';
 import { SEED_CREATOR, seedDatabase } from '../src/db/seed.ts';
 import { createFakeStorage } from './helpers.ts';
 import { TINY_PNG, tinyStl, validSource, writeAsset } from './seed-fixtures.ts';
@@ -23,6 +32,8 @@ describe.skipIf(!url)('seedDatabase (integration)', () => {
     const OWNER_ID = 'user_seed_test_owner';
 
     async function resetCatalogue() {
+        await db.delete(entitlements);
+        await db.delete(orders);
         await db.delete(products);
         await db.delete(categories).where(sql`${categories.parentId} IS NOT NULL`);
         await db.delete(categories);
@@ -132,6 +143,41 @@ describe.skipIf(!url)('seedDatabase (integration)', () => {
             .from(products)
             .where(eq(products.creatorId, SEED_CREATOR.id));
         expect(seeded?.value).toBe(result.products);
+    });
+
+    test('orders of sample products are removed when seeding again, orders of your own products stay', async () => {
+        // Continues from the test above: the sample catalogue and two products of OWNER_ID exist.
+        const [sample] = await db.select().from(products).where(eq(products.creatorId, SEED_CREATOR.id)).limit(1);
+        const [mine] = await db.select().from(products).where(eq(products.slug, 'my-own-model'));
+        const order = async (product: typeof sample) => {
+            const [row] = await db
+                .insert(orders)
+                .values({
+                    email: 'owner@example.com',
+                    subtotalCents: 450,
+                    taxCents: 91,
+                    totalCents: 450,
+                    vatCountry: 'FI',
+                    vatRateBp: 2550,
+                })
+                .returning();
+            await db.insert(orderItems).values({
+                orderId: row!.id,
+                productId: product!.id,
+                type: 'digital',
+                unitPriceCents: 450,
+                titleSnapshot: product!.title,
+            });
+            return row!;
+        };
+        const sampleOrder = await order(sample);
+        const myOrder = await order(mine);
+        await db.insert(entitlements).values({ userId: OWNER_ID, productId: sample!.id, orderId: sampleOrder.id });
+
+        await seedDatabase(db);
+
+        expect((await db.select({ id: orders.id }).from(orders)).map((row) => row.id)).toEqual([myOrder.id]);
+        expect(await db.select().from(entitlements)).toEqual([]);
     });
 
     describe('with real models from seed-assets/', () => {

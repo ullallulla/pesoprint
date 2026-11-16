@@ -5,7 +5,16 @@ import { eq, sql } from 'drizzle-orm';
 import { afterAll, beforeAll, beforeEach, describe, expect, test } from 'vite-plus/test';
 
 import { createDatabase, runMigrations } from '../src/db/client.ts';
-import { categories, productFiles, productImages, products, users } from '../src/db/schema.ts';
+import {
+    categories,
+    entitlements,
+    orderItems,
+    orders,
+    productFiles,
+    productImages,
+    products,
+    users,
+} from '../src/db/schema.ts';
 import { createProductsService } from '../src/services/products.ts';
 import { bearer, buildApp, tokens } from './helpers.ts';
 
@@ -107,6 +116,8 @@ describe.skipIf(!url)('admin product routes (integration)', () => {
     }
 
     async function resetCatalogue() {
+        await db.delete(entitlements);
+        await db.delete(orders);
         await db.delete(products);
         await db.delete(categories).where(sql`${categories.parentId} IS NOT NULL`);
         await db.delete(categories);
@@ -380,6 +391,41 @@ describe.skipIf(!url)('admin product routes (integration)', () => {
             expect((await call('DELETE', `/${id}`)).status).toBe(204);
             expect(await db.select().from(products).where(eq(products.id, id))).toEqual([]);
             expect(await db.select().from(productImages).where(eq(productImages.productId, id))).toEqual([]);
+        });
+
+        test('409 for an archived product someone has ordered: buyers keep their files and order history', async () => {
+            const { id } = await createPublished();
+            await call('POST', `/${id}/archive`);
+            const [order] = await db
+                .insert(orders)
+                .values({
+                    email: 'buyer@example.com',
+                    subtotalCents: 450,
+                    taxCents: 91,
+                    totalCents: 450,
+                    vatCountry: 'FI',
+                    vatRateBp: 2550,
+                })
+                .returning();
+            await db.insert(orderItems).values({
+                orderId: order!.id,
+                productId: id,
+                type: 'digital',
+                unitPriceCents: 450,
+                titleSnapshot: 'Hook',
+            });
+
+            const error = await expectError(await call('DELETE', `/${id}`), 409, 'conflict');
+            expect(error.message).toBe("This product has orders, so it can't be deleted. Keep it archived instead.");
+            expect(await db.select().from(products).where(eq(products.id, id))).toHaveLength(1);
+        });
+
+        test('409 for a product someone owns without an order (files given by hand)', async () => {
+            const { id } = await createReady();
+            await db.insert(entitlements).values({ userId: ADMIN_ID, productId: id });
+
+            const error = await expectError(await call('DELETE', `/${id}`), 409, 'conflict');
+            expect(error.message).toMatch(/has orders/);
         });
 
         test('404 for an unknown id', async () => {

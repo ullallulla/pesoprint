@@ -1,5 +1,8 @@
 import {
     LICENSE_IDS,
+    ORDER_CURRENCY,
+    ORDER_ITEM_TYPES,
+    ORDER_STATUSES,
     OWN_LICENSES,
     PRODUCT_FILE_FORMATS,
     PRODUCT_FILE_KINDS,
@@ -15,6 +18,7 @@ import {
     integer,
     pgEnum,
     pgTable,
+    primaryKey,
     text,
     timestamp,
     uniqueIndex,
@@ -269,3 +273,106 @@ export const downloadEvents = pgTable(
 );
 
 export type DownloadEvent = typeof downloadEvents.$inferSelect;
+
+export const orderStatus = pgEnum('order_status', ORDER_STATUSES);
+export const orderItemType = pgEnum('order_item_type', ORDER_ITEM_TYPES);
+
+/**
+ * A purchase. Amounts are integer cents and include VAT, like catalogue prices; `taxCents` is the VAT
+ * contained in the total, at `vatRateBp` (basis points: 2550 = 25.5 %) for `vatCountry`.
+ *
+ * Orders are bookkeeping records and outlive accounts: if the user is deleted, `userId` becomes null
+ * and `email` still says who bought.
+ */
+export const orders = pgTable(
+    'orders',
+    {
+        id: id(),
+        userId: text('user_id').references(() => users.id, { onDelete: 'set null' }),
+        /** The buyer's email when ordering (receipts, and the record after the account is gone). */
+        email: text('email').notNull(),
+        status: orderStatus('status').notNull().default('pending'),
+        currency: text('currency').notNull().default(ORDER_CURRENCY),
+        subtotalCents: integer('subtotal_cents').notNull(),
+        taxCents: integer('tax_cents').notNull(),
+        totalCents: integer('total_cents').notNull(),
+        vatCountry: text('vat_country').notNull(),
+        vatRateBp: integer('vat_rate_bp').notNull(),
+        /** Set once the Mollie payment is created (`tr_…`). */
+        molliePaymentId: text('mollie_payment_id').unique(),
+        /** Mollie's own status for the payment (open, paid, failed, expired, canceled…), for support. */
+        paymentStatus: text('payment_status'),
+        /** e.g. `creditcard`, `mobilepay`, once known. */
+        paymentMethod: text('payment_method'),
+        createdAt: createdAt(),
+        updatedAt: updatedAt(),
+        paidAt: timestamp('paid_at', { withTimezone: true }),
+    },
+    (t) => [
+        index('orders_user_id_created_at_idx').on(t.userId, t.createdAt),
+        check('orders_currency_eur', sql`${t.currency} = '${sql.raw(ORDER_CURRENCY)}'`),
+        check('orders_amounts_non_negative', sql`${t.subtotalCents} >= 0 AND ${t.taxCents} >= 0`),
+        // No shipping yet (M4): the total is the items.
+        check('orders_total_is_subtotal', sql`${t.totalCents} = ${t.subtotalCents}`),
+        check('orders_tax_within_total', sql`${t.taxCents} <= ${t.totalCents}`),
+        check('orders_vat_country_format', sql`${t.vatCountry} ~ '^[A-Z]{2}$'`),
+        check('orders_vat_rate_range', sql`${t.vatRateBp} BETWEEN 0 AND 10000`),
+        check('orders_paid_has_paid_at', sql`${t.status} NOT IN ('paid', 'refunded') OR ${t.paidAt} IS NOT NULL`),
+    ],
+);
+
+export type Order = typeof orders.$inferSelect;
+export type NewOrder = typeof orders.$inferInsert;
+
+/**
+ * One line of an order, with the title, price and licence as they were when bought: later edits to the
+ * product don't change what someone bought. A product with orders can't be deleted (archive it instead).
+ */
+export const orderItems = pgTable(
+    'order_items',
+    {
+        id: id(),
+        orderId: uuid('order_id')
+            .notNull()
+            .references(() => orders.id, { onDelete: 'cascade' }),
+        productId: uuid('product_id')
+            .notNull()
+            .references(() => products.id, { onDelete: 'restrict' }),
+        type: orderItemType('type').notNull(),
+        quantity: integer('quantity').notNull().default(1),
+        unitPriceCents: integer('unit_price_cents').notNull(),
+        titleSnapshot: text('title_snapshot').notNull(),
+        licenseSnapshot: license('license_snapshot'),
+    },
+    (t) => [
+        uniqueIndex('order_items_order_product_type_idx').on(t.orderId, t.productId, t.type),
+        index('order_items_product_id_idx').on(t.productId),
+        check('order_items_unit_price_non_negative', sql`${t.unitPriceCents} >= 0`),
+        // A file is bought once; buying it twice would only charge twice.
+        check('order_items_digital_quantity_one', sql`${t.type} <> 'digital' OR ${t.quantity} = 1`),
+    ],
+);
+
+export type OrderItem = typeof orderItems.$inferSelect;
+export type NewOrderItem = typeof orderItems.$inferInsert;
+
+/**
+ * Who owns which model's files: granted when an order is paid. Buyers keep their files when the model
+ * is archived or its files are replaced; `orderId` is null for files given without an order.
+ */
+export const entitlements = pgTable(
+    'entitlements',
+    {
+        userId: text('user_id')
+            .notNull()
+            .references(() => users.id, { onDelete: 'cascade' }),
+        productId: uuid('product_id')
+            .notNull()
+            .references(() => products.id, { onDelete: 'restrict' }),
+        orderId: uuid('order_id').references(() => orders.id, { onDelete: 'set null' }),
+        grantedAt: timestamp('granted_at', { withTimezone: true }).notNull().defaultNow(),
+    },
+    (t) => [primaryKey({ columns: [t.userId, t.productId] }), index('entitlements_product_id_idx').on(t.productId)],
+);
+
+export type Entitlement = typeof entitlements.$inferSelect;

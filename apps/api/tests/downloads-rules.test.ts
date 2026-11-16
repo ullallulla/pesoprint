@@ -23,12 +23,23 @@ describe('canDownload', () => {
         ['a free published model, signed in', product('published', 0), customer, true],
         ['a free draft', product('draft', 0), customer, false],
         ['a free archived model', product('archived', 0), undefined, false],
-        ['a paid file (until checkout exists)', product('published', 450), customer, false],
+        ['a paid file, not bought', product('published', 450), customer, false],
         ['a model whose file is not offered', product('published', null), undefined, false],
         ['a paid draft, as admin', product('draft', 450), admin, true],
         ['an archived model, as its creator', product('archived', 0), creator, true],
     ] as const)('%s → %s', (_name, model, caller, allowed) => {
         expect(canDownload(model, caller)).toBe(allowed);
+    });
+
+    test.each([
+        ['a bought file', product('published', 450), true],
+        ['a bought file, after the model was archived', product('archived', 450), true],
+        ['a bought file, after the model became free', product('archived', 0), true],
+        ['a bought file, after the file stopped being offered', product('published', null), true],
+        // Drafts aren't for sale, so an owner of one is an inconsistency: stay closed.
+        ['a draft', product('draft', 450), false],
+    ] as const)('buyers: %s → %s', (_name, model, allowed) => {
+        expect(canDownload(model, customer, { owned: true })).toBe(allowed);
     });
 });
 

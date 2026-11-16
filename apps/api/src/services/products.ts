@@ -12,7 +12,7 @@ import { and, asc, count, desc, eq, ilike, or, type SQL } from 'drizzle-orm';
 
 import type { Database } from '../db/client.ts';
 import { isPgError, PgErrorCode } from '../db/errors.ts';
-import { productFiles, productImages, products, type Product } from '../db/schema.ts';
+import { entitlements, orderItems, productFiles, productImages, products, type Product } from '../db/schema.ts';
 import { conflict, invalidField, notFound } from '../lib/errors.ts';
 import { definedFields } from '../lib/patch.ts';
 import { deleteStoredFiles, type Storage } from '../lib/storage.ts';
@@ -281,8 +281,20 @@ export function createProductsService(db: Database, storage: Storage | null): Pr
                 if (current.status === 'published') {
                     throw conflict('Archive the product before deleting it.');
                 }
-                // TODO(M2): refuse when the product has orders, so buyers keep their downloads and order history.
-                // Until orders exist, nothing else depends on a product.
+                // Buyers keep their files and order history, so a product anyone has ordered stays (archived).
+                const [ordered] = await tx
+                    .select({ id: orderItems.id })
+                    .from(orderItems)
+                    .where(eq(orderItems.productId, id))
+                    .limit(1);
+                const [owned] = await tx
+                    .select({ userId: entitlements.userId })
+                    .from(entitlements)
+                    .where(eq(entitlements.productId, id))
+                    .limit(1);
+                if (ordered || owned) {
+                    throw conflict("This product has orders, so it can't be deleted. Keep it archived instead.");
+                }
                 const images = await tx.select().from(productImages).where(eq(productImages.productId, id));
                 const files = await tx.select().from(productFiles).where(eq(productFiles.productId, id));
                 // The image and file rows cascade with the product.

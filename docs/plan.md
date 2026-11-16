@@ -137,18 +137,20 @@ materials        id, name (PLA, PETG, …), surcharge_cents, active
 colours          id, material_id, name, hex, in_stock
 product_materials product_id, material_id            -- which materials each model can be printed in
 
-orders           id, user_id, status (pending|paid|printing|shipped|delivered|cancelled|refunded),
-                 currency, subtotal_cents, shipping_cents, tax_cents, total_cents,
-                 mollie_payment_id, payment_method,
+orders           id, user_id? (kept as null if the account is deleted), email (snapshot),
+                 status (pending|paid|cancelled|refunded; M4 adds printing|shipped|delivered),
+                 currency, subtotal_cents, shipping_cents (M4), tax_cents, total_cents,
+                 mollie_payment_id, payment_status (Mollie's own), payment_method,
                  vat_country, vat_rate_bp,   -- VAT rate in basis points, e.g. 2550 = 25.5 %
                  shipping_name, shipping_address (jsonb), carrier, tracking_number,
                  created_at, paid_at, shipped_at
-order_items      id, order_id, product_id, type (digital|print), material_id?, colour_id?,
-                 quantity, unit_price_cents, title_snapshot
+order_items      id, order_id, product_id, type (digital; M4 adds print), material_id?, colour_id?,
+                 quantity (1 for files), unit_price_cents, title_snapshot, license_snapshot
+                 -- a product with order items or entitlements can't be deleted, only archived
 
 shipping_rates   id, name, countries (text[]), price_cents, active   -- e.g. "Finland – Posti parcel"
 vat_rates        country_code, standard_rate_bp, valid_from        -- needed because Mollie doesn't calculate VAT
-entitlements     user_id, product_id, order_id?, granted_at        -- the "who owns what" table
+entitlements     user_id, product_id (together the key), order_id?, granted_at   -- the "who owns what" table
 download_events  id, product_id, user_id?, ip_hash, created_at     -- download counts + rate limiting
 reviews          id, product_id, user_id, rating (1–5), body, created_at,
                  UNIQUE(product_id, user_id)

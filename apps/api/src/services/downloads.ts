@@ -2,7 +2,7 @@ import { isFreeDownload, MODEL_CONTENT_TYPES, type DownloadLink } from '@app/sha
 import { and, count, eq, gt, isNotNull, lt, min, sql } from 'drizzle-orm';
 
 import type { Database } from '../db/client.ts';
-import { downloadEvents, productFiles, products, users, type Product } from '../db/schema.ts';
+import { downloadEvents, entitlements, productFiles, products, users, type Product } from '../db/schema.ts';
 import type { AuthContext } from '../lib/auth.ts';
 import type { IpHasher } from '../lib/client-ip.ts';
 import { AppError, notFound, RateLimitedError } from '../lib/errors.ts';
@@ -44,15 +44,27 @@ function isStaff(product: Pick<Product, 'creatorId'>, caller: AuthContext | unde
 /**
  * The one rule for who may download a product's files:
  * - admins and the model's creator: always (drafts and archived models too);
- * - anyone, without an account: free models that are published;
- * - paid files: only buyers, which arrives with checkout (M3). Until then, nobody else.
+ * - buyers (`owned`): published and archived models, whatever the model costs now. They keep what they
+ *   bought when it's archived, repriced or its files are replaced;
+ * - anyone, without an account: free models that are published.
  */
 export function canDownload(
     product: Pick<Product, 'status' | 'digitalPriceCents' | 'creatorId'>,
     caller: AuthContext | undefined,
+    { owned = false }: { owned?: boolean } = {},
 ): boolean {
     if (isStaff(product, caller)) return true;
+    if (owned && product.status !== 'draft') return true;
     return product.status === 'published' && isFreeDownload(product);
+}
+
+/** Whether the user has bought (or been given) the product's files. */
+async function owns(db: Database, userId: string, productId: string): Promise<boolean> {
+    const [row] = await db
+        .select({ productId: entitlements.productId })
+        .from(entitlements)
+        .where(and(eq(entitlements.userId, userId), eq(entitlements.productId, productId)));
+    return row !== undefined;
 }
 
 export function createDownloadsService(
@@ -71,9 +83,13 @@ export function createDownloadsService(
 
             // Previews are public anyway, and everything else that isn't allowed is "not found":
             // a 403 would confirm that a draft or a paid file exists.
-            if (!row || row.file.kind !== 'download' || !canDownload(row.product, caller)) {
-                throw notFound('File not found.');
-            }
+            if (!row || row.file.kind !== 'download') throw notFound('File not found.');
+            // Ownership is only looked up when it can matter: free published files are open to anyone.
+            const allowed =
+                canDownload(row.product, caller) ||
+                (caller !== undefined &&
+                    canDownload(row.product, caller, { owned: await owns(db, caller.userId, row.product.id) }));
+            if (!allowed) throw notFound('File not found.');
             if (!storage) {
                 throw new AppError(503, 'internal_error', 'File storage is not configured on this server.');
             }

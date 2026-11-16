@@ -8,7 +8,17 @@ import type { Storage } from '../lib/storage.ts';
 import type { Database } from './client.ts';
 import type { SeedAsset } from './seed-assets.ts';
 import { sampleModel, type SampleModel } from './seed-models.ts';
-import { categories, productFiles, productImages, products, users, type NewProduct } from './schema.ts';
+import {
+    categories,
+    entitlements,
+    orderItems,
+    orders,
+    productFiles,
+    productImages,
+    products,
+    users,
+    type NewProduct,
+} from './schema.ts';
 
 /**
  * Sample catalogue for development and staging demos. Everything here is placeholder content: the products,
@@ -454,7 +464,22 @@ export async function seedDatabase(db: Database, options: SeedOptions = {}): Pro
             }
         }
 
-        // Products: replace every product owned by the seed creator (images and files cascade).
+        // Products: replace every product owned by the seed creator (images and files cascade). Orders keep
+        // products from being deleted, so test orders of sample products go first: the seed never runs in
+        // production, so these can only be test-mode orders. An order with a sample product is removed whole.
+        const sampleIds = tx.select({ id: products.id }).from(products).where(eq(products.creatorId, SEED_CREATOR.id));
+        await tx.delete(entitlements).where(inArray(entitlements.productId, sampleIds));
+        await tx
+            .delete(orders)
+            .where(
+                inArray(
+                    orders.id,
+                    tx
+                        .select({ id: orderItems.orderId })
+                        .from(orderItems)
+                        .where(inArray(orderItems.productId, sampleIds)),
+                ),
+            );
         await tx.delete(products).where(eq(products.creatorId, SEED_CREATOR.id));
         // A product of yours could hold a seed slug; free them so the inserts below don't collide.
         const seedSlugs = [...SEED_PRODUCTS.map((product) => product.slug), ...assets.map((asset) => asset.slug)];

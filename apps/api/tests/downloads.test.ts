@@ -1,11 +1,20 @@
 import { fileURLToPath } from 'node:url';
 
 import { apiErrorSchema, CLIENT_IP_HEADER, downloadLinkSchema, PROXY_SECRET_HEADER } from '@app/shared';
-import { eq, sql } from 'drizzle-orm';
+import { eq, inArray, sql } from 'drizzle-orm';
 import { afterAll, beforeAll, beforeEach, describe, expect, test } from 'vite-plus/test';
 
 import { createDatabase, runMigrations } from '../src/db/client.ts';
-import { categories, downloadEvents, productFiles, products, users, type NewProduct } from '../src/db/schema.ts';
+import {
+    categories,
+    downloadEvents,
+    entitlements,
+    orders,
+    productFiles,
+    products,
+    users,
+    type NewProduct,
+} from '../src/db/schema.ts';
 import { createIpHasher } from '../src/lib/client-ip.ts';
 import { createDownloadsService } from '../src/services/downloads.ts';
 import { bearer, buildApp, createFakeStorage, tokens } from './helpers.ts';
@@ -19,6 +28,8 @@ const NOW = new Date('2026-11-12T10:00:00Z');
 describe.skipIf(!url)('downloads (integration)', () => {
     const { db, pool } = createDatabase(url ?? '');
     const CREATOR_ID = 'user_download_creator';
+    /** The user behind `tokens.customer`. */
+    const BUYER_ID = 'user_customer';
     const hashIp = createIpHasher(SECRET);
     const storage = createFakeStorage();
     const app = buildApp({
@@ -28,6 +39,8 @@ describe.skipIf(!url)('downloads (integration)', () => {
     let categoryId: string;
 
     async function resetCatalogue() {
+        await db.delete(entitlements);
+        await db.delete(orders);
         await db.delete(products);
         await db.delete(categories).where(sql`${categories.parentId} IS NOT NULL`);
         await db.delete(categories);
@@ -89,8 +102,11 @@ describe.skipIf(!url)('downloads (integration)', () => {
     beforeAll(async () => {
         await runMigrations(db, fileURLToPath(new URL('../drizzle', import.meta.url)));
         await resetCatalogue();
-        await db.delete(users).where(eq(users.id, CREATOR_ID));
-        await db.insert(users).values({ id: CREATOR_ID, email: 'creator@example.com', role: 'creator' });
+        await db.delete(users).where(inArray(users.id, [CREATOR_ID, BUYER_ID]));
+        await db.insert(users).values([
+            { id: CREATOR_ID, email: 'creator@example.com', role: 'creator' },
+            { id: BUYER_ID, email: 'buyer@example.com', role: 'customer' },
+        ]);
     });
 
     beforeEach(async () => {
@@ -101,7 +117,7 @@ describe.skipIf(!url)('downloads (integration)', () => {
 
     afterAll(async () => {
         await resetCatalogue();
-        await db.delete(users).where(eq(users.id, CREATOR_ID));
+        await db.delete(users).where(inArray(users.id, [CREATOR_ID, BUYER_ID]));
         await pool.end();
     });
 
@@ -152,6 +168,20 @@ describe.skipIf(!url)('downloads (integration)', () => {
         expect(await countOf(draft.product.id)).toBe(0);
         const adminEvents = await db.select().from(downloadEvents).where(eq(downloadEvents.productId, paid.product.id));
         expect(adminEvents).toHaveLength(1);
+    });
+
+    test('a buyer can download the paid file they own, also after it is archived; others cannot', async () => {
+        const { product, download: file } = await model({ digitalPriceCents: 450, license: 'standard_digital' });
+        await db.insert(entitlements).values({ userId: BUYER_ID, productId: product.id });
+
+        expect((await download(file.id, bearer(tokens.customer).headers)).status).toBe(200);
+        await db.update(products).set({ status: 'archived' }).where(eq(products.id, product.id));
+        expect((await download(file.id, bearer(tokens.customer).headers)).status).toBe(200);
+
+        // Signed out, the same file isn't there.
+        await expectNotFound(await download(file.id));
+        // A buyer's download counts like anyone else's.
+        expect(await countOf(product.id)).toBe(2);
     });
 
     test('the preview, unknown files and bad ids are not downloads', async () => {
