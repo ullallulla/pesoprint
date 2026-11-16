@@ -20,19 +20,21 @@ At first you are the only seller. The data model is designed so other creators c
 
 ### Decisions from your answers
 
-| Topic         | Decision                                                                                |
-| ------------- | --------------------------------------------------------------------------------------- |
-| Goal          | Portfolio + real business                                                               |
-| Products      | Free models, paid digital files, physical prints                                        |
-| Sellers       | Only you at first; data model ready for more creators                                   |
-| Print options | Customer picks material + colour; price depends on the option                           |
-| Accounts      | Free downloads need no account. Buying requires an account (Clerk).                     |
-| Reviews       | Verified buyers only                                                                    |
-| Fulfilment    | You print and ship; the admin has an order queue with tracking numbers                  |
-| MVP scope     | Catalogue + search, checkout + downloads, print orders + shipping, reviews + favourites |
-| Pace          | No dates; plan by milestones                                                            |
-| Hosting       | Free tiers first; must be portable to a VPS or AWS/Azure/GCP later                      |
-| Market        | Undecided. Default: EUR, English UI, ship to Finland first, then the EU (see §9)        |
+| Topic         | Decision                                                                                                                       |
+| ------------- | ------------------------------------------------------------------------------------------------------------------------------ |
+| Goal          | Portfolio + real business                                                                                                      |
+| Products      | Free models, paid digital files, physical prints                                                                               |
+| Sellers       | Only you at first; data model ready for more creators                                                                          |
+| Print options | Customer picks material + colour. The author sets a price per material for each model; colour doesn't change it                |
+| Shipping      | The shop sets a rate per parcel size (S/M/L) and zone, based on real carrier prices                                            |
+| Returns       | EU consumer rules: 14-day right of withdrawal for prints, buyer pays the return shipping; defects and transit damage are on us |
+| Accounts      | Free downloads need no account. Buying requires an account (Clerk).                                                            |
+| Reviews       | Verified buyers only                                                                                                           |
+| Fulfilment    | You print and ship; the admin has an order queue with tracking numbers                                                         |
+| MVP scope     | Catalogue + search, checkout + downloads, print orders + shipping, reviews + favourites                                        |
+| Pace          | No dates; plan by milestones                                                                                                   |
+| Hosting       | Free tiers first; must be portable to a VPS or AWS/Azure/GCP later                                                             |
+| Market        | Undecided. Default: EUR, English UI, ship to Finland first, then the EU (see §9)                                               |
 
 ---
 
@@ -123,9 +125,9 @@ categories       id, slug (unique), name, description?, parent_id? → categorie
 products         id, slug (unique), creator_id → users, category_id? → categories,
                  title, description (markdown), status (draft|published|archived),
                  digital_price_cents?,      -- null = no file offered, 0 = free download, > 0 = paid
-                 print_base_price_cents?,   -- null = not offered as a print
+                 print_base_price_cents?,   -- null = not offered as a print; from M4 the lowest of its material prices ("from €X")
                  license?,                  -- one per model, Printables-style list (packages/shared)
-                 size_x/y/z_mm?, print_weight_g?, featured_at?,
+                 size_x/y/z_mm?, print_weight_g?, parcel_size? (S|M|L, M4; required for prints), featured_at?,
                  search_vector (generated tsvector), created_at, updated_at, published_at
                  -- download_count (M2) and rating_sum/rating_count (M5) are added in their milestones
 
@@ -133,9 +135,9 @@ product_images   id, product_id, storage_key, alt, width, height, size_bytes, po
 product_files    id, product_id, kind (download|preview), format (stl|3mf|step|obj|glb),
                  filename, storage_key, size_bytes, sha256?, position, created_at
 
-materials        id, name (PLA, PETG, …), surcharge_cents, active
+materials        id, name (PLA, PETG, …), active
 colours          id, material_id, name, hex, in_stock
-product_materials product_id, material_id            -- which materials each model can be printed in
+product_materials product_id, material_id, price_cents   -- which materials each model can be printed in, and its price in each
 
 orders           id, user_id? (kept as null if the account is deleted), email (snapshot),
                  status (pending|paid|cancelled|refunded; M4 adds printing|shipped|delivered),
@@ -149,7 +151,8 @@ order_items      id, order_id, product_id, type (digital; M4 adds print), materi
                  quantity (1 for files), unit_price_cents, title_snapshot, license_snapshot
                  -- a product with order items or entitlements can't be deleted, only archived
 
-shipping_rates   id, name, countries (text[]), price_cents, active   -- e.g. "Finland – Posti parcel"
+shipping_rates   id, zone_name, countries (text[]), parcel_size (S|M|L), price_cents, active
+                 -- e.g. "Finland", ['FI'], M, 790; one row per zone and parcel size
 vat_rates        country_code, standard_rate_bp, valid_from        -- our own VAT calculation (Stripe Tax isn't used)
 entitlements     user_id, product_id (together the key), order_id?, granted_at   -- the "who owns what" table
 download_events  id, product_id, user_id?, ip_hash, created_at     -- download counts + rate limiting
@@ -160,7 +163,8 @@ favourites       user_id, product_id, created_at
 
 **Key rules:**
 
-- **Prices are always calculated on the server**, from `products` + `materials` at checkout. The client never sends a price.
+- **Prices are always calculated on the server**, from `products` and `product_materials` at checkout. The client never sends a price.
+- **Shipping** is one parcel per order. Its size is the largest `parcel_size` among the order's print items, and its price is the `shipping_rates` row for that size and the zone of the shipping country. Revisit if large orders often need a bigger parcel.
 - **Who can review:**
     - a user with an entitlement to the model (they bought it)
     - a user with a delivered print order for the model
@@ -232,9 +236,10 @@ Each milestone ends with: CI green, deployed to staging, and a short demo you co
 
 ### M4 – Physical print orders
 
-- Admin: manage materials and colours, mark colours out of stock, choose which materials each model allows
-- Product page: pick material + colour; the live price comes from the server
-- Cart with both digital and print items. Our checkout page collects the shipping address and offers shipping rates from the `shipping_rates` table (start with fixed rates per region). The Stripe Checkout Session includes the order lines and the shipping cost.
+- Admin: manage materials and colours, mark colours out of stock. Per model: which materials it can be printed in, its price in each, and its parcel size (S/M/L)
+- Admin: manage shipping rates (a price per zone and parcel size, based on the carrier's real prices)
+- Product page: pick material + colour; the price is that material's price, from the server
+- Cart with both digital and print items. Our checkout page collects the shipping address and prices shipping from the `shipping_rates` table (the order's largest parcel size and the address's zone). The Stripe Checkout Session includes the order lines and the shipping cost.
 - Admin order queue: paid → printing → shipped (carrier + tracking number) → delivered, with filters
 - Customer "My orders" page showing each order's status
 - **Done when:** you can complete a test print order end to end, from checkout to "shipped", with the tracking number showing on the customer's "My orders" page
@@ -249,7 +254,7 @@ Each milestone ends with: CI green, deployed to staging, and a short demo you co
 ### M6 – Launch readiness
 
 - Decide market, VAT and company form (§9). Fill the `vat_rates` table and make sure invoices and receipts show VAT correctly. Stripe doesn't do this for us (Stripe Tax isn't used).
-- Terms of sale, refund and returns policy for prints. Update the privacy policy, and fill in who runs the shop (`apps/web/app/lib/legal.ts`) and the company details in the footer.
+- Terms of sale, refund and returns policy for prints (decided in §9 #7): tell the buyer about the 14-day right of withdrawal before they pay, with a model withdrawal form, otherwise it lasts 12 months. Admin: refund an order through Stripe. Update the privacy policy, and fill in who runs the shop (`apps/web/app/lib/legal.ts`) and the company details in the footer.
 - Own domain. Production environment: its own database, R2 buckets, secrets, Clerk production instance (needs the domain) and webhook, and paid hosting so the site doesn't sleep. Moved here from M2.
 - Emails (Resend + React Email): the order confirmation with a link to the library (moved from M3), and "order received" and "order shipped" with tracking for print orders (moved from M4). They are sent from the Stripe webhook and when an order is marked shipped. Sending fails without a verified domain, so they moved here on 2026-11-16 and come after the domain purchase. Verify a sending subdomain in Resend (SPF/DKIM). Use the Resend SDK over HTTPS, not SMTP (Render's free plan blocks SMTP ports). The order confirmation must repeat that the buyer agreed to immediate delivery and gave up the right of withdrawal: under EU rules, the right only ends once the buyer has had this confirmation. Send each email at most once per order, and a failed send must not stop the order from being updated (e.g. marked paid or shipped).
 - Sentry, uptime monitoring (moved here from M2), database backups (and test restoring one)
@@ -316,7 +321,7 @@ These don't block M0–M2. Decide them before M3 or M4.
 2. **Business & VAT:** sole trader (toiminimi) or company? Selling digital goods to EU consumers means charging VAT at the buyer's country's rate (via OSS, the EU's One-Stop Shop) once you're VAT-registered. We don't use Stripe Tax, so our code calculates VAT, using the `vat_rates` table. Check the current Finnish VAT registration threshold with an accountant. Selling to Finland only at first keeps VAT simple.
 3. **File formats:** which formats you offer (STL only, or STL + 3MF + STEP?). GLB previews are made automatically from STLs; other formats need a hand-made `.glb`.
 4. ~~**Model licence:** personal use only, or also a commercial-use licence at a higher price?~~ **Decided 2026-11-13:** no commercial licence at a higher price. A paid file has one price; its licence (Standard Digital File or Commercial Use) is chosen per model and doesn't change the price.
-5. **Print pricing formula:** a fixed base price per model plus a material surcharge (the plan's default), or a calculation from grams and print time?
-6. **Shipping:** carriers (Posti, Matkahuolto, DHL…), flat rates vs weight-based, and which countries.
-7. **Returns for printed items:** policy for misprints and damage in transit.
+5. ~~**Print pricing formula:**~~ **Decided 2026-11-16:** no formula. The author sets a price per material for each model (`product_materials.price_cents`); colour doesn't change it.
+6. **Shipping:** **rates decided 2026-11-16:** a price per parcel size (S/M/L) and zone, set by the shop from real carrier prices, like Posti's and Matkahuolto's own size classes. Live carrier rates (carrier APIs, Shipit, Sendcloud) can come later. Still open: carriers (Posti, Matkahuolto, DHL…) and which countries (§9 #1). Posti's standard parcel goes to the pickup point nearest the address, so no pickup-point picker is needed at first.
+7. ~~**Returns for printed items:**~~ **Decided 2026-11-16:** follow the EU consumer rules. Treat prints as covered by the 14-day right of withdrawal (picking a material and colour from our list probably doesn't make them "made to the consumer's specifications"). The 14 days start when the buyer receives the parcel. We refund the price and the original shipping within 14 days, and may wait until the print is back; the buyer pays the return shipping. Misprints, defects and damage in transit are our responsibility (the risk passes only when the buyer receives the parcel): ask for a photo, then reprint or refund, usually without needing the print back. Check with KKV or a lawyer before launch (M6).
 8. ~~**3D previews of paid models.**~~ **Decided 2026-11-13:** no 3D view for paid models. Only free downloads have one; paid-file and print-only models show photos only.
