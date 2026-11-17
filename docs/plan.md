@@ -148,10 +148,10 @@ orders           id, user_id? (kept as null if the account is deleted), email (s
                  stripe_checkout_session_id, stripe_payment_intent_id,
                  payment_status (Stripe's own), payment_method,
                  vat_country, vat_rate_bp,   -- VAT rate in basis points, e.g. 2550 = 25.5 %
-                 shipping_name, shipping_address (jsonb), carrier, tracking_number,
+                 parcel_size (M4), shipping_address (jsonb: name, phone, address; from Stripe), carrier, tracking_number,
                  created_at, paid_at, shipped_at
 order_items      id, order_id, product_id, type (digital; M4 adds print), material_id?,
-                 colours (snapshot of the chosen option's colour names and hex; null: as shown),
+                 print_snapshot (jsonb: material name, colour option name and swatches; no colours: as shown),
                  quantity (1 for files), unit_price_cents, title_snapshot, license_snapshot
                  -- a product with order items or entitlements can't be deleted, only archived
 
@@ -243,7 +243,7 @@ Each milestone ends with: CI green, deployed to staging, and a short demo you co
 - Admin: manage materials and colours, which colours each material comes in and their stock, and whether it can print multicolour. Per model: which materials it can be printed in, its price in each, its parcel size (S/M/L), and its colour options (single or multicolour; none = printed as shown) ✅
 - Shipping: interim fixed prices per parcel size, the same for every address: S €2.90, M €4.90, L €9.90 (`INTERIM_SHIPPING_CENTS` in `packages/shared`, decided 2026-11-16). The admin for real rates per zone (`shipping_rates`) waits until carriers and countries are decided (§9 #6). ✅
 - Product page: pick a material, and a colour option if the model has any; the price is that material's price, from the server ✅
-- Cart with both digital and print items (✅ the cart: copies per material and colour, shipping for the largest parcel). Our checkout page collects the shipping address and prices shipping (the interim prices for the order's largest parcel; later from `shipping_rates` by the address's zone). The Stripe Checkout Session includes the order lines and the shipping cost.
+- Cart with both digital and print items: copies per material and colour, shipping for the largest parcel. Stripe Checkout collects the shipping address and a phone number (Finland only for now, `SHIPPING_COUNTRIES`), and charges the order lines plus one shipping line; the order keeps the address once paid (decided 2026-11-17: Stripe collects the address while shipping costs the same everywhere; our own address form can come with prices per zone) ✅
 - Admin order queue: paid → printing → shipped (carrier + tracking number) → delivered, with filters
 - Customer "My orders" page showing each order's status
 - **Done when:** you can complete a test print order end to end, from checkout to "shipped", with the tracking number showing on the customer's "My orders" page
@@ -326,6 +326,6 @@ These don't block M0–M2. Decide them before M3 or M4.
 3. **File formats:** which formats you offer (STL only, or STL + 3MF + STEP?). GLB previews are made automatically from STLs; other formats need a hand-made `.glb`.
 4. ~~**Model licence:** personal use only, or also a commercial-use licence at a higher price?~~ **Decided 2026-11-13:** no commercial licence at a higher price. A paid file has one price; its licence (Standard Digital File or Commercial Use) is chosen per model and doesn't change the price.
 5. ~~**Print pricing formula:**~~ **Decided 2026-11-16:** no formula. The author sets a price per material for each model (`product_materials.price_cents`); colour doesn't change it.
-6. **Shipping:** **rates decided 2026-11-16:** a price per parcel size (S/M/L) and zone, set by the shop from real carrier prices, like Posti's and Matkahuolto's own size classes. Live carrier rates (carrier APIs, Shipit, Sendcloud) can come later. Still open: carriers (Posti, Matkahuolto, DHL…) and which countries (§9 #1). Posti's standard parcel goes to the pickup point nearest the address, so no pickup-point picker is needed at first.
+6. **Shipping:** **rates decided 2026-11-16:** a price per parcel size (S/M/L) and zone, set by the shop from real carrier prices, like Posti's and Matkahuolto's own size classes. Live carrier rates (carrier APIs, Shipit, Sendcloud) can come later. Still open: carriers (Posti, Matkahuolto, DHL…). Countries: Finland only to start (decided 2026-11-17), more once carriers and rates are decided (§9 #1). Posti's standard parcel goes to the pickup point nearest the address, so no pickup-point picker is needed at first.
 7. ~~**Returns for printed items:**~~ **Decided 2026-11-16:** follow the EU consumer rules. Treat prints as covered by the 14-day right of withdrawal (picking a material and colour from our lists probably doesn't make them "made to the consumer's specifications"). The 14 days start when the buyer receives the parcel. We refund the price and the original shipping within 14 days, and may wait until the print is back; the buyer pays the return shipping. Misprints, defects and damage in transit are our responsibility (the risk passes only when the buyer receives the parcel): ask for a photo, then reprint or refund, usually without needing the print back. Check with KKV or a lawyer before launch (M6).
 8. ~~**3D previews of paid models.**~~ **Decided 2026-11-13:** no 3D view for paid models. Only free downloads have one; paid-file and print-only models show photos only.

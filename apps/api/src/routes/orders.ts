@@ -1,4 +1,4 @@
-import { checkoutRequestSchema, checkoutStartSchema, orderSchema } from '@app/shared';
+import { checkoutRequestSchema, checkoutStartSchema, orderSchema, SHIPPING_COUNTRIES } from '@app/shared';
 import { createRoute, z } from '@hono/zod-openapi';
 
 import type { VerifySessionToken } from '../lib/auth.ts';
@@ -27,6 +27,10 @@ export function orderRoutes(deps: OrderDeps) {
             '',
             'An order with model files needs `immediateDeliveryConsent: true`: the buyer agreed that the files are',
             'delivered right away, which ends their 14-day right of withdrawal (EU rule for digital content).',
+            '',
+            "An order with prints adds one parcel's shipping (the size of the largest print). Stripe's page asks",
+            `for the shipping address (${SHIPPING_COUNTRIES.join(', ')} only for now) and a phone number for the`,
+            'delivery notice; the order keeps the address once paid.',
         ].join('\n'),
         request: {
             body: { required: true, content: { 'application/json': { schema: checkoutRequestSchema } } },
@@ -39,7 +43,7 @@ export function orderRoutes(deps: OrderDeps) {
             400: errorResponse('Invalid items, or model files without `immediateDeliveryConsent`.'),
             401: errorResponse('Sign in required.'),
             409: errorResponse(
-                'The cart changed (something is no longer for sale, or already owned) or is empty, it has prints (not yet payable), or the account is still being set up.',
+                'The cart changed (something is no longer for sale, or already owned) or is empty, or the account is still being set up.',
             ),
             502: errorResponse("Stripe couldn't be reached. Nothing was charged."),
             503: errorResponse('Payments are not configured on this server.'),

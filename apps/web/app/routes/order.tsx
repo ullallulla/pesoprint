@@ -1,4 +1,4 @@
-import { formatVatRate, type Order } from '@app/shared';
+import { formatVatRate, PARCEL_SIZE_NAMES, type Order, type ShippingAddress } from '@app/shared';
 import { SignInButton } from '@clerk/react-router';
 import { getAuth } from '@clerk/react-router/server';
 import { CircleCheck, Library, LoaderCircle } from 'lucide-react';
@@ -6,11 +6,13 @@ import { useEffect, useState } from 'react';
 import { data, Link, useRevalidator } from 'react-router';
 import { z } from 'zod';
 
+import { ColourSwatch } from '~/components/colour-swatch';
 import { FileDownloads } from '~/components/file-downloads';
 import { Button } from '~/components/ui/button';
-import { readCart, saveCart } from '~/lib/cart.server';
+import { cartCount, readCart, saveCart } from '~/lib/cart.server';
 import { formatPrice } from '~/lib/format';
 import { getOrder } from '~/lib/orders.server';
+import { printOptionText } from '~/lib/print-option';
 
 import type { Route } from './+types/order';
 
@@ -38,7 +40,10 @@ export async function loader(args: Route.LoaderArgs) {
     );
     if (kept.length === cart.length) return { order };
     // `cartCount` corrects the header, whose loader read the cart before this one emptied it.
-    return data({ order, cartCount: kept.length }, { headers: { 'Set-Cookie': await saveCart(args.request, kept) } });
+    return data(
+        { order, cartCount: cartCount(kept) },
+        { headers: { 'Set-Cookie': await saveCart(args.request, kept) } },
+    );
 }
 
 export default function OrderPage({ loaderData }: Route.ComponentProps) {
@@ -70,6 +75,9 @@ function SignInFirst() {
 }
 
 function Paid({ order }: { order: Order }) {
+    const hasFiles = order.items.some((item) => item.type === 'digital');
+    const hasPrints = order.items.some((item) => item.type === 'print');
+
     return (
         <>
             <div className='flex flex-col gap-2'>
@@ -78,17 +86,30 @@ function Paid({ order }: { order: Order }) {
                     Thank you for your order
                 </h1>
                 <p className='text-muted-foreground'>
-                    Payment received. Your files are ready to download, here or any time from your library.
+                    Payment received.
+                    {hasFiles && ' Your files are ready to download, here or any time from your library.'}
+                    {hasPrints && ' We’ll print your order and post it to the address below.'}
                 </p>
             </div>
 
             <ul className='flex flex-col gap-4'>
-                {order.items.map((item) => (
-                    <li key={`${item.type}:${item.productId}`} className='flex flex-col gap-2 rounded-lg border p-4'>
-                        <Link to={`/models/${item.slug}`} className='font-medium hover:underline'>
-                            {item.title}
-                        </Link>
-                        {item.files.length === 0 ? (
+                {order.items.map((item, index) => (
+                    <li key={index} className='flex flex-col gap-2 rounded-lg border p-4'>
+                        <div className='flex items-start justify-between gap-4'>
+                            <Link to={`/models/${item.slug}`} className='font-medium hover:underline'>
+                                {item.quantity > 1 && `${item.quantity} × `}
+                                {item.title}
+                            </Link>
+                            <span className='tabular-nums'>{formatPrice(item.unitPriceCents * item.quantity)}</span>
+                        </div>
+                        {item.print ? (
+                            <p className='flex items-center gap-1.5 text-sm text-muted-foreground'>
+                                {item.print.colours.length > 0 && (
+                                    <ColourSwatch colours={item.print.colours} className='size-3' />
+                                )}
+                                Print · {printOptionText(item.print)}
+                            </p>
+                        ) : item.files.length === 0 ? (
                             <p className='text-sm text-muted-foreground'>
                                 This model has no files right now. Contact us and we&apos;ll sort it out.
                             </p>
@@ -99,21 +120,62 @@ function Paid({ order }: { order: Order }) {
                 ))}
             </ul>
 
-            <Button asChild variant='outline' className='self-start'>
-                <Link to='/library'>
-                    <Library aria-hidden />
-                    Go to your library
-                </Link>
-            </Button>
+            {hasFiles && (
+                <Button asChild variant='outline' className='self-start'>
+                    <Link to='/library'>
+                        <Library aria-hidden />
+                        Go to your library
+                    </Link>
+                </Button>
+            )}
+
+            {order.shippingAddress && <ShipsTo address={order.shippingAddress} />}
 
             <OrderTotals order={order} />
         </>
     );
 }
 
+function ShipsTo({ address }: { address: ShippingAddress }) {
+    return (
+        <section aria-labelledby='ships-to-heading' className='flex flex-col gap-1 rounded-lg border p-4 text-sm'>
+            <h2 id='ships-to-heading' className='font-medium'>
+                Ships to
+            </h2>
+            <address className='text-muted-foreground not-italic'>
+                {address.name}
+                <br />
+                {address.line1}
+                {address.line2 && (
+                    <>
+                        <br />
+                        {address.line2}
+                    </>
+                )}
+                <br />
+                {address.postalCode} {address.city}
+                {address.country !== 'FI' && (
+                    <>
+                        <br />
+                        {address.country}
+                    </>
+                )}
+            </address>
+        </section>
+    );
+}
+
 function OrderTotals({ order }: { order: Order }) {
     return (
         <dl className='grid grid-cols-[1fr_auto] gap-y-1 border-t pt-4 text-sm'>
+            {order.parcelSize && (
+                <>
+                    <dt className='text-muted-foreground'>Shipping ({PARCEL_SIZE_NAMES[order.parcelSize]} parcel)</dt>
+                    <dd className='text-right text-muted-foreground tabular-nums'>
+                        {formatPrice(order.shippingCents)}
+                    </dd>
+                </>
+            )}
             <dt className='font-semibold'>Total paid</dt>
             <dd className='text-right font-semibold tabular-nums'>{formatPrice(order.totalCents)}</dd>
             <dt className='text-muted-foreground'>Includes VAT {formatVatRate(order.vatRateBp)}</dt>
@@ -147,8 +209,8 @@ function Pending() {
         <>
             <h1 className='text-3xl font-bold tracking-tight'>Your payment is still being processed</h1>
             <p className='text-muted-foreground'>
-                Some payment methods take longer to confirm. You can leave this page: come back to it later, and your
-                files will be here once the payment has gone through.
+                Some payment methods take longer to confirm. You can leave this page: come back to it later, and it will
+                show your order once the payment has gone through.
             </p>
             <Button
                 variant='outline'

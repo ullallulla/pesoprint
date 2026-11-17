@@ -1,4 +1,12 @@
-import { ORDER_CURRENCY, type CheckoutRequest, type CheckoutStart, type Order as OrderView } from '@app/shared';
+import {
+    ORDER_CURRENCY,
+    PARCEL_SIZE_NAMES,
+    SHIPPING_COUNTRIES,
+    type CartLine,
+    type CheckoutRequest,
+    type CheckoutStart,
+    type Order as OrderView,
+} from '@app/shared';
 import { and, asc, eq, inArray } from 'drizzle-orm';
 
 import type { Database } from '../db/client.ts';
@@ -11,8 +19,9 @@ import type { CartService } from './cart.ts';
 export interface OrdersService {
     /**
      * Prices the cart again, creates a pending order and a Stripe Checkout Session for it, and returns
-     * the payment page's URL. Refuses a cart that changed since the buyer saw it (409), and an order with
-     * model files unless the buyer agreed to immediate delivery, giving up their right of withdrawal (400).
+     * the payment page's URL. Stripe's page asks for the shipping address when there are prints. Refuses a
+     * cart that changed since the buyer saw it (409), and an order with model files unless the buyer agreed
+     * to immediate delivery, giving up their right of withdrawal (400).
      */
     checkout(caller: AuthContext, request: CheckoutRequest): Promise<CheckoutStart>;
     /** One of the caller's orders. A pending one is first checked with Stripe, so it's up to date. */
@@ -29,6 +38,13 @@ export interface OrdersOptions {
 
 /** How long the buyer has on Stripe's page before the order is cancelled. Stripe allows 30 min to 24 h. */
 export const CHECKOUT_EXPIRY_MINUTES = 60;
+
+/** How a line reads on Stripe's page and receipt: "Vase (print: PLA, Black / Orange)". */
+function stripeLineName(line: CartLine): string {
+    if (!line.print) return line.title;
+    const colour = line.print.colourName ? `, ${line.print.colourName}` : '';
+    return `${line.title} (print: ${line.print.materialName}${colour})`;
+}
 
 const paymentsUnavailable = () => new AppError(503, 'internal_error', "Payments aren't set up on this server.");
 
@@ -53,6 +69,10 @@ export function createOrdersService(
                 );
                 return;
             }
+            if (order.parcelSize !== null && state.shippingAddress === null) {
+                // Stripe requires an address before paying, so this shouldn't happen; the order is still paid.
+                console.error(`Order ${order.id} has prints, but Stripe session ${state.id} has no shipping address.`);
+            }
             await db.transaction(async (tx) => {
                 const [paid] = await tx
                     .update(orders)
@@ -62,6 +82,7 @@ export function createOrdersService(
                         paymentStatus: state.paymentStatus,
                         paymentMethod: state.paymentMethod,
                         stripePaymentIntentId: state.paymentIntentId,
+                        shippingAddress: order.parcelSize === null ? null : state.shippingAddress,
                     })
                     .where(and(eq(orders.id, order.id), eq(orders.status, 'pending')))
                     .returning({ userId: orders.userId });
@@ -98,6 +119,7 @@ export function createOrdersService(
                 type: orderItems.type,
                 title: orderItems.titleSnapshot,
                 slug: products.slug,
+                print: orderItems.printSnapshot,
                 unitPriceCents: orderItems.unitPriceCents,
                 quantity: orderItems.quantity,
             })
@@ -121,15 +143,19 @@ export function createOrdersService(
             status: order.status,
             currency: ORDER_CURRENCY,
             subtotalCents: order.subtotalCents,
-            taxCents: order.taxCents,
+            shippingCents: order.shippingCents,
+            parcelSize: order.parcelSize,
             totalCents: order.totalCents,
+            taxCents: order.taxCents,
             vatRateBp: order.vatRateBp,
+            shippingAddress: order.shippingAddress,
             createdAt: order.createdAt.toISOString(),
             paidAt: order.paidAt?.toISOString() ?? null,
             items: items.map((item) => ({
                 ...item,
+                // A print line of a model whose file is also in the order gets none: the file line has them.
                 files: files
-                    .filter((file) => file.productId === item.productId)
+                    .filter((file) => item.type === 'digital' && file.productId === item.productId)
                     .map((file) => ({
                         id: file.id,
                         format: file.format,
@@ -159,11 +185,6 @@ export function createOrdersService(
             if (quote.lines.length === 0) {
                 throw conflict('Your cart is empty.', [{ path: 'items', message: 'Your cart is empty.' }]);
             }
-            // Orders don't hold a shipping address or shipping cost yet: that's the next part of M4.
-            if (quote.lines.some((line) => line.type === 'print')) {
-                const message = "Printed copies can't be paid for yet. Remove them from your cart to buy the files.";
-                throw conflict(message, [{ path: 'print', message }]);
-            }
             // EU rule: a file can only be delivered before the 14-day withdrawal period ends if the buyer
             // agreed to that, knowing it ends their right of withdrawal.
             const hasFiles = quote.lines.some((line) => line.type === 'digital');
@@ -181,6 +202,8 @@ export function createOrdersService(
                         userId: caller.userId,
                         email: user.email,
                         subtotalCents: quote.subtotalCents,
+                        shippingCents: quote.shippingCents,
+                        parcelSize: quote.parcelSize,
                         taxCents: quote.taxCents,
                         totalCents: quote.totalCents,
                         vatCountry: quote.vatCountry,
@@ -197,6 +220,8 @@ export function createOrdersService(
                         unitPriceCents: line.unitPriceCents,
                         titleSnapshot: line.title,
                         licenseSnapshot: line.license,
+                        materialId: line.materialId,
+                        printSnapshot: line.print,
                     })),
                 );
                 return order!.id;
@@ -208,10 +233,15 @@ export function createOrdersService(
                     orderId,
                     email: user.email,
                     lines: quote.lines.map((line) => ({
-                        name: line.title,
+                        name: stripeLineName(line),
                         unitAmountCents: line.unitPriceCents,
                         quantity: line.quantity,
                     })),
+                    shipping: quote.parcelSize && {
+                        amountCents: quote.shippingCents,
+                        label: `Shipping (${PARCEL_SIZE_NAMES[quote.parcelSize]} parcel)`,
+                        countries: SHIPPING_COUNTRIES,
+                    },
                     successUrl: `${siteUrl}/orders/${orderId}`,
                     cancelUrl: `${siteUrl}/cart`,
                     expiresAt: new Date(now().getTime() + CHECKOUT_EXPIRY_MINUTES * 60_000),

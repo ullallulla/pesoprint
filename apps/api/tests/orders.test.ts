@@ -1,6 +1,15 @@
 import { fileURLToPath } from 'node:url';
 
-import { apiErrorSchema, checkoutStartSchema, librarySchema, orderSchema, type CartItem } from '@app/shared';
+import {
+    apiErrorSchema,
+    checkoutStartSchema,
+    librarySchema,
+    orderSchema,
+    SHOP_VAT_RATE_BP,
+    vatIncludedCents,
+    type CartItem,
+    type ShippingAddress,
+} from '@app/shared';
 import { eq, inArray, sql } from 'drizzle-orm';
 import Stripe from 'stripe';
 import { afterAll, beforeAll, beforeEach, describe, expect, test } from 'vite-plus/test';
@@ -10,9 +19,12 @@ import {
     categories,
     colours,
     entitlements,
+    materialColours,
     materials,
     orderItems,
     orders,
+    productColourOptionColours,
+    productColourOptions,
     productFiles,
     productMaterials,
     products,
@@ -82,10 +94,13 @@ function createFakePayments() {
                 paid: false,
                 failed: false,
                 paymentStatus: 'unpaid',
-                amountTotalCents: input.lines.reduce((sum, line) => sum + line.unitAmountCents * line.quantity, 0),
+                amountTotalCents:
+                    input.lines.reduce((sum, line) => sum + line.unitAmountCents * line.quantity, 0) +
+                    (input.shipping?.amountCents ?? 0),
                 currency: 'eur',
                 paymentIntentId: null,
                 paymentMethod: null,
+                shippingAddress: null,
             });
             return { id, url: `https://checkout.stripe.test/c/pay/${id}` };
         },
@@ -327,6 +342,8 @@ describe.skipIf(!url)('checkout and orders (integration)', () => {
                         { name: 'Hook', unitAmountCents: 450, quantity: 1 },
                         { name: 'Stand', unitAmountCents: 1290, quantity: 1 },
                     ],
+                    // Nothing to ship, so Stripe asks for no address.
+                    shipping: null,
                     successUrl: `${SITE}/orders/${start.orderId}`,
                     cancelUrl: `${SITE}/cart`,
                     expiresAt: new Date(NOW.getTime() + CHECKOUT_EXPIRY_MINUTES * 60_000),
@@ -376,20 +393,124 @@ describe.skipIf(!url)('checkout and orders (integration)', () => {
             }
         });
 
-        test("refuses prints for now: orders can't hold a shipping address yet", async () => {
+        test('prints: one parcel of shipping, the choices kept, and the address saved once paid', async () => {
             const [pla] = await db.insert(materials).values({ name: 'PLA' }).returning();
-            const vase = await model({ printBasePriceCents: 1290, parcelSize: 'S' });
+            const [black, orange] = await db
+                .insert(colours)
+                .values([
+                    { name: 'Black', hex: '#000000' },
+                    { name: 'Orange', hex: '#f26b1d' },
+                ])
+                .returning();
+            await db.insert(materialColours).values([
+                { materialId: pla!.id, colourId: black!.id },
+                { materialId: pla!.id, colourId: orange!.id },
+            ]);
+            // Sells its file too, and ships in a medium parcel.
+            const vase = await model({ title: 'Vase', printBasePriceCents: 1290, parcelSize: 'M' });
             await db.insert(productMaterials).values({ productId: vase.id, materialId: pla!.id, priceCents: 1290 });
+            const [inBlack, inBoth] = await db
+                .insert(productColourOptions)
+                .values([
+                    { productId: vase.id, position: 0 },
+                    { productId: vase.id, position: 1 },
+                ])
+                .returning();
+            await db.insert(productColourOptionColours).values([
+                { optionId: inBlack!.id, colourId: black!.id, position: 0 },
+                { optionId: inBoth!.id, colourId: black!.id, position: 0 },
+                { optionId: inBoth!.id, colourId: orange!.id, position: 1 },
+            ]);
+            const print = (colourOptionId: string, quantity: number): CartItem => ({
+                productId: vase.id,
+                type: 'print',
+                materialId: pla!.id,
+                colourOptionId,
+                quantity,
+            });
 
-            const res = await checkout([
+            // The same model as a file and printed in two colours.
+            const { orderId, sessionId } = await startCheckout([
                 digital(vase.id),
-                { productId: vase.id, type: 'print', materialId: pla!.id, colourOptionId: null, quantity: 1 },
+                print(inBoth!.id, 2),
+                print(inBlack!.id, 1),
             ]);
 
-            expect(res.status).toBe(409);
-            expect(apiErrorSchema.parse(await res.json()).error.issues?.map((issue) => issue.path)).toEqual(['print']);
-            expect(await db.select().from(orders)).toEqual([]);
-            expect(payments.created).toEqual([]);
+            // 4.50 + 2 × 12.90 + 12.90 = 43.20, and a medium parcel: 4.90.
+            const [order] = await db.select().from(orders).where(eq(orders.id, orderId));
+            expect(order).toMatchObject({
+                subtotalCents: 4320,
+                shippingCents: 490,
+                parcelSize: 'M',
+                totalCents: 4810,
+                taxCents: vatIncludedCents(4810, SHOP_VAT_RATE_BP),
+                shippingAddress: null,
+            });
+            const items = await db.select().from(orderItems).where(eq(orderItems.orderId, orderId));
+            expect(
+                items.map(({ type, materialId, printSnapshot, quantity }) => [
+                    type,
+                    materialId,
+                    printSnapshot,
+                    quantity,
+                ]),
+            ).toEqual([
+                ['digital', null, null, 1],
+                [
+                    'print',
+                    pla!.id,
+                    {
+                        materialName: 'PLA',
+                        colourName: 'Black / Orange',
+                        colours: [
+                            { name: 'Black', hex: '#000000' },
+                            { name: 'Orange', hex: '#f26b1d' },
+                        ],
+                    },
+                    2,
+                ],
+                ['print', pla!.id, expect.objectContaining({ colourName: 'Black' }), 1],
+            ]);
+
+            const [session] = payments.created;
+            expect(session!.lines.map((line) => line.name)).toEqual([
+                'Vase',
+                'Vase (print: PLA, Black / Orange)',
+                'Vase (print: PLA, Black)',
+            ]);
+            expect(session!.shipping).toEqual({
+                amountCents: 490,
+                label: 'Shipping (medium parcel)',
+                countries: ['FI'],
+            });
+
+            const address: ShippingAddress = {
+                name: 'Maija Meikäläinen',
+                phone: '+358401234567',
+                line1: 'Esimerkkikatu 1 A 2',
+                line2: null,
+                postalCode: '00100',
+                city: 'Helsinki',
+                country: 'FI',
+            };
+            payments.pay(sessionId, { shippingAddress: address });
+            const paid = orderSchema.parse(await (await getOrder(orderId)).json());
+            expect(paid).toMatchObject({
+                status: 'paid',
+                subtotalCents: 4320,
+                shippingCents: 490,
+                parcelSize: 'M',
+                totalCents: 4810,
+                shippingAddress: address,
+            });
+            // The file line has the download; print lines have their choice and no files.
+            expect(paid.items.map((item) => [item.type, item.print?.colourName ?? null, item.files.length])).toEqual([
+                ['digital', null, 1],
+                ['print', 'Black / Orange', 0],
+                ['print', 'Black', 0],
+            ]);
+            // Only the file is owned: prints are shipped.
+            expect(await ownedBy(BUYER_ID)).toEqual([vase.id]);
         });
 
         test('answers 503 without Stripe, and 502 if Stripe fails, keeping no order', async () => {
@@ -426,6 +547,7 @@ describe.skipIf(!url)('checkout and orders (integration)', () => {
                     type: 'digital',
                     title: 'Hook',
                     slug: hook.slug,
+                    print: null,
                     unitPriceCents: 450,
                     quantity: 1,
                     files: [],

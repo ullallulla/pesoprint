@@ -10,6 +10,8 @@ import {
     PRODUCT_FILE_KINDS,
     PRODUCT_STATUSES,
     SLUG_PATTERN,
+    type PrintChoice,
+    type ShippingAddress,
 } from '@app/shared';
 import { sql } from 'drizzle-orm';
 import {
@@ -19,6 +21,7 @@ import {
     customType,
     index,
     integer,
+    jsonb,
     pgEnum,
     pgTable,
     primaryKey,
@@ -306,7 +309,12 @@ export const orders = pgTable(
         status: orderStatus('status').notNull().default('pending'),
         currency: text('currency').notNull().default(ORDER_CURRENCY),
         subtotalCents: integer('subtotal_cents').notNull(),
+        /** One parcel for the order's prints. 0 without prints. */
+        shippingCents: integer('shipping_cents').notNull().default(0),
+        /** The parcel the prints ship in: the largest of theirs. `null` without prints. */
+        parcelSize: parcelSize('parcel_size'),
         taxCents: integer('tax_cents').notNull(),
+        /** Subtotal plus shipping: what the buyer pays. */
         totalCents: integer('total_cents').notNull(),
         vatCountry: text('vat_country').notNull(),
         vatRateBp: integer('vat_rate_bp').notNull(),
@@ -324,6 +332,8 @@ export const orders = pgTable(
          * waived.
          */
         immediateDeliveryConsentAt: timestamp('immediate_delivery_consent_at', { withTimezone: true }),
+        /** Where the prints go, as entered on Stripe's payment page. Set when paid; `null` without prints. */
+        shippingAddress: jsonb('shipping_address').$type<ShippingAddress>(),
         createdAt: createdAt(),
         updatedAt: updatedAt(),
         paidAt: timestamp('paid_at', { withTimezone: true }),
@@ -331,9 +341,13 @@ export const orders = pgTable(
     (t) => [
         index('orders_user_id_created_at_idx').on(t.userId, t.createdAt),
         check('orders_currency_eur', sql`${t.currency} = '${sql.raw(ORDER_CURRENCY)}'`),
-        check('orders_amounts_non_negative', sql`${t.subtotalCents} >= 0 AND ${t.taxCents} >= 0`),
-        // No shipping yet (M4): the total is the items.
-        check('orders_total_is_subtotal', sql`${t.totalCents} = ${t.subtotalCents}`),
+        check(
+            'orders_amounts_non_negative',
+            sql`${t.subtotalCents} >= 0 AND ${t.shippingCents} >= 0 AND ${t.taxCents} >= 0`,
+        ),
+        check('orders_total_is_subtotal_plus_shipping', sql`${t.totalCents} = ${t.subtotalCents} + ${t.shippingCents}`),
+        // Shipping is only charged for a parcel.
+        check('orders_shipping_has_parcel', sql`${t.parcelSize} IS NOT NULL OR ${t.shippingCents} = 0`),
         check('orders_tax_within_total', sql`${t.taxCents} <= ${t.totalCents}`),
         check('orders_vat_country_format', sql`${t.vatCountry} ~ '^[A-Z]{2}$'`),
         check('orders_vat_rate_range', sql`${t.vatRateBp} BETWEEN 0 AND 10000`),
@@ -345,8 +359,9 @@ export type Order = typeof orders.$inferSelect;
 export type NewOrder = typeof orders.$inferInsert;
 
 /**
- * One line of an order, with the title, price and licence as they were when bought: later edits to the
- * product don't change what someone bought. A product with orders can't be deleted (archive it instead).
+ * One line of an order, with the title, price, licence and print choice as they were when bought: later edits
+ * to the product don't change what someone bought. A product with orders can't be deleted (archive it
+ * instead), nor a material (make it inactive).
  */
 export const orderItems = pgTable(
     'order_items',
@@ -363,9 +378,22 @@ export const orderItems = pgTable(
         unitPriceCents: integer('unit_price_cents').notNull(),
         titleSnapshot: text('title_snapshot').notNull(),
         licenseSnapshot: license('license_snapshot'),
+        /** A print's material. */
+        materialId: uuid('material_id').references(() => materials.id, { onDelete: 'restrict' }),
+        /** A print's material and colours by name and swatch, as chosen. */
+        printSnapshot: jsonb('print_snapshot').$type<PrintChoice>(),
     },
     (t) => [
-        uniqueIndex('order_items_order_product_type_idx').on(t.orderId, t.productId, t.type),
+        // A file is one line per order; a model can be printed in several materials and colours.
+        uniqueIndex('order_items_order_product_digital_idx')
+            .on(t.orderId, t.productId)
+            .where(sql`${t.type} = 'digital'`),
+        // As text: 'print' is added to the enum by the previous migration, and Postgres won't use a new enum
+        // value in the transaction that added it (all pending migrations run in one).
+        check(
+            'order_items_print_has_choice',
+            sql`${t.type}::text <> 'print' OR (${t.materialId} IS NOT NULL AND ${t.printSnapshot} IS NOT NULL)`,
+        ),
         index('order_items_product_id_idx').on(t.productId),
         check('order_items_unit_price_non_negative', sql`${t.unitPriceCents} >= 0`),
         // A file is bought once; buying it twice would only charge twice.

@@ -68,14 +68,17 @@ export type CartQuoteRequest = z.infer<typeof cartQuoteRequestSchema>;
 export const CART_REMOVAL_REASONS = ['unavailable', 'owned', 'option_unavailable'] as const;
 export type CartRemovalReason = (typeof CART_REMOVAL_REASONS)[number];
 
-/** What a print line is printed in, for showing in the cart. */
-export const cartPrintOptionSchema = z.object({
-    materialName: z.string(),
-    /** e.g. "Black / Signal red". `null`: printed in the colours shown. */
-    colourName: z.string().nullable(),
-    /** `#rrggbb` swatches, in order. Empty when `colourName` is `null`. */
-    colours: z.array(z.object({ name: z.string(), hex: z.string() })),
-});
+/** What a print is printed in: on cart and order lines. */
+export const cartPrintOptionSchema = z
+    .object({
+        materialName: z.string(),
+        /** e.g. "Black / Signal red". `null`: printed in the colours shown. */
+        colourName: z.string().nullable(),
+        /** `#rrggbb` swatches, in order. Empty when `colourName` is `null`. */
+        colours: z.array(z.object({ name: z.string(), hex: z.string() })),
+    })
+    .meta({ id: 'PrintChoice' });
+export type PrintChoice = z.infer<typeof cartPrintOptionSchema>;
 
 export const cartLineSchema = z
     .object({

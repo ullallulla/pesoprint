@@ -10,9 +10,12 @@ const order: Order = {
     status: 'paid',
     currency: 'EUR',
     subtotalCents: 450,
-    taxCents: 91,
+    shippingCents: 0,
+    parcelSize: null,
     totalCents: 450,
+    taxCents: 91,
     vatRateBp: 2550,
+    shippingAddress: null,
     createdAt: '2026-11-16T12:00:00.000Z',
     paidAt: '2026-11-16T12:01:00.000Z',
     items: [
@@ -21,6 +24,7 @@ const order: Order = {
             type: 'digital',
             title: 'Hook',
             slug: 'hook',
+            print: null,
             unitPriceCents: 450,
             quantity: 1,
             files: [
@@ -56,6 +60,55 @@ test('a paid order thanks the buyer and has a download link per file', () => {
     expect(html).toContain('Includes VAT 25.5 %');
     expect(html).toContain('€0.91');
     expect(html).toContain('href="/library"');
+});
+
+test('a paid print order shows each print, where it ships, and the shipping', () => {
+    const html = render({
+        ...order,
+        subtotalCents: 2580,
+        shippingCents: 490,
+        parcelSize: 'M',
+        totalCents: 3070,
+        shippingAddress: {
+            name: 'Maija Meikäläinen',
+            phone: '+358401234567',
+            line1: 'Esimerkkikatu 1 A 2',
+            line2: null,
+            postalCode: '00100',
+            city: 'Helsinki',
+            country: 'FI',
+        },
+        items: [
+            {
+                ...order.items[0]!,
+                type: 'print',
+                title: 'Vase',
+                slug: 'vase',
+                print: {
+                    materialName: 'PLA',
+                    colourName: 'Black / Orange',
+                    colours: [
+                        { name: 'Black', hex: '#1c1c1c' },
+                        { name: 'Orange', hex: '#f26b1d' },
+                    ],
+                },
+                unitPriceCents: 1290,
+                quantity: 2,
+                files: [],
+            },
+        ],
+    });
+    expect(html).toContain('We’ll print your order and post it to the address below.');
+    expect(html).not.toContain('Your files are ready');
+    expect(html).toContain('2 × Vase');
+    expect(html).toContain('Print · PLA, Black / Orange');
+    expect(html).toContain('Esimerkkikatu 1 A 2');
+    expect(html).toContain('00100 Helsinki');
+    expect(html).toContain('Shipping (medium parcel)');
+    expect(html).toContain('€30.70');
+    // Nothing to download, so no library link and no "no files" note.
+    expect(html).not.toContain('href="/library"');
+    expect(html).not.toContain('no files right now');
 });
 
 test('a pending order says the payment is being confirmed, with no downloads', () => {

@@ -1,4 +1,4 @@
-import { cartItemKey, formatVatRate, type CartQuote } from '@app/shared';
+import { cartItemKey, formatVatRate, PARCEL_SIZE_NAMES, type CartQuote } from '@app/shared';
 import { SignInButton } from '@clerk/react-router';
 import { getAuth } from '@clerk/react-router/server';
 import { Lock } from 'lucide-react';
@@ -19,9 +19,10 @@ export const meta: Route.MetaFunction = () => [
 ];
 
 /**
- * The last look before paying: what's being bought and the total with its VAT, priced by the API. Paying
- * needs an account, so the files can be downloaded again later. Anything the cart page would have to
- * explain (something no longer for sale, or already owned) sends the buyer back there.
+ * The last look before paying: what's being bought and the total with its VAT and shipping, priced by the
+ * API. Paying needs an account, so the files can be downloaded again later and orders followed. Anything the
+ * cart page would have to explain (something no longer for sale, or already owned) sends the buyer back
+ * there. Stripe's payment page asks for the shipping address.
  */
 export async function loader(args: Route.LoaderArgs) {
     const items = await readCart(args.request);
@@ -41,9 +42,11 @@ export async function action(args: Route.ActionArgs) {
     const items = await readCart(args.request);
     if (items.length === 0) return redirect('/cart');
 
-    // The box is `required`, so this only happens without the browser's check. The API checks it too.
+    // Only orders with files ask. The box is `required`, so this only happens without the browser's check.
+    // The API checks it too.
     const immediateDeliveryConsent = (await args.request.formData()).get(CONSENT_FIELD) === 'yes';
-    if (!immediateDeliveryConsent) return { error: CONSENT_MISSING, consentMissing: true };
+    const hasFiles = items.some((item) => item.type === 'digital');
+    if (hasFiles && !immediateDeliveryConsent) return { error: CONSENT_MISSING, consentMissing: true };
 
     try {
         const { paymentUrl } = await startCheckout(args, { items, immediateDeliveryConsent });
@@ -61,6 +64,7 @@ export async function action(args: Route.ActionArgs) {
 export default function Checkout({ loaderData, actionData }: Route.ComponentProps) {
     const { quote, signedIn } = loaderData;
     const hasPrints = quote.lines.some((line) => line.type === 'print');
+    const hasFiles = quote.lines.some((line) => line.type === 'digital');
     const navigation = useNavigation();
     const paying = navigation.state !== 'idle' && navigation.formAction === '/checkout';
 
@@ -77,20 +81,9 @@ export default function Checkout({ loaderData, actionData }: Route.ComponentProp
 
             <OrderSummary quote={quote} />
 
-            {hasPrints ? (
-                <div className='flex flex-col gap-2 rounded-lg border bg-muted/50 p-5'>
-                    <p className='font-medium'>Printed copies can&apos;t be paid for just yet</p>
-                    <p className='text-sm text-muted-foreground'>
-                        Print orders open very soon. To buy model files now,{' '}
-                        <Link to='/cart' className='underline underline-offset-4 hover:text-foreground'>
-                            remove the prints from your cart
-                        </Link>
-                        .
-                    </p>
-                </div>
-            ) : signedIn ? (
+            {signedIn ? (
                 <Form method='post' className='flex flex-col gap-3'>
-                    <ImmediateDeliveryConsent invalid={actionData?.consentMissing === true} />
+                    {hasFiles && <ImmediateDeliveryConsent invalid={actionData?.consentMissing === true} />}
                     {actionData?.error && (
                         <p id='checkout-error' role='alert' className='text-sm text-destructive'>
                             {actionData.error}
@@ -101,16 +94,18 @@ export default function Checkout({ loaderData, actionData }: Route.ComponentProp
                         {paying ? 'Opening the payment page…' : `Pay ${formatPrice(quote.totalCents)}`}
                     </Button>
                     <p className='text-sm text-muted-foreground'>
-                        You&apos;ll pay on Stripe&apos;s secure payment page. Your files are ready to download as soon
-                        as the payment goes through.
+                        You&apos;ll pay on Stripe&apos;s secure payment page.
+                        {hasPrints && ' It asks where to send your prints: we ship within Finland for now.'}
+                        {hasFiles && ' Your files are ready to download as soon as the payment goes through.'}
                     </p>
                 </Form>
             ) : (
                 <div className='flex flex-col gap-3 rounded-lg border p-5'>
                     <p className='font-medium'>Sign in to pay</p>
                     <p className='text-sm text-muted-foreground'>
-                        Your purchases are kept in your account, so you can download the files again whenever you need
-                        them.
+                        {hasFiles
+                            ? 'Your purchases are kept in your account, so you can download the files again whenever you need them.'
+                            : 'Your orders are kept in your account, so you can follow them until they arrive.'}
                     </p>
                     <SignInButton mode='modal' forceRedirectUrl='/checkout' signUpForceRedirectUrl='/checkout'>
                         <Button className='self-start'>Sign in or create an account</Button>
@@ -164,9 +159,14 @@ function OrderSummary({ quote }: { quote: CartQuote }) {
                         <span className='tabular-nums'>{formatPrice(line.unitPriceCents * line.quantity)}</span>
                     </li>
                 ))}
-                {quote.shippingCents > 0 && (
+                {quote.parcelSize && (
                     <li className='flex justify-between gap-4'>
-                        <span>Shipping</span>
+                        <span>
+                            Shipping{' '}
+                            <span className='text-sm text-muted-foreground'>
+                                · {PARCEL_SIZE_NAMES[quote.parcelSize]} parcel
+                            </span>
+                        </span>
                         <span className='tabular-nums'>{formatPrice(quote.shippingCents)}</span>
                     </li>
                 )}

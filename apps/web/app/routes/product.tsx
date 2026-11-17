@@ -5,6 +5,7 @@ import {
     LICENSES,
     MAX_PRINT_QUANTITY,
     offersPrint,
+    PARCEL_SIZE_NAMES,
     printCartItemSchema,
     type CatalogProduct,
     type LibraryItem,
@@ -291,8 +292,6 @@ function FreeDownload({ product }: { product: CatalogProduct }) {
     );
 }
 
-const PARCEL_NAMES = { S: 'small', M: 'medium', L: 'large' } as const;
-
 type ColourOption = CatalogProduct['colourOptions'][number];
 
 /** How the material has this colour option: `undefined` if it can't print it. */
@@ -530,7 +529,7 @@ function OrderPrint({ product, inCart }: { product: CatalogProduct; inCart: numb
                 </div>
                 {product.parcelSize && (
                     <p className='text-xs text-muted-foreground'>
-                        Ships in a {PARCEL_NAMES[product.parcelSize]} parcel:{' '}
+                        Ships in a {PARCEL_SIZE_NAMES[product.parcelSize]} parcel:{' '}
                         {formatPrice(INTERIM_SHIPPING_CENTS[product.parcelSize])} shipping. Prints in one order share a
                         parcel, sized for the largest.
                     </p>

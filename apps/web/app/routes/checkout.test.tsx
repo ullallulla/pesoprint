@@ -65,11 +65,10 @@ test('the buyer has to tick the immediate-delivery box themselves before paying'
     expect(html).toContain('14-day right of withdrawal');
 });
 
-test("a cart with prints can't be paid for yet, and says how to buy the files now", () => {
+test('a cart of prints is paid like files, with its shipping, and asks no immediate-delivery consent', () => {
     const withPrint: CartQuote = {
         ...quote,
         lines: [
-            ...quote.lines,
             {
                 ...quote.lines[0]!,
                 productId: '0190b6a0-0000-7000-8000-000000000105',
@@ -83,8 +82,10 @@ test("a cart with prints can't be paid for yet, and says how to buy the files no
                 quantity: 2,
             },
         ],
+        subtotalCents: 2580,
         parcelSize: 'S',
         shippingCents: 290,
+        totalCents: 2870,
     };
     // oxlint-disable-next-line typescript/no-explicit-any -- the stub supplies the route's props
     const Stub = createRoutesStub([
@@ -99,7 +100,10 @@ test("a cart with prints can't be paid for yet, and says how to buy the files no
 
     expect(html).toContain('2 × Vase');
     expect(html).toContain('print, PLA, Black');
-    expect(html).toContain('Shipping');
-    expect(html).toContain('Printed copies can&#x27;t be paid for just yet');
-    expect(html).not.toContain('<form');
+    expect(html).toContain('small parcel');
+    expect(html).toContain('€2.90');
+    expect(html).toMatch(/<button[^>]* type="submit"[^>]*>.*Pay €28.70<\/button>/s);
+    expect(html).toContain('It asks where to send your prints: we ship within Finland for now.');
+    // The right of withdrawal stays: nothing to give up for prints.
+    expect(html).not.toContain('name="immediateDeliveryConsent"');
 });

@@ -4,7 +4,16 @@ import { eq, inArray, sql } from 'drizzle-orm';
 import { afterAll, beforeAll, beforeEach, describe, expect, test } from 'vite-plus/test';
 
 import { createDatabase, runMigrations } from '../src/db/client.ts';
-import { categories, entitlements, orderItems, orders, products, users, type NewOrder } from '../src/db/schema.ts';
+import {
+    categories,
+    entitlements,
+    materials,
+    orderItems,
+    orders,
+    products,
+    users,
+    type NewOrder,
+} from '../src/db/schema.ts';
 
 const url = process.env.TEST_DATABASE_URL;
 
@@ -41,6 +50,7 @@ describe.skipIf(!url)('orders schema (integration)', () => {
         await db.delete(entitlements);
         await db.delete(orders);
         await db.delete(products);
+        await db.delete(materials);
         await db.delete(categories).where(sql`${categories.parentId} IS NOT NULL`);
         await db.delete(categories);
     }
@@ -76,7 +86,9 @@ describe.skipIf(!url)('orders schema (integration)', () => {
     });
 
     test.each([
-        ['orders_total_is_subtotal', { totalCents: 500 }],
+        ['orders_total_is_subtotal_plus_shipping', { totalCents: 500 }],
+        ['orders_total_is_subtotal_plus_shipping', { shippingCents: 290, parcelSize: 'S' as const }],
+        ['orders_shipping_has_parcel', { shippingCents: 290, totalCents: 740 }],
         ['orders_tax_within_total', { taxCents: 451 }],
         ['orders_amounts_non_negative', { subtotalCents: -1, totalCents: -1 }],
         ['orders_currency_eur', { currency: 'USD' }],
@@ -101,7 +113,33 @@ describe.skipIf(!url)('orders schema (integration)', () => {
             'order_items_digital_quantity_one',
         );
         await db.insert(orderItems).values(item);
-        expect(await violated(db.insert(orderItems).values(item))).toBe('order_items_order_product_type_idx');
+        expect(await violated(db.insert(orderItems).values(item))).toBe('order_items_order_product_digital_idx');
+    });
+
+    test('a print line keeps its material and choice, and the same model can be printed twice in one order', async () => {
+        const [row] = await db
+            .insert(orders)
+            .values(order({ subtotalCents: 2580, shippingCents: 290, parcelSize: 'S', totalCents: 2870 }))
+            .returning();
+        const [pla] = await db.insert(materials).values({ name: 'PLA' }).returning();
+        const print = {
+            orderId: row!.id,
+            productId,
+            type: 'print' as const,
+            unitPriceCents: 1290,
+            titleSnapshot: 'Hook',
+        };
+
+        expect(await violated(db.insert(orderItems).values(print))).toBe('order_items_print_has_choice');
+        const choice = { materialName: 'PLA', colourName: null, colours: [] };
+        await db.insert(orderItems).values([
+            { ...print, materialId: pla!.id, printSnapshot: choice },
+            { ...print, materialId: pla!.id, printSnapshot: { ...choice, colourName: 'Black' } },
+        ]);
+        // An ordered material can only be made inactive.
+        expect(await violated(db.delete(materials).where(eq(materials.id, pla!.id)))).toBe(
+            'order_items_material_id_materials_id_fk',
+        );
     });
 
     test('an ordered or owned product cannot be deleted, even by going around the API', async () => {

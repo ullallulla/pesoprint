@@ -1,8 +1,9 @@
 import { z } from 'zod';
 
-import { cartItemSchema, MAX_CART_ITEMS } from './cart.ts';
+import { cartItemSchema, cartPrintOptionSchema, MAX_CART_ITEMS } from './cart.ts';
 import { productFileFormatSchema } from './products.ts';
 import { ORDER_CURRENCY, ORDER_ITEM_TYPES, ORDER_STATUSES } from './orders.ts';
+import { parcelSizeSchema, shippingAddressSchema } from './shipping.ts';
 
 /** Starts paying for the cart: the API prices it again, creates a pending order and a Stripe Checkout Session. */
 export const checkoutRequestSchema = z
@@ -40,9 +41,16 @@ export const orderSchema = z
         status: z.enum(ORDER_STATUSES),
         currency: z.literal(ORDER_CURRENCY),
         subtotalCents: z.int(),
-        taxCents: z.int(),
+        /** 0 without prints. */
+        shippingCents: z.int(),
+        /** The parcel the prints ship in. `null` without prints. */
+        parcelSize: parcelSizeSchema.nullable(),
+        /** Subtotal plus shipping. */
         totalCents: z.int(),
+        taxCents: z.int(),
         vatRateBp: z.int(),
+        /** Where the prints go. Set once paid; `null` before, and for orders without prints. */
+        shippingAddress: shippingAddressSchema.nullable(),
         createdAt: z.iso.datetime(),
         paidAt: z.iso.datetime().nullable(),
         items: z.array(
@@ -53,9 +61,11 @@ export const orderSchema = z
                 title: z.string(),
                 /** The product's current slug, for links. */
                 slug: z.string(),
+                /** A print's material and colours, as chosen. `null` on file lines. */
+                print: cartPrintOptionSchema.nullable(),
                 unitPriceCents: z.int(),
                 quantity: z.int(),
-                /** The files to download: empty until the order is paid. */
+                /** The files to download: empty until the order is paid, and on print lines. */
                 files: z.array(orderFileSchema),
             }),
         ),

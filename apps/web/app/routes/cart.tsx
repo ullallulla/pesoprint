@@ -1,4 +1,12 @@
-import { cartItemKey, formatVatRate, LICENSES, MAX_PRINT_QUANTITY, type CartLine, type CartQuote } from '@app/shared';
+import {
+    cartItemKey,
+    formatVatRate,
+    LICENSES,
+    MAX_PRINT_QUANTITY,
+    PARCEL_SIZE_NAMES,
+    type CartLine,
+    type CartQuote,
+} from '@app/shared';
 import { Box, Trash2 } from 'lucide-react';
 import { data, Link, useFetcher } from 'react-router';
 
@@ -230,8 +238,6 @@ function QuantityForm({ line, busy }: { line: CartLine; busy: boolean }) {
     );
 }
 
-const PARCEL_NAMES = { S: 'small', M: 'medium', L: 'large' } as const;
-
 function Summary({ quote }: { quote: CartQuote }) {
     const count = quote.lines.reduce((sum, line) => sum + line.quantity, 0);
     return (
@@ -246,7 +252,9 @@ function Summary({ quote }: { quote: CartQuote }) {
                 <dd className='text-right tabular-nums'>{formatPrice(quote.subtotalCents)}</dd>
                 {quote.parcelSize && (
                     <>
-                        <dt className='text-muted-foreground'>Shipping ({PARCEL_NAMES[quote.parcelSize]} parcel)</dt>
+                        <dt className='text-muted-foreground'>
+                            Shipping ({PARCEL_SIZE_NAMES[quote.parcelSize]} parcel)
+                        </dt>
                         <dd className='text-right tabular-nums'>{formatPrice(quote.shippingCents)}</dd>
                     </>
                 )}

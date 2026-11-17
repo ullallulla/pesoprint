@@ -1,3 +1,4 @@
+import type { ShippingAddress } from '@app/shared';
 import Stripe from 'stripe';
 
 /**
@@ -20,6 +21,11 @@ export interface CreateCheckoutInput {
     orderId: string;
     email: string;
     lines: { name: string; unitAmountCents: number; quantity: number }[];
+    /**
+     * For an order with prints: the shipping charge, shown as `label`, and the countries Stripe accepts a
+     * shipping address in (it asks for one, and a phone number for the delivery notice). `null`: nothing ships.
+     */
+    shipping: { amountCents: number; label: string; countries: readonly string[] } | null;
     successUrl: string;
     cancelUrl: string;
     /** Stripe allows 30 minutes to 24 hours. */
@@ -42,6 +48,8 @@ export interface CheckoutState {
     currency: string | null;
     paymentIntentId: string | null;
     paymentMethod: string | null;
+    /** The address the buyer entered, when the session asked for one. */
+    shippingAddress: ShippingAddress | null;
 }
 
 export class WebhookSignatureError extends Error {}
@@ -62,6 +70,21 @@ function sessionStatus(status: string | null): CheckoutState['status'] {
     return status === 'complete' || status === 'expired' ? status : 'open';
 }
 
+function shippingAddressOf(session: Stripe.Checkout.Session): ShippingAddress | null {
+    const details = session.collected_information?.shipping_details;
+    const address = details?.address;
+    if (!details || !address?.line1 || !address.postal_code || !address.city || !address.country) return null;
+    return {
+        name: details.name,
+        phone: session.customer_details?.phone ?? null,
+        line1: address.line1,
+        line2: address.line2 || null,
+        postalCode: address.postal_code,
+        city: address.city,
+        country: address.country,
+    };
+}
+
 export function createStripePayments({
     secretKey,
     webhookSecret,
@@ -76,7 +99,7 @@ export function createStripePayments({
     });
 
     return {
-        async createCheckout({ orderId, email, lines, successUrl, cancelUrl, expiresAt }) {
+        async createCheckout({ orderId, email, lines, shipping, successUrl, cancelUrl, expiresAt }) {
             const session = await stripe.checkout.sessions.create(
                 {
                     mode: 'payment',
@@ -88,6 +111,22 @@ export function createStripePayments({
                             product_data: { name: line.name },
                         },
                     })),
+                    ...(shipping && {
+                        shipping_address_collection: {
+                            allowed_countries:
+                                shipping.countries as Stripe.Checkout.SessionCreateParams.ShippingAddressCollection.AllowedCountry[],
+                        },
+                        shipping_options: [
+                            {
+                                shipping_rate_data: {
+                                    type: 'fixed_amount',
+                                    display_name: shipping.label,
+                                    fixed_amount: { amount: shipping.amountCents, currency: 'eur' },
+                                },
+                            },
+                        ],
+                        phone_number_collection: { enabled: true },
+                    }),
                     customer_email: email,
                     client_reference_id: orderId,
                     metadata: { order_id: orderId },
@@ -122,6 +161,7 @@ export function createStripePayments({
                 paymentIntentId:
                     intent?.id ?? (typeof session.payment_intent === 'string' ? session.payment_intent : null),
                 paymentMethod: method?.type ?? null,
+                shippingAddress: shippingAddressOf(session),
             };
         },
 
