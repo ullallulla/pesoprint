@@ -334,12 +334,23 @@ export const orders = pgTable(
         immediateDeliveryConsentAt: timestamp('immediate_delivery_consent_at', { withTimezone: true }),
         /** Where the prints go, as entered on Stripe's payment page. Set when paid; `null` without prints. */
         shippingAddress: jsonb('shipping_address').$type<ShippingAddress>(),
+        /** Who carries the parcel (Posti, Matkahuolto…), set when the prints are shipped. */
+        carrier: text('carrier'),
+        /** The carrier's tracking code for the parcel. */
+        trackingNumber: text('tracking_number'),
         createdAt: createdAt(),
         updatedAt: updatedAt(),
         paidAt: timestamp('paid_at', { withTimezone: true }),
+        shippedAt: timestamp('shipped_at', { withTimezone: true }),
+        /** When the buyer received the parcel: their 14-day right of withdrawal starts then. */
+        deliveredAt: timestamp('delivered_at', { withTimezone: true }),
     },
     (t) => [
         index('orders_user_id_created_at_idx').on(t.userId, t.createdAt),
+        // The admin's queue: orders with prints, by status, in the order they were paid.
+        index('orders_queue_idx')
+            .on(t.status, t.paidAt)
+            .where(sql`${t.parcelSize} IS NOT NULL`),
         check('orders_currency_eur', sql`${t.currency} = '${sql.raw(ORDER_CURRENCY)}'`),
         check(
             'orders_amounts_non_negative',
@@ -351,7 +362,22 @@ export const orders = pgTable(
         check('orders_tax_within_total', sql`${t.taxCents} <= ${t.totalCents}`),
         check('orders_vat_country_format', sql`${t.vatCountry} ~ '^[A-Z]{2}$'`),
         check('orders_vat_rate_range', sql`${t.vatRateBp} BETWEEN 0 AND 10000`),
-        check('orders_paid_has_paid_at', sql`${t.status} NOT IN ('paid', 'refunded') OR ${t.paidAt} IS NOT NULL`),
+        // The statuses as text: the fulfilment ones are added to the enum by the same migration, and Postgres won't
+        // use a new enum value in the transaction that added it (all pending migrations run in one).
+        check('orders_paid_has_paid_at', sql`${t.status}::text IN ('pending', 'cancelled') OR ${t.paidAt} IS NOT NULL`),
+        // Only a parcel goes through printing, shipping and delivery.
+        check(
+            'orders_fulfilment_has_parcel',
+            sql`${t.status}::text NOT IN ('printing', 'shipped', 'delivered') OR ${t.parcelSize} IS NOT NULL`,
+        ),
+        check(
+            'orders_shipped_has_tracking',
+            sql`${t.status}::text NOT IN ('shipped', 'delivered') OR (${t.carrier} IS NOT NULL AND ${t.trackingNumber} IS NOT NULL AND ${t.shippedAt} IS NOT NULL)`,
+        ),
+        check(
+            'orders_delivered_has_delivered_at',
+            sql`${t.status}::text <> 'delivered' OR ${t.deliveredAt} IS NOT NULL`,
+        ),
     ],
 );
 

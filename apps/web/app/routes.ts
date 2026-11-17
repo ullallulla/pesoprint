@@ -18,6 +18,8 @@ export default [
     ...prefix('admin', [
         layout('routes/admin/layout.tsx', [
             index('routes/admin/overview.tsx'),
+            route('orders', 'routes/admin/orders.tsx'),
+            route('orders/:id', 'routes/admin/order.tsx'),
             route('categories', 'routes/admin/categories.tsx'),
             route('materials', 'routes/admin/materials.tsx'),
             route('products', 'routes/admin/products.tsx'),

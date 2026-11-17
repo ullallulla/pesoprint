@@ -1,4 +1,5 @@
 import {
+    isPaidStatus,
     ORDER_CURRENCY,
     PARCEL_SIZE_NAMES,
     SHIPPING_COUNTRIES,
@@ -130,7 +131,7 @@ export function createOrdersService(
 
         const productIds = items.filter((item) => item.type === 'digital').map((item) => item.productId);
         const files =
-            order.status === 'paid' && productIds.length > 0
+            isPaidStatus(order.status) && productIds.length > 0
                 ? await db
                       .select()
                       .from(productFiles)

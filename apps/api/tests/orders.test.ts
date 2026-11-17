@@ -575,6 +575,28 @@ describe.skipIf(!url)('checkout and orders (integration)', () => {
             });
         });
 
+        test('keeps listing the files once the order moves on to printing and shipping', async () => {
+            const hook = await model();
+            const { orderId, sessionId } = await startCheckout([digital(hook.id)]);
+            payments.pay(sessionId);
+            await getOrder(orderId);
+            // As if it had prints too: the admin's queue moves it along.
+            await db
+                .update(orders)
+                .set({
+                    status: 'printing',
+                    parcelSize: 'S',
+                    shippingCents: 290,
+                    totalCents: sql`${orders.totalCents} + 290`,
+                })
+                .where(eq(orders.id, orderId));
+
+            const order = orderSchema.parse(await (await getOrder(orderId)).json());
+
+            expect(order.status).toBe('printing');
+            expect(order.items[0]!.files.map((file) => file.id)).toEqual([hook.file.id]);
+        });
+
         test('an expired or failed payment cancels the order and grants nothing', async () => {
             const hook = await model();
             const expired = await startCheckout([digital(hook.id)]);

@@ -9,6 +9,7 @@ import { createStorageFromEnv } from './integrations/s3.ts';
 import { createStripePayments } from './integrations/stripe.ts';
 import { createClerkTokenVerifier } from './lib/auth.ts';
 import { createIpHasher } from './lib/client-ip.ts';
+import { createAdminOrdersService } from './services/admin-orders.ts';
 import { createCartService } from './services/cart.ts';
 import { createCatalogService } from './services/catalog.ts';
 import { createCategoriesService } from './services/categories.ts';
@@ -62,6 +63,7 @@ const app = createApp({
     catalog: createCatalogService(db, storage),
     cart,
     orders,
+    adminOrders: createAdminOrdersService(db),
     library: createLibraryService(db, storage),
     verifyStripeWebhook: payments?.verifyWebhook ?? null,
     downloads,

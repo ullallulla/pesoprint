@@ -1,10 +1,20 @@
-import type { AdminCategory, AdminMaterial, AdminProduct, AdminProductList, Colour } from '@app/shared';
+import type {
+    AdminCategory,
+    AdminMaterial,
+    AdminOrder,
+    AdminOrderList,
+    AdminProduct,
+    AdminProductList,
+    Colour,
+} from '@app/shared';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { createRoutesStub } from 'react-router';
 import { describe, expect, test } from 'vite-plus/test';
 
 import AdminCategories from './categories';
 import AdminMaterials from './materials';
+import AdminOrderPage from './order';
+import AdminOrders from './orders';
 import EditProduct from './product-edit';
 import AdminProducts from './products';
 
@@ -298,4 +308,114 @@ test('the materials page says when there are no materials or colours yet', () =>
     const html = render('/admin/materials', AdminMaterials, { materials: [], colours: [] });
     expect(html).toContain('No materials yet. Add the first one.');
     expect(html).toContain('No colours yet. Add the first one.');
+});
+
+const paidOrder: AdminOrder = {
+    id: '0190b6a0-0000-7000-8000-0000a1b2c3d4',
+    status: 'paid',
+    email: 'maija@example.com',
+    userId: 'user_1',
+    currency: 'EUR',
+    subtotalCents: 3030,
+    shippingCents: 490,
+    parcelSize: 'M',
+    totalCents: 3520,
+    shippingAddress: {
+        name: 'Maija Meikäläinen',
+        phone: '+358401234567',
+        line1: 'Esimerkkikatu 1 A 2',
+        line2: null,
+        postalCode: '00100',
+        city: 'Helsinki',
+        country: 'FI',
+    },
+    carrier: null,
+    trackingNumber: null,
+    createdAt: '2026-11-17T09:58:00.000Z',
+    paidAt: '2026-11-17T10:00:00.000Z',
+    shippedAt: null,
+    deliveredAt: null,
+    items: [
+        {
+            productId: draft.id,
+            type: 'print',
+            title: 'Vase',
+            print: { materialName: 'PLA', colourName: 'Signal red', colours: [{ name: red.name, hex: red.hex }] },
+            quantity: 2,
+            unitPriceCents: 1290,
+        },
+        { productId: draft.id, type: 'digital', title: 'Vase', print: null, quantity: 1, unitPriceCents: 450 },
+    ],
+};
+
+const shippedOrder: AdminOrder = {
+    ...paidOrder,
+    id: '0190b6a0-0000-7000-8000-0000e5f6a7b8',
+    status: 'shipped',
+    carrier: 'Posti',
+    trackingNumber: 'JJFI65432100',
+    shippedAt: '2026-11-18T14:00:00.000Z',
+};
+
+describe('order queue', () => {
+    test('lists each order with its buyer, prints, parcel, status and tracking', () => {
+        const list: AdminOrderList = { orders: [paidOrder, shippedOrder], page: 1, pageSize: 25, total: 2 };
+        const html = render('/admin/orders', AdminOrders, { list, filters: { status: 'open', q: undefined, page: 1 } });
+
+        expect(html).toContain(`href="/admin/orders/${paidOrder.id}"`);
+        expect(html).toContain('a1b2c3d4');
+        expect(html).toContain('Maija Meikäläinen');
+        expect(html).toContain('2 × Vase');
+        expect(html).toContain('PLA, Signal red');
+        expect(html).toContain('medium parcel · and a file');
+        expect(html).toMatch(/Paid <time[^>]*>17 Nov 2026</);
+        expect(html).toContain('JJFI65432100');
+        expect(html).toMatch(/<a [^>]*aria-current="page"[^>]*>To do</);
+        expect(html).toContain('href="/admin/orders?status=shipped"');
+        expect(html).toContain('oldest paid first');
+    });
+
+    test('says when there is nothing to do', () => {
+        const list: AdminOrderList = { orders: [], page: 1, pageSize: 25, total: 0 };
+        const html = render('/admin/orders', AdminOrders, { list, filters: { status: 'open', q: undefined, page: 1 } });
+        expect(html).toContain('Nothing to print or ship.');
+    });
+});
+
+describe('order page', () => {
+    test('a paid order can start printing or be shipped straight away, and shows where it goes', () => {
+        const html = render('/admin/orders/:id', AdminOrderPage, { order: paidOrder });
+
+        expect(html).toContain('Start printing');
+        expect(html).toContain('Mark as shipped');
+        expect(inputAttributes(html, 'trackingNumber')).toHaveProperty('required');
+        expect(html).toContain('<option value="Posti">');
+        expect(html).toContain('Esimerkkikatu 1 A 2');
+        expect(html).toContain('href="tel:+358401234567"');
+        expect(html).toContain('href="mailto:maija@example.com"');
+        expect(html).toContain('File, downloaded by the buyer');
+        expect(html).toContain('Shipping (medium parcel)');
+        expect(html).toContain('€35.20');
+        expect(html).not.toContain('Mark as delivered');
+    });
+
+    test('a shipped order can be marked delivered, and its tracking number corrected', () => {
+        const html = render('/admin/orders/:id', AdminOrderPage, { order: shippedOrder });
+
+        expect(html).toContain('Mark as delivered');
+        expect(html).toContain('Save shipment');
+        expect(inputAttributes(html, 'trackingNumber')).toMatchObject({ value: 'JJFI65432100' });
+        expect(inputAttributes(html, 'carrier')).toMatchObject({ value: 'Posti' });
+        expect(html).not.toContain('Start printing');
+    });
+
+    test('a delivered order has nothing left to do', () => {
+        const html = render('/admin/orders/:id', AdminOrderPage, {
+            order: { ...shippedOrder, status: 'delivered', deliveredAt: '2026-11-20T10:00:00.000Z' },
+        });
+
+        expect(html).toContain('Delivered. Nothing more to do.');
+        expect(html).toContain('20 Nov 2026');
+        expect(html).not.toContain('name="intent"');
+    });
 });

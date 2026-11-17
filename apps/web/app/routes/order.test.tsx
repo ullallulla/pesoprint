@@ -111,6 +111,15 @@ test('a paid print order shows each print, where it ships, and the shipping', ()
     expect(html).not.toContain('no files right now');
 });
 
+test('an order being printed or shipped still shows what was bought, with its downloads', () => {
+    for (const status of ['printing', 'shipped', 'delivered'] as const) {
+        const html = render({ ...order, status });
+        expect(html).toContain('Thank you for your order');
+        expect(html).toContain('aria-label="Download hook.stl"');
+        expect(html).not.toContain('didn’t go through');
+    }
+});
+
 test('a pending order says the payment is being confirmed, with no downloads', () => {
     const html = render({
         ...order,

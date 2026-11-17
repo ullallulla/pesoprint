@@ -1,4 +1,4 @@
-import { formatVatRate, PARCEL_SIZE_NAMES, type Order, type ShippingAddress } from '@app/shared';
+import { formatVatRate, isPaidStatus, PARCEL_SIZE_NAMES, type Order, type ShippingAddress } from '@app/shared';
 import { SignInButton } from '@clerk/react-router';
 import { getAuth } from '@clerk/react-router/server';
 import { CircleCheck, Library, LoaderCircle } from 'lucide-react';
@@ -32,7 +32,7 @@ export async function loader(args: Route.LoaderArgs) {
     if (!isAuthenticated) return { order: null };
 
     const order = await getOrder(args, args.params.id);
-    if (order.status !== 'paid') return { order };
+    if (!isPaidStatus(order.status)) return { order };
 
     const cart = await readCart(args.request);
     const kept = cart.filter(
@@ -52,7 +52,7 @@ export default function OrderPage({ loaderData }: Route.ComponentProps) {
         <main className='mx-auto flex w-full max-w-2xl flex-1 flex-col gap-6 px-4 py-10'>
             {!order ? (
                 <SignInFirst />
-            ) : order.status === 'paid' ? (
+            ) : isPaidStatus(order.status) ? (
                 <Paid order={order} />
             ) : order.status === 'pending' ? (
                 <Pending />

@@ -36,6 +36,10 @@ describe.skipIf(!url)('orders schema (integration)', () => {
         ...overrides,
     });
 
+    /** A small parcel's €2.90 shipping on top. */
+    const parcel = { shippingCents: 290, parcelSize: 'S' as const, totalCents: 740 };
+    const shipment = { carrier: 'Posti', trackingNumber: 'JJFI12345678901234', shippedAt: new Date() };
+
     /** The name of the database rule an insert or update broke. */
     async function violated(write: Promise<unknown>): Promise<string | undefined> {
         const error = await write.then(
@@ -95,8 +99,50 @@ describe.skipIf(!url)('orders schema (integration)', () => {
         ['orders_vat_country_format', { vatCountry: 'fi' }],
         ['orders_vat_rate_range', { vatRateBp: 10001 }],
         ['orders_paid_has_paid_at', { status: 'paid' as const }],
+        ['orders_paid_has_paid_at', { status: 'printing' as const, ...parcel }],
+        // Only a parcel is printed and shipped.
+        ['orders_fulfilment_has_parcel', { status: 'printing' as const, paidAt: new Date() }],
+        [
+            'orders_shipped_has_tracking',
+            { status: 'shipped' as const, ...parcel, paidAt: new Date(), ...shipment, trackingNumber: null },
+        ],
+        [
+            'orders_shipped_has_tracking',
+            {
+                status: 'delivered' as const,
+                ...parcel,
+                paidAt: new Date(),
+                deliveredAt: new Date(),
+                ...shipment,
+                carrier: null,
+            },
+        ],
+        [
+            'orders_delivered_has_delivered_at',
+            { status: 'delivered' as const, ...parcel, paidAt: new Date(), ...shipment },
+        ],
     ])('refuses an order that breaks %s', async (constraint, overrides) => {
         expect(await violated(db.insert(orders).values(order(overrides)))).toBe(constraint);
+    });
+
+    test('a print order can be printed, shipped with a tracking number, and delivered', async () => {
+        const [row] = await db
+            .insert(orders)
+            .values(order({ ...parcel, status: 'paid', paidAt: new Date() }))
+            .returning();
+        for (const change of [
+            { status: 'printing' as const },
+            { status: 'shipped' as const, ...shipment },
+            { status: 'delivered' as const, deliveredAt: new Date() },
+        ]) {
+            await db.update(orders).set(change).where(eq(orders.id, row!.id));
+        }
+        const [delivered] = await db.select().from(orders).where(eq(orders.id, row!.id));
+        expect(delivered).toMatchObject({
+            status: 'delivered',
+            carrier: 'Posti',
+            trackingNumber: 'JJFI12345678901234',
+        });
     });
 
     test('a file is bought once per order: quantity 1, and not twice in one order', async () => {

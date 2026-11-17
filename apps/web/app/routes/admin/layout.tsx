@@ -23,6 +23,7 @@ export async function loader(args: Route.LoaderArgs) {
 
 const sections = [
     { to: '/admin', label: 'Overview', end: true },
+    { to: '/admin/orders', label: 'Orders', end: false },
     { to: '/admin/products', label: 'Products', end: false },
     { to: '/admin/categories', label: 'Categories', end: false },
     { to: '/admin/materials', label: 'Materials & colours', end: false },

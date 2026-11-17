@@ -2,6 +2,7 @@ import type { NewUser } from '../src/db/schema.ts';
 import type { AppOptions } from '../src/app.ts';
 import { createApp } from '../src/app.ts';
 import type { AuthContext } from '../src/lib/auth.ts';
+import type { AdminOrdersService } from '../src/services/admin-orders.ts';
 import type { Bucket, Storage } from '../src/lib/storage.ts';
 import type { CartService } from '../src/services/cart.ts';
 import type { CatalogService } from '../src/services/catalog.ts';
@@ -72,6 +73,7 @@ export function buildApp(overrides: Partial<AppOptions> = {}) {
         cart: unusedService<CartService>('cart'),
         downloads: unusedService<DownloadsService>('downloads'),
         orders: unusedService<OrdersService>('orders'),
+        adminOrders: unusedService<AdminOrdersService>('adminOrders'),
         library: unusedService<LibraryService>('library'),
         verifyStripeWebhook: null,
         internalApiSecret: undefined,

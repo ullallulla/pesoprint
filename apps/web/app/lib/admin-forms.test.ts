@@ -13,6 +13,7 @@ import {
     parseEuros,
     parseNewProductForm,
     parseProductForm,
+    parseShipmentForm,
     reorderImages,
     slugify,
 } from './admin-forms';
@@ -238,6 +239,27 @@ describe('parseCategoryForm', () => {
     test('rejects a negative position', () => {
         const result = parseCategoryForm(formData({ name: 'Toys', position: '-1' }));
         expect(Object.keys(fieldErrors(result.ok ? [] : result.issues))).toEqual(['position']);
+    });
+});
+
+describe('parseShipmentForm', () => {
+    test('trims the carrier and drops spaces copied into the tracking number', () => {
+        expect(parseShipmentForm(formData({ carrier: ' Posti ', trackingNumber: 'JJFI 6543 2100 ' }))).toEqual({
+            ok: true,
+            data: { status: 'shipped', carrier: 'Posti', trackingNumber: 'JJFI65432100' },
+        });
+    });
+
+    test('needs both, and only letters, digits and dashes in the tracking number', () => {
+        const missing = parseShipmentForm(formData({ carrier: '', trackingNumber: '' }));
+        expect(fieldErrors(missing.ok ? [] : missing.issues)).toEqual({
+            carrier: 'Enter the carrier.',
+            trackingNumber: 'Enter the tracking number.',
+        });
+        const odd = parseShipmentForm(formData({ carrier: 'Posti', trackingNumber: 'JJFI/123' }));
+        expect(fieldErrors(odd.ok ? [] : odd.issues)).toEqual({
+            trackingNumber: 'Use only letters, digits and dashes.',
+        });
     });
 });
 

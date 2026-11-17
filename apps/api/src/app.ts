@@ -8,6 +8,7 @@ import { AppError, errorCodeForStatus, RateLimitedError, sendError } from './lib
 import { createRouter } from './lib/router.ts';
 import { adminCategoryRoutes, type AdminCategoryDeps } from './routes/admin-categories.ts';
 import { adminMaterialRoutes, type AdminMaterialDeps } from './routes/admin-materials.ts';
+import { adminOrderRoutes, type AdminOrderDeps } from './routes/admin-orders.ts';
 import { adminProductMediaRoutes, type AdminProductMediaDeps } from './routes/admin-product-media.ts';
 import { adminProductRoutes, type AdminProductDeps } from './routes/admin-products.ts';
 import { adminRoutes, type AdminDeps } from './routes/admin.ts';
@@ -26,6 +27,7 @@ export interface AppOptions
         AdminDeps,
         AdminCategoryDeps,
         AdminMaterialDeps,
+        AdminOrderDeps,
         AdminProductDeps,
         AdminProductMediaDeps,
         CartDeps,
@@ -60,6 +62,7 @@ export function createApp(options: AppOptions) {
     app.route('/api', adminRoutes(options));
     app.route('/api', adminCategoryRoutes(options));
     app.route('/api', adminMaterialRoutes(options));
+    app.route('/api', adminOrderRoutes(options));
     app.route('/api', adminProductRoutes(options));
     app.route('/api', adminProductMediaRoutes(options));
     app.route('/api', webhookRoutes(options));

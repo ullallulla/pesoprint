@@ -3,6 +3,7 @@ import {
     createMaterialSchema,
     MAX_PRICE_CENTS,
     updateCategorySchema,
+    updateOrderStatusSchema,
     updateProductSchema,
     type ApiErrorIssue,
     type ColourOptionInput,
@@ -10,6 +11,7 @@ import {
     type CreateMaterial,
     type PrintOption,
     type UpdateCategory,
+    type UpdateOrderStatus,
     type UpdateProduct,
 } from '@app/shared';
 import type { z } from 'zod';
@@ -237,6 +239,16 @@ export function parseColourForm(form: FormData): Parsed<CreateColour> {
         name: text(form, 'name'),
         hex: text(form, 'hex'),
         position: position(form),
+    });
+    return parsed.success ? { ok: true, data: parsed.data } : { ok: false, issues: zodIssues(parsed.error) };
+}
+
+/** The shipping form of an order → its move to `shipped`, with the carrier and tracking number. */
+export function parseShipmentForm(form: FormData): Parsed<UpdateOrderStatus> {
+    const parsed = updateOrderStatusSchema.safeParse({
+        status: 'shipped',
+        carrier: text(form, 'carrier'),
+        trackingNumber: text(form, 'trackingNumber'),
     });
     return parsed.success ? { ok: true, data: parsed.data } : { ok: false, issues: zodIssues(parsed.error) };
 }
