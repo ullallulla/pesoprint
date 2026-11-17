@@ -245,7 +245,7 @@ Each milestone ends with: CI green, deployed to staging, and a short demo you co
 - Product page: pick a material, and a colour option if the model has any; the price is that material's price, from the server ✅
 - Cart with both digital and print items: copies per material and colour, shipping for the largest parcel. Stripe Checkout collects the shipping address and a phone number (Finland only for now, `SHIPPING_COUNTRIES`), and charges the order lines plus one shipping line; the order keeps the address once paid (decided 2026-11-17: Stripe collects the address while shipping costs the same everywhere; our own address form can come with prices per zone) ✅
 - Admin order queue: paid → printing → shipped (carrier + tracking number) → delivered, with filters ✅ (`/admin/orders`: "To do" lists paid and printing orders oldest first, tabs per status, search by name, email, tracking number or order id. Orders with only files aren't listed. Printing can be skipped, a shipped order's tracking number can be corrected, nothing goes backwards. Carriers are free text with Posti, Matkahuolto and DHL suggested until §9 #6 is decided.)
-- Customer "My orders" page showing each order's status
+- Customer "My orders" page showing each order's status ✅ (`/orders`, linked from the header: paid orders newest first, a print's progress from ordered to delivered, and the carrier and tracking number once shipped. The order page shows the same. Tracking numbers aren't links yet: add each carrier's tracking link once carriers are decided, §9 #6.)
 - **Done when:** you can complete a test print order end to end, from checkout to "shipped", with the tracking number showing on the customer's "My orders" page
 
 ### M5 – Reviews & favourites

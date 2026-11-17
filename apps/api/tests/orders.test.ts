@@ -4,6 +4,7 @@ import {
     apiErrorSchema,
     checkoutStartSchema,
     librarySchema,
+    orderListSchema,
     orderSchema,
     SHOP_VAT_RATE_BP,
     vatIncludedCents,
@@ -143,6 +144,10 @@ describe('checkout and orders without a database', () => {
             body: JSON.stringify({ items: [{ productId: '0190b6a0-0000-7000-8000-000000000101', type: 'digital' }] }),
         });
         expect(res.status).toBe(400);
+    });
+
+    test('the order list needs a signed-in buyer', async () => {
+        expect((await app.request('/api/orders')).status).toBe(401);
     });
 
     test("the Stripe webhook answers 503 when it isn't configured", async () => {
@@ -625,6 +630,82 @@ describe.skipIf(!url)('checkout and orders (integration)', () => {
 
             expect(orderSchema.parse(await (await getOrder(orderId)).json()).status).toBe('pending');
             expect(await ownedBy(BUYER_ID)).toEqual([]);
+        });
+    });
+
+    describe('the order list', () => {
+        async function listOrders(query = '', token: string = tokens.customer) {
+            const res = await app.request(`/api/orders${query}`, bearer(token));
+            expect(res.status).toBe(200);
+            expect(res.headers.get('cache-control')).toBe('no-store');
+            return orderListSchema.parse(await res.json());
+        }
+
+        async function paidOrder(title: string, token: string = tokens.customer) {
+            const hook = await model({ title });
+            const res = await checkout([digital(hook.id)], token);
+            const { orderId } = checkoutStartSchema.parse(await res.json());
+            const [row] = await db.select().from(orders).where(eq(orders.id, orderId));
+            payments.pay(row!.stripeCheckoutSessionId!);
+            await getOrder(orderId, token);
+            return orderId;
+        }
+
+        test("lists the buyer's paid orders, newest first, but not unpaid, cancelled or other people's", async () => {
+            const first = await paidOrder('First');
+            const second = await paidOrder('Second');
+            await paidOrder('Not mine', tokens.admin);
+            await startCheckout([digital((await model({ title: 'Still pending' })).id)]);
+            const cancelled = await startCheckout([digital((await model({ title: 'Expired' })).id)]);
+            payments.expire(cancelled.sessionId);
+            await getOrder(cancelled.orderId);
+
+            const list = await listOrders();
+
+            expect(list).toMatchObject({ page: 1, pageSize: 10, total: 2 });
+            expect(list.orders.map((order) => order.id)).toEqual([second, first]);
+            expect(list.orders[1]).toMatchObject({
+                status: 'paid',
+                totalCents: 450,
+                parcelSize: null,
+                carrier: null,
+                trackingNumber: null,
+                paidAt: NOW.toISOString(),
+                items: [{ type: 'digital', title: 'First', quantity: 1, print: null }],
+            });
+            expect((await listOrders('?pageSize=1&page=2')).orders.map((order) => order.id)).toEqual([first]);
+        });
+
+        test('shows where a shipped parcel is, here and on the order', async () => {
+            const orderId = await paidOrder('Vase');
+            const shippedAt = new Date('2026-11-18T14:00:00Z');
+            // As the admin's queue leaves it.
+            await db
+                .update(orders)
+                .set({
+                    status: 'shipped',
+                    parcelSize: 'S',
+                    shippingCents: 290,
+                    totalCents: sql`${orders.totalCents} + 290`,
+                    carrier: 'Posti',
+                    trackingNumber: 'JJFI65432100',
+                    shippedAt,
+                })
+                .where(eq(orders.id, orderId));
+
+            const shipment = {
+                status: 'shipped',
+                carrier: 'Posti',
+                trackingNumber: 'JJFI65432100',
+                shippedAt: shippedAt.toISOString(),
+                deliveredAt: null,
+            };
+            expect((await listOrders()).orders[0]).toMatchObject(shipment);
+            expect(orderSchema.parse(await (await getOrder(orderId)).json())).toMatchObject(shipment);
+        });
+
+        test('refuses a page size over 50', async () => {
+            expect((await app.request('/api/orders?pageSize=51', bearer(tokens.customer))).status).toBe(400);
         });
     });
 

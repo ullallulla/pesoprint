@@ -34,6 +34,16 @@ export const orderFileSchema = z.object({
     sizeBytes: z.int(),
 });
 
+/** Where an order's parcel is: set by the shop as it ships and arrives. All `null` until then, and without prints. */
+const shipmentFields = {
+    /** Who carries the parcel, e.g. `Posti`. */
+    carrier: z.string().nullable(),
+    /** The carrier's tracking code. */
+    trackingNumber: z.string().nullable(),
+    shippedAt: z.iso.datetime().nullable(),
+    deliveredAt: z.iso.datetime().nullable(),
+};
+
 /** An order as its buyer sees it. */
 export const orderSchema = z
     .object({
@@ -51,6 +61,7 @@ export const orderSchema = z
         vatRateBp: z.int(),
         /** Where the prints go. Set once paid; `null` before, and for orders without prints. */
         shippingAddress: shippingAddressSchema.nullable(),
+        ...shipmentFields,
         createdAt: z.iso.datetime(),
         paidAt: z.iso.datetime().nullable(),
         items: z.array(
@@ -72,3 +83,49 @@ export const orderSchema = z
     })
     .meta({ id: 'Order' });
 export type Order = z.infer<typeof orderSchema>;
+
+/** An order in the buyer's list: what it is and where it's got to, without the files. */
+export const orderSummarySchema = z
+    .object({
+        id: z.uuid(),
+        status: z.enum(ORDER_STATUSES),
+        currency: z.literal(ORDER_CURRENCY),
+        totalCents: z.int(),
+        /** The parcel the prints ship in. `null` without prints. */
+        parcelSize: parcelSizeSchema.nullable(),
+        ...shipmentFields,
+        createdAt: z.iso.datetime(),
+        paidAt: z.iso.datetime().nullable(),
+        items: z.array(
+            z.object({
+                productId: z.uuid(),
+                type: z.enum(ORDER_ITEM_TYPES),
+                /** As it was when bought. */
+                title: z.string(),
+                /** The product's current slug, for links. */
+                slug: z.string(),
+                /** A print's material and colours, as chosen. `null` on file lines. */
+                print: cartPrintOptionSchema.nullable(),
+                quantity: z.int(),
+            }),
+        ),
+    })
+    .meta({ id: 'OrderSummary' });
+export type OrderSummary = z.infer<typeof orderSummarySchema>;
+
+export const orderListQuerySchema = z.object({
+    page: z.coerce.number().int().min(1).default(1),
+    pageSize: z.coerce.number().int().min(1).max(50).default(10),
+});
+export type OrderListQuery = z.infer<typeof orderListQuerySchema>;
+
+/** The buyer's orders that were paid for (refunded ones too), newest first. */
+export const orderListSchema = z
+    .object({
+        orders: z.array(orderSummarySchema),
+        page: z.int(),
+        pageSize: z.int(),
+        total: z.int(),
+    })
+    .meta({ id: 'OrderList' });
+export type OrderList = z.infer<typeof orderListSchema>;

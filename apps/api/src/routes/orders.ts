@@ -1,4 +1,11 @@
-import { checkoutRequestSchema, checkoutStartSchema, orderSchema, SHIPPING_COUNTRIES } from '@app/shared';
+import {
+    checkoutRequestSchema,
+    checkoutStartSchema,
+    orderListQuerySchema,
+    orderListSchema,
+    orderSchema,
+    SHIPPING_COUNTRIES,
+} from '@app/shared';
 import { createRoute, z } from '@hono/zod-openapi';
 
 import type { VerifySessionToken } from '../lib/auth.ts';
@@ -50,6 +57,26 @@ export function orderRoutes(deps: OrderDeps) {
         },
     });
 
+    const listRoute = createRoute({
+        tags: ['Orders'],
+        security: [{ bearerAuth: [] }],
+        middleware: [requireUser(deps.verifySessionToken)] as const,
+        method: 'get',
+        path: '/orders',
+        summary: 'Your orders',
+        description: [
+            'Your orders that were paid for, refunded ones included, the newest first. An order with prints has',
+            '`carrier` and `trackingNumber` once the shop ships it, and `deliveredAt` once it arrives. Unpaid',
+            "and cancelled checkouts aren't listed. Files are on `GET /orders/{id}` and in your library.",
+        ].join('\n'),
+        request: { query: orderListQuerySchema },
+        responses: {
+            200: { description: 'One page of orders.', content: { 'application/json': { schema: orderListSchema } } },
+            400: errorResponse('Invalid query parameters.'),
+            401: errorResponse('Sign in required.'),
+        },
+    });
+
     const orderRoute = createRoute({
         tags: ['Orders'],
         security: [{ bearerAuth: [] }],
@@ -74,6 +101,11 @@ export function orderRoutes(deps: OrderDeps) {
         .openapi(checkoutRoute, async (c) => {
             const start = await deps.orders.checkout(c.get('auth'), c.req.valid('json'));
             return c.json(start, 201);
+        })
+        .openapi(listRoute, async (c) => {
+            const list = await deps.orders.list(c.get('auth'), c.req.valid('query'));
+            c.header('Cache-Control', 'no-store');
+            return c.json(list, 200);
         })
         .openapi(orderRoute, async (c) => {
             const order = await deps.orders.get(c.get('auth'), c.req.valid('param').id);

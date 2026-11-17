@@ -9,6 +9,8 @@ export default [
     route('categories/:slug', 'routes/category.tsx'),
     route('cart', 'routes/cart.tsx'),
     route('checkout', 'routes/checkout.tsx'),
+    // The signed-in visitor's orders, and where their parcels are.
+    route('orders', 'routes/orders.tsx'),
     // Stripe sends buyers here after paying.
     route('orders/:id', 'routes/order.tsx'),
     // What the signed-in visitor owns, to download again.

@@ -1,4 +1,12 @@
-import { checkoutStartSchema, orderSchema, type CheckoutRequest, type CheckoutStart, type Order } from '@app/shared';
+import {
+    checkoutStartSchema,
+    orderListSchema,
+    orderSchema,
+    type CheckoutRequest,
+    type CheckoutStart,
+    type Order,
+    type OrderList,
+} from '@app/shared';
 import { getAuth } from '@clerk/react-router/server';
 import { data, type LoaderFunctionArgs } from 'react-router';
 
@@ -36,4 +44,12 @@ export async function getOrder(args: LoaderFunctionArgs, orderId: string): Promi
         if (error instanceof ApiRequestError && error.status === 404) throw data(null, { status: 404 });
         throw error;
     }
+}
+
+/** One page of the visitor's orders, newest first. `null` for a visitor who isn't signed in. */
+export async function listOrders(args: LoaderFunctionArgs, page: number, pageSize: number): Promise<OrderList | null> {
+    const token = await tokenFor(args);
+    if (!token) return null;
+    const query = new URLSearchParams({ page: String(page), pageSize: String(pageSize) });
+    return apiFetch(`/api/orders?${query}`, orderListSchema, { token });
 }

@@ -16,6 +16,10 @@ const order: Order = {
     taxCents: 91,
     vatRateBp: 2550,
     shippingAddress: null,
+    carrier: null,
+    trackingNumber: null,
+    shippedAt: null,
+    deliveredAt: null,
     createdAt: '2026-11-16T12:00:00.000Z',
     paidAt: '2026-11-16T12:01:00.000Z',
     items: [
@@ -112,12 +116,37 @@ test('a paid print order shows each print, where it ships, and the shipping', ()
 });
 
 test('an order being printed or shipped still shows what was bought, with its downloads', () => {
-    for (const status of ['printing', 'shipped', 'delivered'] as const) {
+    for (const [status, heading] of [
+        ['printing', 'Your order is being printed'],
+        ['shipped', 'Your order is on its way'],
+        ['delivered', 'Your order was delivered'],
+    ] as const) {
         const html = render({ ...order, status });
-        expect(html).toContain('Thank you for your order');
+        expect(html).toContain(heading);
         expect(html).toContain('aria-label="Download hook.stl"');
         expect(html).not.toContain('didn’t go through');
     }
+});
+
+test('a shipped print order shows its progress and tracking number', () => {
+    const html = render({
+        ...order,
+        status: 'shipped',
+        parcelSize: 'S',
+        carrier: 'Posti',
+        trackingNumber: 'JJFI65432100',
+        shippedAt: '2026-11-18T14:00:00.000Z',
+        items: [{ ...order.items[0]!, type: 'print', files: [] }],
+    });
+    expect(html).toContain('Your order is on its way');
+    expect(html).toMatch(/<li aria-current="step"[^>]*>.*?Shipped/);
+    expect(html).toContain('Posti <span class="font-mono select-all">JJFI65432100</span>');
+    expect(html).toContain('18 Nov 2026');
+    expect(html).toContain('href="/orders"');
+});
+
+test('a paid file order has no delivery progress', () => {
+    expect(render(order)).not.toContain('Order progress');
 });
 
 test('a pending order says the payment is being confirmed, with no downloads', () => {

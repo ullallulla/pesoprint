@@ -1,13 +1,21 @@
-import { formatVatRate, isPaidStatus, PARCEL_SIZE_NAMES, type Order, type ShippingAddress } from '@app/shared';
+import {
+    formatVatRate,
+    isPaidStatus,
+    PARCEL_SIZE_NAMES,
+    type Order,
+    type PaidOrderStatus,
+    type ShippingAddress,
+} from '@app/shared';
 import { SignInButton } from '@clerk/react-router';
 import { getAuth } from '@clerk/react-router/server';
-import { CircleCheck, Library, LoaderCircle } from 'lucide-react';
+import { ArrowLeft, CircleCheck, Library, LoaderCircle } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { data, Link, useRevalidator } from 'react-router';
 import { z } from 'zod';
 
 import { ColourSwatch } from '~/components/colour-swatch';
 import { FileDownloads } from '~/components/file-downloads';
+import { OrderProgress, Shipment } from '~/components/order-progress';
 import { Button } from '~/components/ui/button';
 import { cartCount, readCart, saveCart } from '~/lib/cart.server';
 import { formatPrice } from '~/lib/format';
@@ -53,7 +61,7 @@ export default function OrderPage({ loaderData }: Route.ComponentProps) {
             {!order ? (
                 <SignInFirst />
             ) : isPaidStatus(order.status) ? (
-                <Paid order={order} />
+                <Paid order={{ ...order, status: order.status }} />
             ) : order.status === 'pending' ? (
                 <Pending />
             ) : (
@@ -74,23 +82,57 @@ function SignInFirst() {
     );
 }
 
-function Paid({ order }: { order: Order }) {
+const HEADINGS: Record<PaidOrderStatus, string> = {
+    paid: 'Thank you for your order',
+    printing: 'Your order is being printed',
+    shipped: 'Your order is on its way',
+    delivered: 'Your order was delivered',
+};
+
+function Paid({ order }: { order: Order & { status: PaidOrderStatus } }) {
     const hasFiles = order.items.some((item) => item.type === 'digital');
     const hasPrints = order.items.some((item) => item.type === 'print');
+
+    const files = hasFiles ? ' Your files are ready to download, here or any time from your library.' : '';
 
     return (
         <>
             <div className='flex flex-col gap-2'>
+                <Link
+                    to='/orders'
+                    className='flex items-center gap-1 self-start text-sm text-muted-foreground hover:text-foreground'
+                >
+                    <ArrowLeft className='size-4' aria-hidden />
+                    Your orders
+                </Link>
                 <h1 className='flex items-center gap-3 text-3xl font-bold tracking-tight'>
-                    <CircleCheck className='size-8 text-primary' aria-hidden />
-                    Thank you for your order
+                    {order.status === 'paid' && <CircleCheck className='size-8 text-primary' aria-hidden />}
+                    {HEADINGS[order.status]}
                 </h1>
                 <p className='text-muted-foreground'>
-                    Payment received.
-                    {hasFiles && ' Your files are ready to download, here or any time from your library.'}
-                    {hasPrints && ' We’ll print your order and post it to the address below.'}
+                    {order.status === 'paid' && 'Payment received.'}
+                    {order.status === 'paid' &&
+                        hasPrints &&
+                        ' We’ll print your order and post it to the address below.'}
+                    {order.status === 'printing' &&
+                        'We’ll post it to the address below, and add the tracking number here.'}
+                    {order.status === 'shipped' && 'Follow it with the tracking number below.'}
+                    {order.status === 'delivered' && 'We hope you enjoy it.'}
+                    {files}
                 </p>
             </div>
+
+            {order.parcelSize && (
+                <section aria-label='Delivery' className='flex flex-col gap-4 rounded-lg border p-4'>
+                    <OrderProgress status={order.status} />
+                    <Shipment
+                        carrier={order.carrier}
+                        trackingNumber={order.trackingNumber}
+                        shippedAt={order.shippedAt}
+                        deliveredAt={order.deliveredAt}
+                    />
+                </section>
+            )}
 
             <ul className='flex flex-col gap-4'>
                 {order.items.map((item, index) => (

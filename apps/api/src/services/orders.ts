@@ -1,14 +1,17 @@
 import {
     isPaidStatus,
     ORDER_CURRENCY,
+    PAID_ORDER_STATUSES,
     PARCEL_SIZE_NAMES,
     SHIPPING_COUNTRIES,
     type CartLine,
     type CheckoutRequest,
     type CheckoutStart,
     type Order as OrderView,
+    type OrderList,
+    type OrderListQuery,
 } from '@app/shared';
-import { and, asc, eq, inArray } from 'drizzle-orm';
+import { and, asc, count, desc, eq, inArray } from 'drizzle-orm';
 
 import type { Database } from '../db/client.ts';
 import { entitlements, orderItems, orders, productFiles, products, users, type Order } from '../db/schema.ts';
@@ -27,6 +30,8 @@ export interface OrdersService {
     checkout(caller: AuthContext, request: CheckoutRequest): Promise<CheckoutStart>;
     /** One of the caller's orders. A pending one is first checked with Stripe, so it's up to date. */
     get(caller: AuthContext, orderId: string): Promise<OrderView>;
+    /** The caller's orders that were paid for (refunded ones too), newest first. Pending and cancelled ones aren't purchases. */
+    list(caller: AuthContext, query: OrderListQuery): Promise<OrderList>;
     /** Updates the order behind a Checkout Session from what Stripe says about it (webhooks call this). */
     syncCheckout(sessionId: string): Promise<void>;
 }
@@ -45,6 +50,16 @@ function stripeLineName(line: CartLine): string {
     if (!line.print) return line.title;
     const colour = line.print.colourName ? `, ${line.print.colourName}` : '';
     return `${line.title} (print: ${line.print.materialName}${colour})`;
+}
+
+/** Where the parcel is, as the buyer sees it. */
+function shipment(order: Order) {
+    return {
+        carrier: order.carrier,
+        trackingNumber: order.trackingNumber,
+        shippedAt: order.shippedAt?.toISOString() ?? null,
+        deliveredAt: order.deliveredAt?.toISOString() ?? null,
+    };
 }
 
 const paymentsUnavailable = () => new AppError(503, 'internal_error', "Payments aren't set up on this server.");
@@ -150,6 +165,7 @@ export function createOrdersService(
             taxCents: order.taxCents,
             vatRateBp: order.vatRateBp,
             shippingAddress: order.shippingAddress,
+            ...shipment(order),
             createdAt: order.createdAt.toISOString(),
             paidAt: order.paidAt?.toISOString() ?? null,
             items: items.map((item) => ({
@@ -280,6 +296,70 @@ export function createOrdersService(
                 }
             }
             return view(order);
+        },
+
+        async list(caller, { page, pageSize }) {
+            const where = and(
+                eq(orders.userId, caller.userId),
+                inArray(orders.status, [...PAID_ORDER_STATUSES, 'refunded']),
+            );
+            const rows = await db
+                .select()
+                .from(orders)
+                .where(where)
+                .orderBy(desc(orders.paidAt), desc(orders.id))
+                .limit(pageSize)
+                .offset((page - 1) * pageSize);
+            const [total] = await db.select({ value: count() }).from(orders).where(where);
+
+            const items =
+                rows.length === 0
+                    ? []
+                    : await db
+                          .select({
+                              orderId: orderItems.orderId,
+                              productId: orderItems.productId,
+                              type: orderItems.type,
+                              title: orderItems.titleSnapshot,
+                              slug: products.slug,
+                              print: orderItems.printSnapshot,
+                              quantity: orderItems.quantity,
+                          })
+                          .from(orderItems)
+                          .innerJoin(products, eq(products.id, orderItems.productId))
+                          .where(
+                              inArray(
+                                  orderItems.orderId,
+                                  rows.map((row) => row.id),
+                              ),
+                          )
+                          .orderBy(asc(orderItems.id));
+
+            return {
+                orders: rows.map((order) => ({
+                    id: order.id,
+                    status: order.status,
+                    currency: ORDER_CURRENCY,
+                    totalCents: order.totalCents,
+                    parcelSize: order.parcelSize,
+                    ...shipment(order),
+                    createdAt: order.createdAt.toISOString(),
+                    paidAt: order.paidAt?.toISOString() ?? null,
+                    items: items
+                        .filter((item) => item.orderId === order.id)
+                        .map(({ productId, type, title, slug, print, quantity }) => ({
+                            productId,
+                            type,
+                            title,
+                            slug,
+                            print,
+                            quantity,
+                        })),
+                })),
+                page,
+                pageSize,
+                total: total?.value ?? 0,
+            };
         },
 
         async syncCheckout(sessionId) {
