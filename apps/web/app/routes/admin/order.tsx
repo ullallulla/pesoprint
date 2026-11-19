@@ -1,11 +1,12 @@
 import {
     adminOrderSchema,
+    isPaidStatus,
     PARCEL_SIZE_NAMES,
     SUGGESTED_CARRIERS,
     type AdminOrder,
     type UpdateOrderStatus,
 } from '@app/shared';
-import { ArrowLeft, PackageCheck, Printer, Truck } from 'lucide-react';
+import { ArrowLeft, PackageCheck, Printer, Truck, Undo2 } from 'lucide-react';
 import { useId } from 'react';
 import { data, Form, Link, useActionData, useNavigation } from 'react-router';
 import { z } from 'zod';
@@ -42,6 +43,14 @@ const DONE_MESSAGES: Record<UpdateOrderStatus['status'], string> = {
 export async function action(args: Route.ActionArgs): Promise<ActionResult> {
     const form = await args.request.formData();
     const intent = formValue(form, 'intent');
+    const orderPath = `/api/admin/orders/${encodeURIComponent(args.params.id)}`;
+
+    if (intent === 'refund') {
+        return runAction(async () => {
+            await adminApi(args, `${orderPath}/refund`, adminOrderSchema, { method: 'POST' });
+            return 'Refunded. The buyer gets an email.';
+        });
+    }
 
     let change: UpdateOrderStatus;
     if (intent === 'shipped') {
@@ -55,7 +64,7 @@ export async function action(args: Route.ActionArgs): Promise<ActionResult> {
     }
 
     return runAction(async () => {
-        await adminApi(args, `/api/admin/orders/${encodeURIComponent(args.params.id)}/status`, adminOrderSchema, {
+        await adminApi(args, `${orderPath}/status`, adminOrderSchema, {
             method: 'POST',
             json: change,
         });
@@ -92,6 +101,7 @@ export default function AdminOrderPage({ loaderData }: Route.ComponentProps) {
                 <div className='flex flex-col gap-6'>
                     <ShipTo order={order} />
                     <Timeline order={order} />
+                    <Refund order={order} />
                 </div>
             </div>
         </main>
@@ -261,6 +271,14 @@ function Lines({ order }: { order: AdminOrder }) {
                 <dd className='text-right text-muted-foreground tabular-nums'>{formatPrice(order.shippingCents)}</dd>
                 <dt className='font-semibold'>Total</dt>
                 <dd className='text-right font-semibold tabular-nums'>{formatPrice(order.totalCents)}</dd>
+                {order.refundedCents > 0 && (
+                    <>
+                        <dt className='text-destructive'>Refunded</dt>
+                        <dd className='text-right text-destructive tabular-nums'>
+                            −{formatPrice(order.refundedCents)}
+                        </dd>
+                    </>
+                )}
             </dl>
         </section>
     );
@@ -320,6 +338,7 @@ function Timeline({ order }: { order: AdminOrder }) {
         { label: 'Paid', at: order.paidAt },
         { label: 'Shipped', at: order.shippedAt },
         { label: 'Delivered', at: order.deliveredAt },
+        ...(order.refundedAt ? [{ label: 'Refunded', at: order.refundedAt }] : []),
     ];
     return (
         <section aria-labelledby='timeline-heading' className='flex flex-col gap-2 rounded-lg border p-4 text-sm'>
@@ -342,6 +361,40 @@ function Timeline({ order }: { order: AdminOrder }) {
                     </>
                 )}
             </dl>
+        </section>
+    );
+}
+
+/**
+ * Refunds the whole order through Stripe. For a return within the 14 days, a misprint, or an order that can't
+ * be made. A partial refund (e.g. only the shipping) is made in Stripe's dashboard and shows up here.
+ */
+function Refund({ order }: { order: AdminOrder }) {
+    const busy = useNavigation().state === 'submitting';
+    if (!isPaidStatus(order.status)) return null;
+    const remaining = order.totalCents - order.refundedCents;
+    const hasFiles = order.items.some((item) => item.type === 'digital');
+
+    return (
+        <section aria-labelledby='refund-heading' className='flex flex-col gap-3 rounded-lg border p-4 text-sm'>
+            <h2 id='refund-heading' className='font-semibold'>
+                Refund
+            </h2>
+            <p className='text-muted-foreground'>
+                Refunds {formatPrice(remaining)} to the card or account the buyer paid with
+                {order.refundedCents > 0 && ` (${formatPrice(order.refundedCents)} was already refunded in Stripe)`}.
+                {hasFiles && ' The files leave their library.'} They get an email. For part of an order, refund in
+                Stripe&apos;s dashboard instead.
+            </p>
+            <Form
+                method='post'
+                onSubmit={confirmSubmit(`Refund ${formatPrice(remaining)} to the buyer? This can’t be undone.`)}
+            >
+                <Button type='submit' name='intent' value='refund' variant='destructive' disabled={busy}>
+                    <Undo2 aria-hidden />
+                    Refund {formatPrice(remaining)}
+                </Button>
+            </Form>
         </section>
     );
 }

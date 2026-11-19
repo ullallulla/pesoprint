@@ -338,6 +338,8 @@ const paidOrder: AdminOrder = {
     paidAt: '2026-11-17T10:00:00.000Z',
     shippedAt: null,
     deliveredAt: null,
+    refundedCents: 0,
+    refundedAt: null,
     items: [
         {
             productId: draft.id,
@@ -419,6 +421,28 @@ describe('order page', () => {
 
         expect(html).toContain('Delivered. Nothing more to do.');
         expect(html).toContain('20 Nov 2026');
+        // Only a refund (a return within the 14 days) is left.
+        expect(html.match(/name="intent"/g)).toHaveLength(1);
+        expect(html).toContain('value="refund"');
+    });
+
+    test('a paid order can be refunded in full, after any partial refund in Stripe', () => {
+        const html = render('/admin/orders/:id', AdminOrderPage, { order: { ...paidOrder, refundedCents: 490 } });
+
+        expect(html).toContain('Refund €30.30');
+        expect(html).toContain('€4.90 was already refunded in Stripe');
+        expect(html).toContain('The files leave their library.');
+        expect(html).toContain('−€4.90');
+    });
+
+    test('a refunded order shows when, and offers no more actions', () => {
+        const html = render('/admin/orders/:id', AdminOrderPage, {
+            order: { ...paidOrder, status: 'refunded', refundedCents: 3520, refundedAt: '2026-11-21T10:00:00.000Z' },
+        });
+
+        expect(html).toContain('Refunded. Nothing to print or ship.');
+        expect(html).toContain('21 Nov 2026');
+        expect(html).toContain('−€35.20');
         expect(html).not.toContain('name="intent"');
     });
 });

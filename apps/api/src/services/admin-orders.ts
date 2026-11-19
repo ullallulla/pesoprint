@@ -82,6 +82,8 @@ export function createAdminOrdersService(
             paidAt: order.paidAt?.toISOString() ?? null,
             shippedAt: order.shippedAt?.toISOString() ?? null,
             deliveredAt: order.deliveredAt?.toISOString() ?? null,
+            refundedCents: order.refundedCents,
+            refundedAt: order.refundedAt?.toISOString() ?? null,
             items: items
                 .filter((item) => item.orderId === order.id)
                 .map((item) => ({

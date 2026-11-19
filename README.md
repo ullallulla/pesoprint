@@ -36,6 +36,8 @@ vp run db:seed                          # optional: sample categories and produc
 vp run dev                              # start the API (:3001) and the web app (:5173)
 ```
 
+`vp run dev` doesn't apply migrations. After pulling changes that add one (a new file in `apps/api/drizzle/`), run `vp run db:migrate` again. Staging and production apply them on start.
+
 - Web app: http://localhost:5173
 - API docs (Swagger UI): http://localhost:3001/api/docs
 - OpenAPI document: http://localhost:3001/api/openapi.json
@@ -100,7 +102,7 @@ Setup (test mode needs no company details):
 2. **Developers → API keys**: copy the secret key (`sk_test_…`) into `STRIPE_SECRET_KEY` in `apps/api/.env`.
 3. **Webhooks**, optional locally (the order page asks Stripe anyway):
     - Locally: install the [Stripe CLI](https://docs.stripe.com/stripe-cli), run `stripe login`, then `stripe listen --forward-to localhost:3001/api/webhooks/stripe`. It prints a `whsec_…` secret for `STRIPE_WEBHOOK_SECRET`.
-    - Staging: **Developers → Webhooks → Add endpoint** `https://<api host>/api/webhooks/stripe` with the events `checkout.session.completed`, `checkout.session.async_payment_succeeded`, `checkout.session.async_payment_failed` and `checkout.session.expired`. Put its signing secret in the API's `STRIPE_WEBHOOK_SECRET`.
+    - Staging: **Developers → Webhooks → Add endpoint** `https://<api host>/api/webhooks/stripe` with the events `checkout.session.completed`, `checkout.session.async_payment_succeeded`, `checkout.session.async_payment_failed`, `checkout.session.expired`, `charge.refunded` and `charge.refund.updated` (the last two record refunds, including ones made in Stripe's dashboard). Put its signing secret in the API's `STRIPE_WEBHOOK_SECRET`.
 
 Stripe sends buyers back to the first origin in `WEB_ORIGINS`. To pay in test mode, use the card `4242 4242 4242 4242` with any future expiry date and any CVC. Other [test cards](https://docs.stripe.com/testing) decline or ask for 3-D Secure.
 

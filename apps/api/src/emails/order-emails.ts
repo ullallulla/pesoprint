@@ -18,6 +18,7 @@ export interface OrderEmailInput {
         | 'trackingNumber'
         | 'immediateDeliveryConsentAt'
         | 'paidAt'
+        | 'refundedCents'
     >;
     items: Pick<OrderItem, 'type' | 'titleSnapshot' | 'printSnapshot' | 'quantity' | 'unitPriceCents'>[];
 }
@@ -267,6 +268,40 @@ export function orderShippedEmail(
     return render(
         `${subjectPrefix}Your Pesoprint order ${reference} has shipped`,
         `${order.carrier ?? 'Your parcel'} tracking number: ${order.trackingNumber ?? ''}`,
+        blocks,
+        siteUrl,
+    );
+}
+
+/** Sent once an order is refunded in full: how much, and that its files are no longer in the library. */
+export function orderRefundedEmail(
+    { order, items }: OrderEmailInput,
+    { siteUrl, subjectPrefix = '' }: OrderEmailOptions,
+): RenderedEmail {
+    const reference = orderReference(order.id);
+    const hasFiles = items.some((item) => item.type === 'digital');
+    const blocks: Block[] = [
+        {
+            kind: 'paragraph',
+            text: `We've refunded ${price(order.refundedCents)} for your order ${reference} to the card or account you paid with.`,
+        },
+        {
+            kind: 'paragraph',
+            text: 'It usually shows within 5–10 business days, depending on your bank.',
+        },
+        { kind: 'items', items },
+    ];
+    if (hasFiles) {
+        blocks.push({
+            kind: 'paragraph',
+            text: 'The model files from this order have been removed from your library.',
+        });
+    }
+    blocks.push({ kind: 'button', text: 'View your order', href: `${siteUrl}/orders/${order.id}` });
+
+    return render(
+        `${subjectPrefix}Your Pesoprint order ${reference} has been refunded`,
+        `${price(order.refundedCents)} refunded for order ${reference}.`,
         blocks,
         siteUrl,
     );

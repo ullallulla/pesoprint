@@ -2,11 +2,12 @@ import { apiErrorSchema } from '@app/shared';
 import type { WebhookEvent } from '@clerk/backend';
 import { createRoute, z } from '@hono/zod-openapi';
 
-import { WebhookSignatureError, type Payments } from '../integrations/stripe.ts';
+import { WebhookSignatureError, type PaymentEvent, type Payments } from '../integrations/stripe.ts';
 import { userFromClerk } from '../lib/clerk-user.ts';
 import { sendError } from '../lib/errors.ts';
 import { createRouter } from '../lib/router.ts';
 import type { OrdersService } from '../services/orders.ts';
+import type { RefundsService } from '../services/refunds.ts';
 import type { UsersService } from '../services/users.ts';
 
 /** Verifies the webhook signature and returns the event, or throws. `null` when no signing secret is configured. */
@@ -18,6 +19,7 @@ export interface WebhookDeps {
     /** `null` when Stripe or its webhook signing secret isn't configured. */
     verifyStripeWebhook: Payments['verifyWebhook'];
     orders: OrdersService;
+    refunds: RefundsService;
 }
 
 const receivedSchema = z.object({ received: z.literal(true) });
@@ -43,12 +45,14 @@ const stripeWebhookRoute = createRoute({
     method: 'post',
     path: '/webhooks/stripe',
     tags: ['Webhooks'],
-    summary: 'Stripe Checkout events',
+    summary: 'Stripe payment events',
     description: [
         "Called by Stripe, signed with the endpoint's secret (`Stripe-Signature`). On",
         '`checkout.session.completed`, `.async_payment_succeeded`, `.async_payment_failed` and `.expired`, the',
-        'order is updated from the session as Stripe reports it: paid (and the files granted) or cancelled.',
-        'Repeated deliveries change nothing. Other events are acknowledged and ignored.',
+        'order is updated from the session as Stripe reports it: paid (and the files granted) or cancelled. On',
+        '`charge.refunded` and `charge.refund.updated`, the amount refunded is recorded, and an order refunded in',
+        'full becomes `refunded` (and its files are taken back). Repeated deliveries change nothing. Other',
+        'events are acknowledged and ignored.',
     ].join('\n'),
     responses: {
         200: { description: 'Event processed.', content: { 'application/json': { schema: receivedSchema } } },
@@ -69,7 +73,7 @@ export function webhookRoutes(deps: WebhookDeps) {
             const signature = c.req.header('stripe-signature');
             if (!signature) return sendError(c, 400, 'bad_request', 'Missing Stripe-Signature header.');
 
-            let event: { sessionId: string } | null;
+            let event: PaymentEvent | null;
             try {
                 // The signature covers the exact bytes Stripe sent, so the body is read as text, not parsed.
                 event = await deps.verifyStripeWebhook(await c.req.text(), signature);
@@ -80,7 +84,8 @@ export function webhookRoutes(deps: WebhookDeps) {
                 throw error;
             }
             // A thrown error (database or Stripe down) becomes a 500, and Stripe retries the delivery.
-            if (event) await deps.orders.syncCheckout(event.sessionId);
+            if (event?.kind === 'checkout') await deps.orders.syncCheckout(event.sessionId);
+            if (event?.kind === 'refund') await deps.refunds.syncRefunds(event.paymentIntentId);
             return c.json({ received: true as const }, 200);
         })
         .openapi(clerkWebhookRoute, async (c) => {

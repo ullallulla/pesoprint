@@ -11,10 +11,12 @@ import { adminAuthResponses, errorResponse, idParams } from '../lib/openapi.ts';
 import { createRouter } from '../lib/router.ts';
 import { requireAdmin } from '../middleware/auth.ts';
 import type { AdminOrdersService } from '../services/admin-orders.ts';
+import type { RefundsService } from '../services/refunds.ts';
 
 export interface AdminOrderDeps {
     verifySessionToken: VerifySessionToken;
     adminOrders: AdminOrdersService;
+    refunds: RefundsService;
 }
 
 const orderResponse = (description: string) => ({
@@ -94,6 +96,32 @@ export function adminOrderRoutes(deps: AdminOrderDeps) {
         },
     });
 
+    const refundRoute = createRoute({
+        tags: ['Admin: orders'],
+        security: [{ bearerAuth: [] }],
+        middleware: [adminOnly] as const,
+        method: 'post',
+        path: '/admin/orders/{id}/refund',
+        summary: 'Refund an order',
+        description: [
+            'Refunds the whole order (what is left of it after any partial refund in Stripe) to the payment it was',
+            'paid with. Only orders with prints, like the rest of this API; refund files-only orders in Stripe’s',
+            'dashboard, and the webhook records it. The order becomes `refunded`, its files leave the buyer’s',
+            'library, and the buyer gets an email. Refunding a refunded order changes nothing. Stripe sometimes takes',
+            'days to finish a refund; if it fails, Stripe reports it and the error is logged.',
+        ].join('\n'),
+        request: { params: idParams },
+        responses: {
+            200: orderResponse('The refunded order.'),
+            400: errorResponse('The id is not a UUID.'),
+            ...adminAuthResponses,
+            404: notFoundResponse,
+            409: errorResponse("The order wasn't paid."),
+            502: errorResponse('Stripe refused the refund (its reason is in the message) or could not be reached.'),
+            503: errorResponse("Payments aren't set up on this server."),
+        },
+    });
+
     return createRouter()
         .openapi(listRoute, async (c) => {
             return c.json(await deps.adminOrders.list(c.req.valid('query')), 200);
@@ -104,5 +132,12 @@ export function adminOrderRoutes(deps: AdminOrderDeps) {
         .openapi(statusRoute, async (c) => {
             const order = await deps.adminOrders.setStatus(c.req.valid('param').id, c.req.valid('json'));
             return c.json(order, 200);
+        })
+        .openapi(refundRoute, async (c) => {
+            const { id } = c.req.valid('param');
+            // Like the rest of the admin's orders: those with prints. Files-only orders are refunded in Stripe.
+            await deps.adminOrders.get(id);
+            await deps.refunds.refund(id);
+            return c.json(await deps.adminOrders.get(id), 200);
         });
 }

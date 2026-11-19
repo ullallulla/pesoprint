@@ -15,6 +15,7 @@ import type { MaterialsService } from '../src/services/materials.ts';
 import type { OrdersService } from '../src/services/orders.ts';
 import type { ProductMediaService } from '../src/services/product-media.ts';
 import type { ProductsService } from '../src/services/products.ts';
+import type { RefundsService } from '../src/services/refunds.ts';
 import type { ReviewsService } from '../src/services/reviews.ts';
 import type { UsersService } from '../src/services/users.ts';
 
@@ -77,6 +78,7 @@ export function buildApp(overrides: Partial<AppOptions> = {}) {
         downloads: unusedService<DownloadsService>('downloads'),
         orders: unusedService<OrdersService>('orders'),
         adminOrders: unusedService<AdminOrdersService>('adminOrders'),
+        refunds: unusedService<RefundsService>('refunds'),
         library: unusedService<LibraryService>('library'),
         favourites: unusedService<FavouritesService>('favourites'),
         reviews: unusedService<ReviewsService>('reviews'),

@@ -355,6 +355,13 @@ export const orders = pgTable(
         shippedAt: timestamp('shipped_at', { withTimezone: true }),
         /** When the buyer received the parcel: their 14-day right of withdrawal starts then. */
         deliveredAt: timestamp('delivered_at', { withTimezone: true }),
+        /**
+         * How much Stripe has refunded, in cents. A partial refund (made in Stripe's dashboard) only shows here;
+         * once all of `totalCents` is refunded the order is `refunded`.
+         */
+        refundedCents: integer('refunded_cents').notNull().default(0),
+        /** When the order was refunded in full. */
+        refundedAt: timestamp('refunded_at', { withTimezone: true }),
     },
     (t) => [
         index('orders_user_id_created_at_idx').on(t.userId, t.createdAt),
@@ -388,6 +395,11 @@ export const orders = pgTable(
         check(
             'orders_delivered_has_delivered_at',
             sql`${t.status}::text <> 'delivered' OR ${t.deliveredAt} IS NOT NULL`,
+        ),
+        check('orders_refunded_within_total', sql`${t.refundedCents} BETWEEN 0 AND ${t.totalCents}`),
+        check(
+            'orders_refunded_has_refund',
+            sql`${t.status}::text <> 'refunded' OR (${t.refundedAt} IS NOT NULL AND ${t.refundedCents} = ${t.totalCents})`,
         ),
     ],
 );
@@ -652,8 +664,11 @@ export const favourites = pgTable(
 
 export type Favourite = typeof favourites.$inferSelect;
 
-/** The emails an order sends: the confirmation once it's paid, and a notice with tracking once its prints ship. */
-export const ORDER_EMAIL_KINDS = ['order_confirmation', 'order_shipped'] as const;
+/**
+ * The emails an order sends: the confirmation once it's paid, a notice with tracking once its prints ship, and a
+ * notice once it's refunded in full.
+ */
+export const ORDER_EMAIL_KINDS = ['order_confirmation', 'order_shipped', 'order_refunded'] as const;
 export type OrderEmailKind = (typeof ORDER_EMAIL_KINDS)[number];
 
 /**

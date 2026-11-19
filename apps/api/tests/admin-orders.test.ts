@@ -146,6 +146,8 @@ describe.skipIf(!url)('admin orders (integration)', () => {
     }
 
     const ship = { status: 'shipped', carrier: 'Posti', trackingNumber: 'JJFI 1234 5678 9012' };
+    /** What a refunded order (of the default total) has. */
+    const refundedInFull = { refundedCents: 1780, refundedAt: new Date('2026-11-18T08:00:00Z') };
 
     beforeAll(async () => {
         await runMigrations(db, fileURLToPath(new URL('../drizzle', import.meta.url)));
@@ -231,7 +233,7 @@ describe.skipIf(!url)('admin orders (integration)', () => {
     test.each([
         ['pending', 'printing', { status: 'pending' as const, paidAt: null }, { status: 'printing' }],
         ['cancelled', 'shipped', { status: 'cancelled' as const, paidAt: null }, ship],
-        ['refunded', 'shipped', { status: 'refunded' as const }, ship],
+        ['refunded', 'shipped', { status: 'refunded' as const, ...refundedInFull }, ship],
         ['paid', 'delivered', {}, { status: 'delivered' }],
         [
             'delivered',
@@ -275,7 +277,11 @@ describe.skipIf(!url)('admin orders (integration)', () => {
             shippedAt: new Date(),
             paidAt: new Date('2026-11-15T12:00:00Z'),
         });
-        const refunded = await order({ status: 'refunded', paidAt: new Date('2026-11-14T12:00:00Z') });
+        const refunded = await order({
+            status: 'refunded',
+            paidAt: new Date('2026-11-14T12:00:00Z'),
+            ...refundedInFull,
+        });
         await order({ status: 'pending', paidAt: null });
         await order({ status: 'cancelled', paidAt: null });
 

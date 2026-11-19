@@ -23,6 +23,7 @@ import { createOrderEmailsService } from './services/order-emails.ts';
 import { createOrdersService } from './services/orders.ts';
 import { createProductMediaService } from './services/product-media.ts';
 import { createProductsService } from './services/products.ts';
+import { createRefundsService } from './services/refunds.ts';
 import { createReviewsService } from './services/reviews.ts';
 import { createUsersService } from './services/users.ts';
 
@@ -87,6 +88,7 @@ const app = createApp({
     cart,
     orders,
     adminOrders: createAdminOrdersService(db, { onEmailQueued: sendEmailsOf }),
+    refunds: createRefundsService(db, payments, { onEmailQueued: sendEmailsOf }),
     library: createLibraryService(db, storage),
     favourites: createFavouritesService(db, storage),
     reviews: createReviewsService(db),

@@ -10,12 +10,25 @@ export interface Payments {
     createCheckout(input: CreateCheckoutInput): Promise<{ id: string; url: string }>;
     getCheckout(sessionId: string): Promise<CheckoutState>;
     /**
-     * Checks a webhook's signature against its raw body and returns the Checkout Session it's about, or
-     * `null` for events the shop doesn't handle. Throws {@link WebhookSignatureError} if it isn't from Stripe.
-     * `null` itself when no webhook signing secret is configured.
+     * Refunds `amountCents` of a payment. `idempotencyKey` makes a repeated request (a double click, a retry)
+     * return the first refund instead of refunding again.
      */
-    verifyWebhook: ((rawBody: string, signature: string) => Promise<{ sessionId: string } | null>) | null;
+    refund(input: { paymentIntentId: string; amountCents: number; idempotencyKey: string }): Promise<void>;
+    /** How much of a payment has been refunded so far, in cents, whoever refunded it (us or Stripe's dashboard). */
+    getRefundedCents(paymentIntentId: string): Promise<number>;
+    /**
+     * Checks a webhook's signature against its raw body and returns what it's about, or `null` for events the
+     * shop doesn't handle. Throws {@link WebhookSignatureError} if it isn't from Stripe. `null` itself when no
+     * webhook signing secret is configured.
+     */
+    verifyWebhook: ((rawBody: string, signature: string) => Promise<PaymentEvent | null>) | null;
 }
+
+/** A webhook event the shop acts on: a Checkout Session changed, or a payment was (partly) refunded. */
+export type PaymentEvent = { kind: 'checkout'; sessionId: string } | { kind: 'refund'; paymentIntentId: string };
+
+/** Stripe refused or failed to make a refund; `message` is Stripe's own explanation. */
+export class RefundError extends Error {}
 
 export interface CreateCheckoutInput {
     orderId: string;
@@ -61,6 +74,9 @@ const CHECKOUT_EVENTS = new Set([
     'checkout.session.async_payment_failed',
     'checkout.session.expired',
 ]);
+
+/** Events about refunds: made (in full or part), or a pending refund that later succeeded or failed. */
+const REFUND_EVENTS = new Set(['charge.refunded', 'charge.refund.updated']);
 
 /** Payment intent states after which a completed but unpaid session will never be paid. */
 const FAILED_INTENT_STATES = new Set(['canceled', 'requires_payment_method']);
@@ -165,6 +181,25 @@ export function createStripePayments({
             };
         },
 
+        async refund({ paymentIntentId, amountCents, idempotencyKey }) {
+            try {
+                await stripe.refunds.create(
+                    { payment_intent: paymentIntentId, amount: amountCents, reason: 'requested_by_customer' },
+                    { idempotencyKey },
+                );
+            } catch (error) {
+                // Stripe's refusals (already refunded, too old, insufficient balance) are for the admin to read.
+                if (error instanceof Stripe.errors.StripeInvalidRequestError) throw new RefundError(error.message);
+                throw error;
+            }
+        },
+
+        async getRefundedCents(paymentIntentId) {
+            const intent = await stripe.paymentIntents.retrieve(paymentIntentId, { expand: ['latest_charge'] });
+            const charge = intent.latest_charge;
+            return charge && typeof charge === 'object' ? charge.amount_refunded : 0;
+        },
+
         verifyWebhook: webhookSecret
             ? async (rawBody, signature) => {
                   let event: Stripe.Event;
@@ -173,9 +208,20 @@ export function createStripePayments({
                   } catch (error) {
                       throw new WebhookSignatureError(error instanceof Error ? error.message : 'Invalid signature');
                   }
-                  if (!CHECKOUT_EVENTS.has(event.type)) return null;
-                  const session = event.data.object as { object?: string; id?: string };
-                  return session.object === 'checkout.session' && session.id ? { sessionId: session.id } : null;
+                  if (CHECKOUT_EVENTS.has(event.type)) {
+                      const session = event.data.object as { object?: string; id?: string };
+                      return session.object === 'checkout.session' && session.id
+                          ? { kind: 'checkout', sessionId: session.id }
+                          : null;
+                  }
+                  if (REFUND_EVENTS.has(event.type)) {
+                      // A charge (charge.refunded) or a refund (charge.refund.updated): both name the payment.
+                      const object = event.data.object as { payment_intent?: string | { id: string } | null };
+                      const intent = object.payment_intent;
+                      const paymentIntentId = typeof intent === 'string' ? intent : intent?.id;
+                      return paymentIntentId ? { kind: 'refund', paymentIntentId } : null;
+                  }
+                  return null;
               }
             : null,
     };

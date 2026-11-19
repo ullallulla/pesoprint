@@ -70,6 +70,10 @@ export const adminOrderSchema = z
         paidAt: timestampSchema.nullable(),
         shippedAt: timestampSchema.nullable(),
         deliveredAt: timestampSchema.nullable(),
+        /** How much has been refunded. Less than `totalCents` only after a partial refund in Stripe's dashboard. */
+        refundedCents: z.int(),
+        /** When it was refunded in full. */
+        refundedAt: timestampSchema.nullable(),
         items: z.array(
             z.object({
                 productId: z.uuid(),

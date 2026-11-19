@@ -73,6 +73,7 @@ function input(overrides: Partial<OrderEmailInput['order']> = {}, items: OrderEm
             trackingNumber: null,
             immediateDeliveryConsentAt: new Date('2026-11-18T10:00:00Z'),
             paidAt: new Date('2026-11-18T10:01:00Z'),
+            refundedCents: 0,
             ...overrides,
         },
         items,
@@ -293,6 +294,8 @@ describe.skipIf(!url)('order emails (integration)', () => {
             };
             return {
                 createCheckout: () => Promise.reject(new Error('not used')),
+                refund: () => Promise.reject(new Error('not used')),
+                getRefundedCents: () => Promise.reject(new Error('not used')),
                 getCheckout: async () => state,
                 verifyWebhook: null,
             };

@@ -110,6 +110,8 @@ function createFakePayments() {
             if (!session) throw new Error(`No such checkout.session: ${id}`);
             return { ...session };
         },
+        refund: () => Promise.reject(new Error('Refunds are tested in refunds.test.ts')),
+        getRefundedCents: () => Promise.reject(new Error('Refunds are tested in refunds.test.ts')),
         verifyWebhook: createStripePayments({ secretKey: 'sk_test_unused', webhookSecret: WEBHOOK_SECRET })
             .verifyWebhook,
     };

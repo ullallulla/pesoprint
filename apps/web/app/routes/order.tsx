@@ -285,7 +285,7 @@ function NotPaid({ order }: { order: Order }) {
             </h1>
             <p className='text-muted-foreground'>
                 {refunded
-                    ? 'The money was returned to you.'
+                    ? 'The money was returned to the card or account you paid with. Depending on your bank, it can take 5–10 business days to show.'
                     : 'Nothing was charged. The payment was cancelled, failed, or the time to pay ran out. Your cart still has everything in it.'}
             </p>
             {!refunded && (

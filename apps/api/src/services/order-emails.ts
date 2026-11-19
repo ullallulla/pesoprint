@@ -2,7 +2,12 @@ import { and, asc, eq, isNull, lt, or, sql } from 'drizzle-orm';
 
 import type { Database, Transaction } from '../db/client.ts';
 import { orderEmails, orderItems, orders, type OrderEmailKind } from '../db/schema.ts';
-import { orderConfirmationEmail, orderShippedEmail, type OrderEmailOptions } from '../emails/order-emails.ts';
+import {
+    orderConfirmationEmail,
+    orderRefundedEmail,
+    orderShippedEmail,
+    type OrderEmailOptions,
+} from '../emails/order-emails.ts';
 import type { Mailer } from '../integrations/email.ts';
 
 /** How long a try blocks the next one: a sender that crashed mid-send, or a failed send, is retried after this. */
@@ -40,7 +45,11 @@ function due(at: Date) {
     );
 }
 
-const TEMPLATES = { order_confirmation: orderConfirmationEmail, order_shipped: orderShippedEmail } as const;
+const TEMPLATES = {
+    order_confirmation: orderConfirmationEmail,
+    order_shipped: orderShippedEmail,
+    order_refunded: orderRefundedEmail,
+} as const;
 
 /** `mailer` `null`: nothing is sent, and queued emails wait until a mailer is configured. */
 export function createOrderEmailsService(
