@@ -276,6 +276,9 @@ Each milestone ends with: CI green, deployed to staging, and a short demo you co
 - Finnish/English language versions, multiple currencies
 - Discount codes, bundles
 - Customers uploading their own files for a print quote
+- **Partial refunds** (noted 2026-11-20). Today a partial refund made in Stripe's dashboard is only recorded on the order ("−€4.90" in the admin): the buyer gets no email, and the order stays where it was in the queue. Two additions when needed:
+    - An email for each partial refund ("We've refunded €4.90 of your order … the rest goes ahead as planned"), sent once per refund. Needs the `order_emails` outbox to allow more than one email of a kind per order (e.g. a key per refunded amount). Check that Stripe's own refund receipts (Settings → Customer emails) are off, so buyers don't get two emails.
+    - "Close without shipping": for an order whose prints won't be sent but whose files the buyer keeps (e.g. a mixed order where the print can't be made, prints and shipping refunded). Moves it out of "To do" to a new `closed` status with a reason, keeps the files, doesn't refund by itself (warns if the prints aren't refunded yet), and tells the buyer. Until then: ship as usual, or refund the whole order.
 
 ---
 
