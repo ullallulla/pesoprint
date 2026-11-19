@@ -1,6 +1,6 @@
 # Pesoprint – Rebuild Plan (working name)
 
-_Drafted 2026-11-09 from the [prototype review](./prototype-review.md) and the planning questions. M0–M3 are done and running on staging; M4 is next. The public launch moved to M6._
+_Drafted 2026-11-09 from the [prototype review](./prototype-review.md) and the planning questions. M0–M4 are done and running on staging; M5 is next. The public launch moved to M6._
 
 ## 1. What we're building
 
@@ -238,7 +238,7 @@ Each milestone ends with: CI green, deployed to staging, and a short demo you co
 - EU rule for digital content: a checkbox where the buyer agrees to immediate delivery and accepts losing the 14-day right of withdrawal. The API refuses an order with files without it, and the order records when the buyer agreed (`immediate_delivery_consent_at`). ✅
 - **Done when:** a Stripe test-mode purchase gives the buyer a download in their library, and the webhook is covered by an integration test
 
-### M4 – Physical print orders
+### M4 – Physical print orders ✅ (2026-11-19)
 
 - Admin: manage materials and colours, which colours each material comes in and their stock, and whether it can print multicolour. Per model: which materials it can be printed in, its price in each, its parcel size (S/M/L), and its colour options (single or multicolour; none = printed as shown) ✅
 - Shipping: interim fixed prices per parcel size, the same for every address: S €2.90, M €4.90, L €9.90 (`INTERIM_SHIPPING_CENTS` in `packages/shared`, decided 2026-11-16). The admin for real rates per zone (`shipping_rates`) waits until carriers and countries are decided (§9 #6). ✅
