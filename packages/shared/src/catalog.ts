@@ -2,6 +2,7 @@ import { z } from 'zod';
 
 import { licenseSchema } from './licenses.ts';
 import { productFileFormatSchema } from './products.ts';
+import { ratingSummarySchema } from './reviews.ts';
 import { parcelSizeSchema } from './shipping.ts';
 
 /**
@@ -62,6 +63,8 @@ export const catalogProductCardSchema = z
         printBasePriceCents: z.int().nullable(),
         /** How many times visitors downloaded the model's files. */
         downloadCount: z.int().nonnegative(),
+        /** The average of its visible reviews. `null` until it has one. */
+        rating: ratingSummarySchema.nullable(),
         publishedAt: z.iso.datetime(),
     })
     .meta({ id: 'CatalogProductCard' });

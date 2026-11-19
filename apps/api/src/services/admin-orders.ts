@@ -13,6 +13,7 @@ import { and, asc, count, desc, eq, ilike, inArray, isNotNull, or, sql, type SQL
 import type { Database } from '../db/client.ts';
 import { orderItems, orders, type Order } from '../db/schema.ts';
 import { conflict, notFound } from '../lib/errors.ts';
+import { escapeLike } from '../lib/like.ts';
 
 export interface AdminOrdersService {
     /** One page of orders with prints, filtered by status and text. */
@@ -30,9 +31,6 @@ export interface AdminOrdersService {
 export interface AdminOrdersOptions {
     now?: () => Date;
 }
-
-/** Escapes `%`, `_` and `\` so user input matches literally inside an ILIKE pattern. */
-const escapeLike = (value: string) => value.replace(/[\\%_]/g, '\\$&');
 
 const STATUS_NAMES: Record<OrderStatus, string> = {
     pending: 'waiting for payment',

@@ -10,15 +10,18 @@ import { createStripePayments } from './integrations/stripe.ts';
 import { createClerkTokenVerifier } from './lib/auth.ts';
 import { createIpHasher } from './lib/client-ip.ts';
 import { createAdminOrdersService } from './services/admin-orders.ts';
+import { createAdminReviewsService } from './services/admin-reviews.ts';
 import { createCartService } from './services/cart.ts';
 import { createCatalogService } from './services/catalog.ts';
 import { createCategoriesService } from './services/categories.ts';
 import { createDownloadsService } from './services/downloads.ts';
+import { createFavouritesService } from './services/favourites.ts';
 import { createLibraryService } from './services/library.ts';
 import { createMaterialsService } from './services/materials.ts';
 import { createOrdersService } from './services/orders.ts';
 import { createProductMediaService } from './services/product-media.ts';
 import { createProductsService } from './services/products.ts';
+import { createReviewsService } from './services/reviews.ts';
 import { createUsersService } from './services/users.ts';
 
 const env = loadEnv();
@@ -65,6 +68,9 @@ const app = createApp({
     orders,
     adminOrders: createAdminOrdersService(db),
     library: createLibraryService(db, storage),
+    favourites: createFavouritesService(db, storage),
+    reviews: createReviewsService(db),
+    adminReviews: createAdminReviewsService(db),
     verifyStripeWebhook: payments?.verifyWebhook ?? null,
     downloads,
     internalApiSecret: env.INTERNAL_API_SECRET,

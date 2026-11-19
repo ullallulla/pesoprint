@@ -160,8 +160,9 @@ shipping_rates   id, zone_name, countries (text[]), parcel_size (S|M|L), price_c
 vat_rates        country_code, standard_rate_bp, valid_from        -- our own VAT calculation (Stripe Tax isn't used)
 entitlements     user_id, product_id (together the key), order_id?, granted_at   -- the "who owns what" table
 download_events  id, product_id, user_id?, ip_hash, created_at     -- download counts + rate limiting
-reviews          id, product_id, user_id, rating (1–5), body, created_at,
+reviews          id, product_id, user_id, rating (1–5), body (may be empty, ≤ 2000), hidden_at?, edited_at?, created_at,
                  UNIQUE(product_id, user_id)
+                 -- a trigger keeps products.rating_sum/rating_count in step with the visible reviews (M5)
 favourites       user_id, product_id, created_at
 ```
 
@@ -173,6 +174,7 @@ favourites       user_id, product_id, created_at
     - a user with an entitlement to the model (they bought it)
     - a user with a delivered print order for the model
     - for free models, a signed-in user who downloaded it while signed in
+    - never the model's creator. The API checks this on every write (`canReview` in the reviews service) and answers 403.
 - **The cart** is stored in the browser, in a first-party cookie (`pesoprint_cart`, 30 days, at most 25 items) that holds only product ids, never prices. A cookie rather than localStorage, so the server sees it: the cart page and the header's count are in the first render, and adding to the cart works before the page's JavaScript has loaded. `POST /api/cart/quote` prices it on every view and drops what's no longer for sale or already owned. The server prices everything again when it creates the order and the Stripe Checkout Session.
 - **Checkout flow (Stripe Checkout):**
     1. Our checkout page shows the summary and VAT; it requires signing in, so purchases land in the buyer's library. M4 adds the shipping address and method here.
@@ -248,11 +250,12 @@ Each milestone ends with: CI green, deployed to staging, and a short demo you co
 - Customer "My orders" page showing each order's status ✅ (`/orders`, linked from the header: paid orders newest first, a print's progress from ordered to delivered, and the carrier and tracking number once shipped. The order page shows the same. Tracking numbers aren't links yet: add each carrier's tracking link once carriers are decided, §9 #6.)
 - **Done when:** you can complete a test print order end to end, from checkout to "shipped", with the tracking number showing on the customer's "My orders" page
 
-### M5 – Reviews & favourites
+### M5 – Reviews & favourites (built 2026-11-19; staging demo pending)
 
-- Verified-buyer reviews (the rules in §3), with rating averages kept up to date
-- Admin can hide reviews
-- Favourites (heart button) and a favourites page
+- Verified-buyer reviews (the rules in §3), with rating averages kept up to date ✅ (`PUT /api/me/reviews/:productId`, 403 for anyone who may not review. One review per person and model: 1–5 stars, text optional. The author can change or delete it on the product page. Shown publicly as first name + last initial ("Aino K."). A database trigger keeps `rating_sum`/`rating_count` right, also when an account is deleted. The average is on the product page and on cards.)
+- Admin can hide reviews ✅ (`/admin/reviews`: tabs for all, shown and hidden, plus search. A hidden review leaves the page and the rating. Its author still sees it, marked hidden, and editing doesn't show it again.)
+- Favourites (heart button) and a favourites page ✅ (heart on the product page, `/favourites` linked from the header, up to 200 per account. Archived models drop off the list but stay saved. Hearts on catalogue cards can come later.)
+- Terms (review rules) and privacy policy (reviews and favourites) updated
 - **Done when:** a buyer can review a model, and a non-buyer is refused by the server, not only hidden in the UI
 
 ### M6 – Launch readiness

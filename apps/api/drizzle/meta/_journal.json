@@ -71,6 +71,13 @@
       "when": 1794912254849,
       "tag": "0009_order_fulfilment",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1795097473223,
+      "tag": "0010_reviews_and_favourites",
+      "breakpoints": true
     }
   ]
 }

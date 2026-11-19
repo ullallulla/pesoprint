@@ -3,16 +3,19 @@ import type { AppOptions } from '../src/app.ts';
 import { createApp } from '../src/app.ts';
 import type { AuthContext } from '../src/lib/auth.ts';
 import type { AdminOrdersService } from '../src/services/admin-orders.ts';
+import type { AdminReviewsService } from '../src/services/admin-reviews.ts';
 import type { Bucket, Storage } from '../src/lib/storage.ts';
 import type { CartService } from '../src/services/cart.ts';
 import type { CatalogService } from '../src/services/catalog.ts';
 import type { CategoriesService } from '../src/services/categories.ts';
 import type { DownloadsService } from '../src/services/downloads.ts';
+import type { FavouritesService } from '../src/services/favourites.ts';
 import type { LibraryService } from '../src/services/library.ts';
 import type { MaterialsService } from '../src/services/materials.ts';
 import type { OrdersService } from '../src/services/orders.ts';
 import type { ProductMediaService } from '../src/services/product-media.ts';
 import type { ProductsService } from '../src/services/products.ts';
+import type { ReviewsService } from '../src/services/reviews.ts';
 import type { UsersService } from '../src/services/users.ts';
 
 /** Tokens the fake verifier accepts. Anything else is rejected like an invalid Clerk token. */
@@ -75,6 +78,9 @@ export function buildApp(overrides: Partial<AppOptions> = {}) {
         orders: unusedService<OrdersService>('orders'),
         adminOrders: unusedService<AdminOrdersService>('adminOrders'),
         library: unusedService<LibraryService>('library'),
+        favourites: unusedService<FavouritesService>('favourites'),
+        reviews: unusedService<ReviewsService>('reviews'),
+        adminReviews: unusedService<AdminReviewsService>('adminReviews'),
         verifyStripeWebhook: null,
         internalApiSecret: undefined,
         version: '1.2.3',

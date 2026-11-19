@@ -14,6 +14,7 @@ const card: CatalogProductCard = {
     digitalPriceCents: 0,
     printBasePriceCents: 1690,
     downloadCount: 1234,
+    rating: null,
     publishedAt: '2026-11-10T08:30:00.000Z',
 };
 

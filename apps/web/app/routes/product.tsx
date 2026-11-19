@@ -7,35 +7,54 @@ import {
     offersPrint,
     PARCEL_SIZE_NAMES,
     printCartItemSchema,
+    reviewInputSchema,
     type CatalogProduct,
     type LibraryItem,
 } from '@app/shared';
+import { getAuth } from '@clerk/react-router/server';
 import { cn } from 'cn';
 import { Check, Download, FileBox, Library, Printer, ShoppingCart } from 'lucide-react';
 import { useState } from 'react';
-import { data, Link, useFetcher } from 'react-router';
+import { data, Link, redirect, useFetcher } from 'react-router';
 
 import { Breadcrumbs, type Crumb } from '~/components/catalog/breadcrumbs';
 import { ColourSwatch } from '~/components/colour-swatch';
+import { FavouriteButton } from '~/components/favourite-button';
 import { Markdown } from '~/components/catalog/markdown';
 import { ProductGallery } from '~/components/catalog/product-gallery';
 import { FileDownloads, type DownloadableFile } from '~/components/file-downloads';
+import { RatingLine } from '~/components/rating-stars';
+import { ReviewsSection } from '~/components/reviews';
 import { Button } from '~/components/ui/button';
 import { Input } from '~/components/ui/input';
 import { track } from '~/lib/analytics';
+import { ApiRequestError } from '~/lib/api.server';
 import { addToCart, cartChanged, isInCart, readCart } from '~/lib/cart.server';
 import { getProduct } from '~/lib/catalog.server';
+import { isFavourite, setFavourite } from '~/lib/favourites.server';
 import { formatBytes, formatPrice, plainExcerpt } from '~/lib/format';
 import { getOwned } from '~/lib/library.server';
+import { deleteReview, getMyReview, getReviews, saveReview } from '~/lib/reviews.server';
 import { pageMeta } from '~/lib/seo';
 import { absoluteUrl } from '~/lib/site.server';
 
 import type { Route } from './+types/product';
 
+/** `?reviews=2`: which page of reviews is shown. Anything else is the first. */
+function reviewPageOf(url: URL): number {
+    const page = Number(url.searchParams.get('reviews'));
+    return Number.isInteger(page) && page > 1 ? page : 1;
+}
+
 export async function loader(args: Route.LoaderArgs) {
     const [product, cart] = await Promise.all([getProduct(args.params.slug), readCart(args.request)]);
-    // A free file is anyone's anyway. Otherwise a buyer gets their files here, whatever the model costs now.
-    const owned = isFreeDownload(product) ? null : await getOwned(args, product.id);
+    const [owned, reviews, myReview, favourite] = await Promise.all([
+        // A free file is anyone's anyway. Otherwise a buyer gets their files here, whatever the model costs now.
+        isFreeDownload(product) ? null : getOwned(args, product.id),
+        getReviews(product.slug, reviewPageOf(new URL(args.request.url))),
+        getMyReview(args, product.id),
+        isFavourite(args, product.id),
+    ]);
     return {
         product,
         url: absoluteUrl(`/models/${product.slug}`),
@@ -45,18 +64,60 @@ export async function loader(args: Route.LoaderArgs) {
             0,
         ),
         owned,
+        reviews,
+        myReview,
+        favourite,
     };
 }
 
+const ACCOUNT_INTENTS = ['save-review', 'delete-review', 'favourite'] as const;
+type AccountIntent = (typeof ACCOUNT_INTENTS)[number];
+const isAccountIntent = (intent: unknown): intent is AccountIntent =>
+    (ACCOUNT_INTENTS as readonly unknown[]).includes(intent);
+
 /**
- * "Add to cart" (the file) and "Add to cart" (a print) post here. Works without JavaScript too: the page
- * then reloads, showing what's in the cart.
+ * Reviewing and saving the model, for signed-in visitors. The API decides who may review: a refusal comes back
+ * as the form's error. Without JavaScript the page reloads at the reviews.
  */
-export async function action({ params, request }: Route.ActionArgs) {
+async function accountAction(args: Route.ActionArgs, product: CatalogProduct, intent: AccountIntent, form: FormData) {
+    const { isAuthenticated, getToken } = await getAuth(args);
+    if (!isAuthenticated) return { error: 'Sign in first.' };
+    const token = await getToken();
+    try {
+        if (intent === 'favourite') {
+            await setFavourite(token, product.id, form.get('save') === 'true');
+        } else if (intent === 'delete-review') {
+            await deleteReview(token, product.id);
+        } else {
+            const body = form.get('body');
+            const parsed = reviewInputSchema.safeParse({
+                rating: Number(form.get('rating')),
+                body: typeof body === 'string' ? body : '',
+            });
+            if (!parsed.success) return { error: parsed.error.issues[0]?.message ?? 'Check your review.' };
+            await saveReview(token, product.id, parsed.data);
+        }
+    } catch (error) {
+        if (error instanceof ApiRequestError && [400, 403, 404, 409].includes(error.status)) {
+            return { error: error.message };
+        }
+        throw error;
+    }
+    const page = `/models/${product.slug}${intent === 'favourite' ? '' : '#reviews'}`;
+    return args.request.headers.get('sec-fetch-mode') === 'navigate' ? redirect(page) : { error: null };
+}
+
+/**
+ * "Add to cart" (the file) and "Add to cart" (a print) post here, and so do reviews and the heart. Works without
+ * JavaScript too: the page then reloads, showing what's in the cart.
+ */
+export async function action(args: Route.ActionArgs) {
+    const { params, request } = args;
     const form = await request.formData();
     const intent = form.get('intent');
     // The product comes from the page's own slug, so only this page's model can be added, and only if it's sold.
     const product = await getProduct(params.slug);
+    if (isAccountIntent(intent)) return accountAction(args, product, intent, form);
 
     let item;
     if (intent === 'add-to-cart') {
@@ -103,7 +164,7 @@ export const meta: Route.MetaFunction = ({ loaderData }) => {
 };
 
 export default function Product({ loaderData }: Route.ComponentProps) {
-    const { product, inCart, printsInCart, owned } = loaderData;
+    const { product, inCart, printsInCart, owned, reviews, myReview, favourite } = loaderData;
     const crumbs: Crumb[] = [
         { label: 'Home', to: '/' },
         { label: 'Models', to: '/models' },
@@ -122,7 +183,17 @@ export default function Product({ loaderData }: Route.ComponentProps) {
                 <ProductGallery images={product.images} title={product.title} preview={product.preview} />
 
                 <div className='flex flex-col gap-6'>
-                    <h1 className='text-3xl font-bold tracking-tight'>{product.title}</h1>
+                    <div className='flex items-start justify-between gap-4'>
+                        <div className='flex flex-col gap-2'>
+                            <h1 className='text-3xl font-bold tracking-tight'>{product.title}</h1>
+                            {product.rating && (
+                                <a href='#reviews' className='self-start rounded-sm hover:underline'>
+                                    <RatingLine rating={product.rating} />
+                                </a>
+                            )}
+                        </div>
+                        <FavouriteButton saved={favourite} className='shrink-0' />
+                    </div>
                     <GetThisModel product={product} inCart={inCart} printsInCart={printsInCart} owned={owned} />
                     <Details product={product} />
                 </div>
@@ -138,6 +209,13 @@ export default function Product({ loaderData }: Route.ComponentProps) {
                     </div>
                 </section>
             )}
+
+            <ReviewsSection
+                rating={product.rating}
+                page={reviews}
+                mine={myReview}
+                href={(page) => `/models/${product.slug}${page > 1 ? `?reviews=${page}` : ''}#reviews`}
+            />
         </main>
     );
 }

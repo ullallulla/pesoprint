@@ -208,6 +208,7 @@ describe.skipIf(!url)('public catalogue (integration)', () => {
             digitalPriceCents: 0,
             printBasePriceCents: 2490,
             downloadCount: 120,
+            rating: null,
             publishedAt: expect.any(String),
         });
         expect(featured[1]?.cover).toBeNull();

@@ -11,14 +11,17 @@ import { adminMaterialRoutes, type AdminMaterialDeps } from './routes/admin-mate
 import { adminOrderRoutes, type AdminOrderDeps } from './routes/admin-orders.ts';
 import { adminProductMediaRoutes, type AdminProductMediaDeps } from './routes/admin-product-media.ts';
 import { adminProductRoutes, type AdminProductDeps } from './routes/admin-products.ts';
+import { adminReviewRoutes, type AdminReviewDeps } from './routes/admin-reviews.ts';
 import { adminRoutes, type AdminDeps } from './routes/admin.ts';
 import { cartRoutes, type CartDeps } from './routes/cart.ts';
 import { catalogRoutes, type CatalogDeps } from './routes/catalog.ts';
 import { downloadRoutes, type DownloadDeps } from './routes/downloads.ts';
+import { favouriteRoutes, type FavouriteDeps } from './routes/favourites.ts';
 import { healthRoutes, type HealthDeps } from './routes/health.ts';
 import { libraryRoutes, type LibraryDeps } from './routes/library.ts';
 import { meRoutes } from './routes/me.ts';
 import { orderRoutes, type OrderDeps } from './routes/orders.ts';
+import { reviewRoutes, type ReviewDeps } from './routes/reviews.ts';
 import { webhookRoutes, type WebhookDeps } from './routes/webhooks.ts';
 
 export interface AppOptions
@@ -30,11 +33,14 @@ export interface AppOptions
         AdminOrderDeps,
         AdminProductDeps,
         AdminProductMediaDeps,
+        AdminReviewDeps,
         CartDeps,
         CatalogDeps,
         DownloadDeps,
+        FavouriteDeps,
         LibraryDeps,
         OrderDeps,
+        ReviewDeps,
         WebhookDeps {
     logRequests: boolean;
 }
@@ -59,12 +65,15 @@ export function createApp(options: AppOptions) {
     app.route('/api', downloadRoutes(options));
     app.route('/api', orderRoutes(options));
     app.route('/api', libraryRoutes(options));
+    app.route('/api', favouriteRoutes(options));
+    app.route('/api', reviewRoutes(options));
     app.route('/api', adminRoutes(options));
     app.route('/api', adminCategoryRoutes(options));
     app.route('/api', adminMaterialRoutes(options));
     app.route('/api', adminOrderRoutes(options));
     app.route('/api', adminProductRoutes(options));
     app.route('/api', adminProductMediaRoutes(options));
+    app.route('/api', adminReviewRoutes(options));
     app.route('/api', webhookRoutes(options));
 
     // OpenAPI document + interactive docs

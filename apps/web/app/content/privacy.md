@@ -32,6 +32,14 @@ When you buy, we keep a record of the order: what you bought, the prices and VAT
 
 The legal basis is our contract with you (GDPR Article 6(1)(b)) and our legal obligation to keep accounting records (GDPR Article 6(1)(c)). We keep orders for as long as accounting law requires.
 
+### Reviews and favourites
+
+When you review a model, we store your rating, your text, the model and when you wrote it, linked to your account. The review is public: it is shown on the model's page with your first name and the initial of your last name, never your full name or email address. To check that you may review the model, we look at whether you bought it, received a print of it or downloaded it while signed in.
+
+When you save a model to your favourites, we store which model and when, linked to your account. Only you can see your favourites.
+
+The legal basis is providing the service you asked for (GDPR Article 6(1)(b)). You can delete a review or remove a favourite at any time. When your account is deleted, your reviews and favourites are deleted with it.
+
 ### Statistics, only if you allow them {#analytics}
 
 If you click "Allow" in the cookie banner, we use PostHog to collect anonymous usage statistics: which pages and models people view, what they click, which site they came from, and their type of browser and device. PostHog gives your browser a random ID in a cookie, so repeat visits can be counted. PostHog is set not to store your IP address. We don't link this data to your account, and we don't record your screen.

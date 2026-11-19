@@ -5,6 +5,8 @@ import type {
     AdminOrderList,
     AdminProduct,
     AdminProductList,
+    AdminReview,
+    AdminReviewList,
     Colour,
 } from '@app/shared';
 import { renderToStaticMarkup } from 'react-dom/server';
@@ -17,6 +19,7 @@ import AdminOrderPage from './order';
 import AdminOrders from './orders';
 import EditProduct from './product-edit';
 import AdminProducts from './products';
+import AdminReviews from './reviews';
 
 // Server-renders the admin pages with loader data shaped like the API's, the way the first page load does.
 
@@ -417,5 +420,54 @@ describe('order page', () => {
         expect(html).toContain('Delivered. Nothing more to do.');
         expect(html).toContain('20 Nov 2026');
         expect(html).not.toContain('name="intent"');
+    });
+});
+
+describe('reviews', () => {
+    const review: AdminReview = {
+        id: '0190b6a0-0000-7000-8000-000000000501',
+        rating: 2,
+        body: 'Snapped on the first day.',
+        author: 'Aino K.',
+        createdAt: '2026-11-16T12:00:00.000Z',
+        editedAt: null,
+        hiddenAt: null,
+        product: { id: draft.id, slug: 'hook', title: 'Wall hook', listed: true },
+        user: { id: 'user_1', email: 'aino@example.com', displayName: 'Aino Korhonen' },
+    };
+    const filters = { visibility: 'all' as const, q: undefined, page: 1 };
+
+    test('lists reviews with the model, who wrote them and a button to hide or show each', () => {
+        const hidden: AdminReview = {
+            ...review,
+            id: '0190b6a0-0000-7000-8000-000000000502',
+            body: '',
+            hiddenAt: '2026-11-17T12:00:00.000Z',
+            product: { ...review.product, listed: false, title: 'Old stand' },
+        };
+        const list: AdminReviewList = { reviews: [review, hidden], page: 1, pageSize: 25, total: 2 };
+        const html = render('/admin/reviews', AdminReviews, { list, filters });
+
+        expect(html).toContain('href="/models/hook"');
+        expect(html).toContain('Snapped on the first day.');
+        expect(html).toContain('Aino Korhonen · aino@example.com · shown as Aino K.');
+        expect(html).toMatch(/value="hide"[^>]*>.*Hide</);
+        // An archived model has no page to link to.
+        expect(html).not.toContain('href="/models/old-stand"');
+        expect(html).toContain('No text, only a rating.');
+        expect(html).toContain('Hidden');
+        expect(html).toMatch(/value="show"[^>]*>.*Show</);
+        expect(html).toContain(`name="reviewId" value="${hidden.id}"`);
+    });
+
+    test('says when nothing matches', () => {
+        const list: AdminReviewList = { reviews: [], page: 1, pageSize: 25, total: 0 };
+        expect(render('/admin/reviews', AdminReviews, { list, filters })).toContain('No reviews yet.');
+        expect(
+            render('/admin/reviews', AdminReviews, { list, filters: { ...filters, visibility: 'hidden' } }),
+        ).toContain('No hidden reviews.');
+        expect(render('/admin/reviews', AdminReviews, { list, filters: { ...filters, q: 'spam' } })).toContain(
+            'No reviews match.',
+        );
     });
 });

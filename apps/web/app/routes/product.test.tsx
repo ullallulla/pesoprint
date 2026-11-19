@@ -1,9 +1,12 @@
-import type { CatalogProduct, LibraryItem } from '@app/shared';
+import type { CatalogProduct, LibraryItem, MyReview, ProductReviews } from '@app/shared';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { createRoutesStub } from 'react-router';
-import { expect, test } from 'vite-plus/test';
+import { describe, expect, test, vi } from 'vite-plus/test';
 
 import ProductPage from './product';
+
+// Clerk's sign-in button needs its provider; here it only has to show what it wraps.
+vi.mock('@clerk/react-router', () => ({ SignInButton: ({ children }: { children: React.ReactNode }) => children }));
 
 const product: CatalogProduct = {
     id: '0190b6a0-0000-7000-8000-000000000101',
@@ -16,6 +19,7 @@ const product: CatalogProduct = {
     preview: null,
     files: [{ id: '0190b6a0-0000-7000-8000-000000000201', format: 'stl', filename: 'hook.stl', sizeBytes: 1_798_384 }],
     downloadCount: 1234,
+    rating: null,
     digitalPriceCents: 0,
     printBasePriceCents: 1290,
     license: 'cc_by_nc',
@@ -28,7 +32,20 @@ const product: CatalogProduct = {
     updatedAt: '2026-11-10T08:00:00.000Z',
 };
 
-function render(model: CatalogProduct, { inCart = false, printsInCart = 0, owned = null as LibraryItem | null } = {}) {
+const noReviews: ProductReviews = { reviews: [], page: 1, pageSize: 10, total: 0 };
+
+function render(
+    model: CatalogProduct,
+    {
+        inCart = false,
+        printsInCart = 0,
+        owned = null as LibraryItem | null,
+        reviews = noReviews,
+        // Signed in, without the model, unless a test says otherwise.
+        myReview = { eligible: false, review: null } as MyReview | null,
+        favourite = false as boolean | null,
+    } = {},
+) {
     // oxlint-disable-next-line typescript/no-explicit-any -- the stub supplies the route's props
     const Stub = createRoutesStub([
         { id: 'page', path: '/models/:slug', Component: ProductPage as any, loader: () => null },
@@ -38,7 +55,16 @@ function render(model: CatalogProduct, { inCart = false, printsInCart = 0, owned
             initialEntries={['/models/hook']}
             hydrationData={{
                 loaderData: {
-                    page: { product: model, url: 'https://shop.test/models/hook', inCart, printsInCart, owned },
+                    page: {
+                        product: model,
+                        url: 'https://shop.test/models/hook',
+                        inCart,
+                        printsInCart,
+                        owned,
+                        reviews,
+                        myReview,
+                        favourite,
+                    },
                 },
             }}
         />,
@@ -205,4 +231,108 @@ test('a bought model is in the library: its files download instead of "Add to ca
     );
     expect(html).not.toContain('value="add-to-cart"');
     expect(html).not.toContain('In your cart');
+});
+
+const REVIEW_ID = '0190b6a0-0000-7000-8000-000000000501';
+const someReviews: ProductReviews = {
+    reviews: [
+        {
+            id: REVIEW_ID,
+            rating: 5,
+            body: 'Printed in an hour.\nHolds my headphones.',
+            author: 'Aino K.',
+            createdAt: '2026-11-16T12:00:00.000Z',
+            editedAt: null,
+        },
+        {
+            id: '0190b6a0-0000-7000-8000-000000000502',
+            rating: 4,
+            body: '',
+            author: 'Ville',
+            createdAt: '2026-11-15T12:00:00.000Z',
+            editedAt: '2026-11-16T12:00:00.000Z',
+        },
+    ],
+    page: 1,
+    pageSize: 1,
+    total: 2,
+};
+
+describe('reviews', () => {
+    const rated = { ...product, rating: { average: 4.5, count: 2 } };
+
+    test('the rating is under the title, linking to the reviews, which list the newest first', () => {
+        const html = render(rated, { reviews: someReviews });
+        expect(html).toMatch(/<a href="#reviews"[^>]*>.*4\.5.*out of 5.*\(2 reviews\)/);
+        expect(html).toContain('id="reviews"');
+        expect(html).toContain('4.5 out of 5');
+        expect(html).toContain('Aino K.');
+        expect(html).toContain('Printed in an hour.\nHolds my headphones.');
+        expect(html).toContain('Rated 4 out of 5');
+        expect(html).toContain(' · edited');
+        // Two pages of one review each.
+        expect(html).toContain('href="/models/hook?reviews=2#reviews"');
+    });
+
+    test('a model without reviews says so', () => {
+        const html = render(product);
+        expect(html).toContain('No reviews yet.');
+        expect(html).not.toContain('href="#reviews"');
+    });
+
+    test("someone who doesn't have the model gets no form", () => {
+        const html = render(product, { myReview: { eligible: false, review: null } });
+        expect(html).not.toContain('Write a review');
+        expect(html).toContain('Reviews are by people who bought the model');
+    });
+
+    test('someone who has the model can write a review: stars to choose and optional text', () => {
+        const html = render(product, { myReview: { eligible: true, review: null } });
+        expect(html).toContain('Write a review');
+        for (const value of [1, 2, 3, 4, 5]) {
+            expect(html).toMatch(new RegExp(`<input type="radio"[^>]*name="rating"[^>]*value="${value}"`));
+        }
+        expect(html).toMatch(/<textarea[^>]*name="body"[^>]*maxLength="2000"/);
+        expect(html).toMatch(/<button(?=[^>]*name="intent")[^>]*value="save-review"[^>]*>Post review</);
+    });
+
+    test("the visitor's own review is shown once, as theirs, with ways to change or delete it", () => {
+        const own = { ...someReviews.reviews[0]!, hidden: false };
+        const html = render(rated, { reviews: someReviews, myReview: { eligible: true, review: own } });
+        expect(html).toContain('Your review');
+        // Theirs, and Ville's: not theirs again in the list.
+        expect(html.match(/<article/g)).toHaveLength(2);
+        expect(html).not.toContain('Aino K.');
+        expect(html).toContain('Change your review');
+        expect(html).toContain('name="rating" checked="" value="5"');
+        expect(html).toContain('Save changes');
+        expect(html).toMatch(/value="delete-review"/);
+    });
+
+    test('the author of a hidden review is told why nobody else sees it', () => {
+        const own = { ...someReviews.reviews[0]!, hidden: true };
+        const html = render(product, { myReview: { eligible: true, review: own } });
+        expect(html).toContain('The shop has hidden this review');
+    });
+});
+
+describe('favourites', () => {
+    test('the heart says whether the model is saved, and posts the change', () => {
+        const unsaved = render(product, { favourite: false });
+        expect(unsaved).toMatch(/<input type="hidden" name="save" value="true"\/>/);
+        expect(unsaved).toMatch(/<button(?=[^>]*name="intent")(?=[^>]*value="favourite")[^>]*aria-pressed="false"/);
+
+        const saved = render(product, { favourite: true });
+        expect(saved).toMatch(/<input type="hidden" name="save" value="false"\/>/);
+        expect(saved).toMatch(/aria-pressed="true"/);
+    });
+});
+
+describe('signed out', () => {
+    test('the heart and the reviews ask the visitor to sign in', () => {
+        const html = render(product, { myReview: null, favourite: null });
+        expect(html).toContain('aria-label="Sign in to save to favourites"');
+        expect(html).toContain('Have this model? Sign in to review it.');
+        expect(html).not.toContain('value="favourite"');
+    });
 });

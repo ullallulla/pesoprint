@@ -28,6 +28,7 @@ import {
     type Product,
 } from '../db/schema.ts';
 import { conflict, invalidField, notFound } from '../lib/errors.ts';
+import { escapeLike } from '../lib/like.ts';
 import { definedFields } from '../lib/patch.ts';
 import { deleteStoredFiles, type Storage } from '../lib/storage.ts';
 import { fileRef, imageRef, toAdminFile, toAdminImage } from './product-media.ts';
@@ -268,9 +269,6 @@ function rethrowWriteError(error: unknown, slug: string | undefined): never {
     }
     throw error;
 }
-
-/** Escapes `%`, `_` and `\` so user input matches literally inside an ILIKE pattern. */
-const escapeLike = (value: string) => value.replace(/[\\%_]/g, '\\$&');
 
 /** `storage` is `null` when file storage isn't configured: URLs are then `null` and nothing is deleted from storage. */
 export function createProductsService(db: Database, storage: Storage | null): ProductsService {

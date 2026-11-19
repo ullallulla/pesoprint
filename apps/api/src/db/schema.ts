@@ -9,6 +9,7 @@ import {
     PRODUCT_FILE_FORMATS,
     PRODUCT_FILE_KINDS,
     PRODUCT_STATUSES,
+    REVIEW_BODY_MAX_LENGTH,
     SLUG_PATTERN,
     type PrintChoice,
     type ShippingAddress,
@@ -154,6 +155,12 @@ export const products = pgTable(
         publishedAt: timestamp('published_at', { withTimezone: true }),
         /** Downloads by visitors and customers (not by admins or the creator). Kept up to date with `download_events`. */
         downloadCount: integer('download_count').notNull().default(0),
+        /**
+         * The sum and number of the ratings in its visible reviews: the average is `ratingSum / ratingCount`. A
+         * trigger on `reviews` keeps them up to date (see migration 0010), so never set them directly.
+         */
+        ratingSum: integer('rating_sum').notNull().default(0),
+        ratingCount: integer('rating_count').notNull().default(0),
         createdAt: createdAt(),
         updatedAt: updatedAt(),
     },
@@ -166,6 +173,10 @@ export const products = pgTable(
             sql`${t.digitalPriceCents} = 0 OR ${t.license} IS NULL OR ${t.license} IN (${ownLicenseList})`,
         ),
         check('products_download_count_non_negative', sql`${t.downloadCount} >= 0`),
+        check(
+            'products_rating_totals_valid',
+            sql`${t.ratingCount} >= 0 AND ${t.ratingSum} BETWEEN ${t.ratingCount} AND 5 * ${t.ratingCount}`,
+        ),
         check(
             'products_dimensions_positive',
             sql`${t.sizeXMm} > 0 AND ${t.sizeYMm} > 0 AND ${t.sizeZMm} > 0 AND ${t.printWeightG} > 0`,
@@ -578,3 +589,65 @@ export const productColourOptionColours = pgTable(
         index('product_colour_option_colours_colour_id_idx').on(t.colourId),
     ],
 );
+
+/**
+ * A rating (1–5) and a few words about a model, one per user and model. Only people who bought it, received a
+ * print of it or downloaded it while it was free can write one (see the reviews service). The shop can hide a
+ * review: it then no longer shows, nor counts towards the model's rating, but its author still sees it.
+ *
+ * A trigger keeps `products.rating_sum` and `rating_count` in step with the visible reviews, including when a
+ * review goes because its author's account is deleted.
+ */
+export const reviews = pgTable(
+    'reviews',
+    {
+        id: id(),
+        productId: uuid('product_id')
+            .notNull()
+            .references(() => products.id, { onDelete: 'cascade' }),
+        userId: text('user_id')
+            .notNull()
+            .references(() => users.id, { onDelete: 'cascade' }),
+        rating: integer('rating').notNull(),
+        /** Plain text, may be empty (a rating alone). */
+        body: text('body').notNull().default(''),
+        /** When the shop hid it. `null` = shown. */
+        hiddenAt: timestamp('hidden_at', { withTimezone: true }),
+        createdAt: createdAt(),
+        /** When the author last changed the rating or text (hiding it doesn't count). */
+        editedAt: timestamp('edited_at', { withTimezone: true }),
+    },
+    (t) => [
+        unique('reviews_product_id_user_id_unique').on(t.productId, t.userId),
+        check('reviews_rating_range', sql`${t.rating} BETWEEN 1 AND 5`),
+        check('reviews_body_length', sql`char_length(${t.body}) <= ${sql.raw(String(REVIEW_BODY_MAX_LENGTH))}`),
+        // A model's page lists its visible reviews, newest first.
+        index('reviews_product_id_created_at_idx').on(t.productId, t.createdAt),
+        index('reviews_user_id_idx').on(t.userId),
+        index('reviews_created_at_idx').on(t.createdAt),
+    ],
+);
+
+export type Review = typeof reviews.$inferSelect;
+export type NewReview = typeof reviews.$inferInsert;
+
+/** Models a user saved with the heart button. */
+export const favourites = pgTable(
+    'favourites',
+    {
+        userId: text('user_id')
+            .notNull()
+            .references(() => users.id, { onDelete: 'cascade' }),
+        productId: uuid('product_id')
+            .notNull()
+            .references(() => products.id, { onDelete: 'cascade' }),
+        createdAt: createdAt(),
+    },
+    (t) => [
+        primaryKey({ columns: [t.userId, t.productId] }),
+        index('favourites_user_id_created_at_idx').on(t.userId, t.createdAt),
+        index('favourites_product_id_idx').on(t.productId),
+    ],
+);
+
+export type Favourite = typeof favourites.$inferSelect;

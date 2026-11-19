@@ -11,7 +11,7 @@ import type {
     CatalogSitemap,
     CatalogSort,
 } from '@app/shared';
-import { colourOptionName, hasPublicPreview, optionInMaterial } from '@app/shared';
+import { colourOptionName, hasPublicPreview, optionInMaterial, ratingSummary } from '@app/shared';
 import { and, asc, count, desc, eq, gt, inArray, isNotNull, sql, type SQL } from 'drizzle-orm';
 import { alias } from 'drizzle-orm/pg-core';
 
@@ -61,25 +61,30 @@ const isPublished = eq(products.status, 'published');
 /** The lowest price the product is offered at (Postgres LEAST ignores NULLs). */
 const lowestPrice = sql`LEAST(${products.digitalPriceCents}, ${products.printBasePriceCents})`;
 
-const cardColumns = {
+/** What a product card needs, from `products` left-joined with `categories`. */
+export const cardColumns = {
     id: products.id,
     slug: products.slug,
     title: products.title,
     digitalPriceCents: products.digitalPriceCents,
     printBasePriceCents: products.printBasePriceCents,
     downloadCount: products.downloadCount,
+    ratingSum: products.ratingSum,
+    ratingCount: products.ratingCount,
     publishedAt: products.publishedAt,
     categorySlug: categories.slug,
     categoryName: categories.name,
 };
 
-type CardRow = {
+export type CardRow = {
     id: string;
     slug: string;
     title: string;
     digitalPriceCents: number | null;
     printBasePriceCents: number | null;
     downloadCount: number;
+    ratingSum: number;
+    ratingCount: number;
     publishedAt: Date | null;
     categorySlug: string | null;
     categoryName: string | null;
@@ -101,6 +106,33 @@ export async function coverImages(db: Database, productIds: string[]): Promise<M
         .where(inArray(productImages.productId, productIds))
         .orderBy(productImages.productId, asc(productImages.position), asc(productImages.id));
     return new Map(rows.map((row) => [row.productId, row]));
+}
+
+/** Product cards for published products' rows, with their cover images (one query for all of them). */
+export async function productCards(
+    db: Database,
+    storage: Storage | null,
+    rows: CardRow[],
+): Promise<CatalogProductCard[]> {
+    const covers = await coverImages(
+        db,
+        rows.map((row) => row.id),
+    );
+    return rows.map((row) => {
+        const cover = covers.get(row.id);
+        return {
+            slug: row.slug,
+            title: row.title,
+            category: row.categorySlug ? { slug: row.categorySlug, name: row.categoryName! } : null,
+            cover: cover ? catalogImage(storage, cover) : null,
+            digitalPriceCents: row.digitalPriceCents,
+            printBasePriceCents: row.printBasePriceCents,
+            downloadCount: row.downloadCount,
+            rating: ratingSummary(row.ratingSum, row.ratingCount),
+            // Published products always have publishedAt (database CHECK).
+            publishedAt: row.publishedAt!.toISOString(),
+        };
+    });
 }
 
 /**
@@ -177,7 +209,7 @@ export async function colourOptionsFor(
 
 export function createCatalogService(db: Database, storage: Storage | null): CatalogService {
     const image = (row: ProductImage) => catalogImage(storage, row);
-    const coversFor = (productIds: string[]) => coverImages(db, productIds);
+    const toCards = (rows: CardRow[]) => productCards(db, storage, rows);
 
     /** The active materials the product is printed in, in the shop's order. */
     function printOptionsOf(productId: string): Promise<CatalogPrintOption[]> {
@@ -192,24 +224,6 @@ export function createCatalogService(db: Database, storage: Storage | null): Cat
             .innerJoin(materials, eq(materials.id, productMaterials.materialId))
             .where(and(eq(productMaterials.productId, productId), eq(materials.active, true)))
             .orderBy(asc(materials.position), asc(materials.name));
-    }
-
-    async function toCards(rows: CardRow[]): Promise<CatalogProductCard[]> {
-        const covers = await coversFor(rows.map((row) => row.id));
-        return rows.map((row) => {
-            const cover = covers.get(row.id);
-            return {
-                slug: row.slug,
-                title: row.title,
-                category: row.categorySlug ? { slug: row.categorySlug, name: row.categoryName! } : null,
-                cover: cover ? image(cover) : null,
-                digitalPriceCents: row.digitalPriceCents,
-                printBasePriceCents: row.printBasePriceCents,
-                downloadCount: row.downloadCount,
-                // Published products always have publishedAt (database CHECK).
-                publishedAt: row.publishedAt!.toISOString(),
-            };
-        });
     }
 
     function selectCards(where: SQL | undefined, orderBy: SQL[], limit: number, offset = 0) {
@@ -389,6 +403,7 @@ export function createCatalogService(db: Database, storage: Storage | null): Cat
                         sizeBytes: file.sizeBytes,
                     })),
                 downloadCount: product.downloadCount,
+                rating: ratingSummary(product.ratingSum, product.ratingCount),
                 digitalPriceCents: product.digitalPriceCents,
                 printBasePriceCents: product.printBasePriceCents,
                 license: product.license,

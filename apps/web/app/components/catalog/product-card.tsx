@@ -1,7 +1,8 @@
 import type { CatalogProductCard } from '@app/shared';
-import { Box, Download } from 'lucide-react';
+import { Box, Download, Star } from 'lucide-react';
 import { Link } from 'react-router';
 
+import { formatRating } from '~/components/rating-stars';
 import { Badge } from '~/components/ui/badge';
 import { formatCount, offerLines } from '~/lib/format';
 
@@ -52,15 +53,30 @@ export function ProductCard({ product, eager = false }: ProductCardProps) {
                             </li>
                         ))}
                     </ul>
-                    {product.downloadCount > 0 && (
-                        <p className='flex items-center gap-1 text-xs text-muted-foreground'>
-                            <Download className='size-3.5' aria-hidden />
-                            <span>
-                                {formatCount(product.downloadCount)}
-                                <span className='sr-only'> downloads</span>
-                            </span>
-                        </p>
-                    )}
+                    <div className='flex items-center gap-3 text-xs text-muted-foreground'>
+                        {product.rating && (
+                            <p className='flex items-center gap-1'>
+                                <Star className='size-3.5 fill-current' aria-hidden />
+                                <span>
+                                    <span className='sr-only'>Rated </span>
+                                    <span className='font-medium text-foreground'>
+                                        {formatRating(product.rating.average)}
+                                    </span>
+                                    <span className='sr-only'> out of 5 from</span> ({formatCount(product.rating.count)}
+                                    <span className='sr-only'> reviews</span>)
+                                </span>
+                            </p>
+                        )}
+                        {product.downloadCount > 0 && (
+                            <p className='flex items-center gap-1'>
+                                <Download className='size-3.5' aria-hidden />
+                                <span>
+                                    {formatCount(product.downloadCount)}
+                                    <span className='sr-only'> downloads</span>
+                                </span>
+                            </p>
+                        )}
+                    </div>
                 </div>
             </div>
         </article>

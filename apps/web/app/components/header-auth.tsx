@@ -1,10 +1,10 @@
 import { Show, SignInButton, UserButton, useUser } from '@clerk/react-router';
-import { LayoutDashboard, Library, Package } from 'lucide-react';
+import { Heart, LayoutDashboard, Library, Package } from 'lucide-react';
 import { Link } from 'react-router';
 
 import { Button } from '~/components/ui/button';
 
-/** Sign-in button for visitors; orders, library, admin link and user menu for signed-in users. */
+/** Sign-in button for visitors; favourites, orders, library, admin link and user menu for signed-in users. */
 export function HeaderAuth() {
     return (
         <>
@@ -15,9 +15,15 @@ export function HeaderAuth() {
             </Show>
             <Show when='signed-in'>
                 <Button asChild variant='ghost' size='sm'>
+                    <Link to='/favourites'>
+                        <Heart aria-hidden />
+                        {/* Icons only on phones, where the header is narrow. */}
+                        <span className='sr-only sm:not-sr-only'>Favourites</span>
+                    </Link>
+                </Button>
+                <Button asChild variant='ghost' size='sm'>
                     <Link to='/orders'>
                         <Package aria-hidden />
-                        {/* Icons only on phones, where the header is narrow. */}
                         <span className='sr-only sm:not-sr-only'>Orders</span>
                     </Link>
                 </Button>

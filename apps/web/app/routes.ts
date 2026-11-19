@@ -15,6 +15,8 @@ export default [
     route('orders/:id', 'routes/order.tsx'),
     // What the signed-in visitor owns, to download again.
     route('library', 'routes/library.tsx'),
+    // The models the signed-in visitor saved with the heart.
+    route('favourites', 'routes/favourites.tsx'),
     route('terms', 'routes/terms.tsx'),
     route('privacy', 'routes/privacy.tsx'),
     ...prefix('admin', [
@@ -22,6 +24,7 @@ export default [
             index('routes/admin/overview.tsx'),
             route('orders', 'routes/admin/orders.tsx'),
             route('orders/:id', 'routes/admin/order.tsx'),
+            route('reviews', 'routes/admin/reviews.tsx'),
             route('categories', 'routes/admin/categories.tsx'),
             route('materials', 'routes/admin/materials.tsx'),
             route('products', 'routes/admin/products.tsx'),
