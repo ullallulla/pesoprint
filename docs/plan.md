@@ -1,6 +1,6 @@
 # Pesoprint – Rebuild Plan (working name)
 
-_Drafted 2026-11-09 from the [prototype review](./prototype-review.md) and the planning questions. M0–M4 are done and running on staging; M5 is next. The public launch moved to M6._
+_Drafted 2026-11-09 from the [prototype review](./prototype-review.md) and the planning questions. M0–M5 are done and running on staging; M6 (launch readiness) is next._
 
 ## 1. What we're building
 
@@ -250,7 +250,7 @@ Each milestone ends with: CI green, deployed to staging, and a short demo you co
 - Customer "My orders" page showing each order's status ✅ (`/orders`, linked from the header: paid orders newest first, a print's progress from ordered to delivered, and the carrier and tracking number once shipped. The order page shows the same. Tracking numbers aren't links yet: add each carrier's tracking link once carriers are decided, §9 #6.)
 - **Done when:** you can complete a test print order end to end, from checkout to "shipped", with the tracking number showing on the customer's "My orders" page
 
-### M5 – Reviews & favourites (built 2026-11-19; staging demo pending)
+### M5 – Reviews & favourites ✅ (2026-11-19)
 
 - Verified-buyer reviews (the rules in §3), with rating averages kept up to date ✅ (`PUT /api/me/reviews/:productId`, 403 for anyone who may not review. One review per person and model: 1–5 stars, text optional. The author can change or delete it on the product page. Shown publicly as first name + last initial ("Aino K."). A database trigger keeps `rating_sum`/`rating_count` right, also when an account is deleted. The average is on the product page and on cards.)
 - Admin can hide reviews ✅ (`/admin/reviews`: tabs for all, shown and hidden, plus search. A hidden review leaves the page and the rating. Its author still sees it, marked hidden, and editing doesn't show it again.)
