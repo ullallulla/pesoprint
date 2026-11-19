@@ -12,6 +12,8 @@ export function createDatabase(connectionString: string) {
 }
 
 export type Database = ReturnType<typeof createDatabase>['db'];
+/** The `tx` inside `db.transaction(async (tx) => …)`. */
+export type Transaction = Parameters<Parameters<Database['transaction']>[0]>[0];
 
 /** Returns true if the database answers a trivial query. */
 export async function pingDatabase(db: Database): Promise<boolean> {

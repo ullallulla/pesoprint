@@ -651,3 +651,47 @@ export const favourites = pgTable(
 );
 
 export type Favourite = typeof favourites.$inferSelect;
+
+/** The emails an order sends: the confirmation once it's paid, and a notice with tracking once its prints ship. */
+export const ORDER_EMAIL_KINDS = ['order_confirmation', 'order_shipped'] as const;
+export type OrderEmailKind = (typeof ORDER_EMAIL_KINDS)[number];
+
+/**
+ * An outbox of order emails. A row is added in the same transaction that marks the order paid or shipped,
+ * so an email is never forgotten and, being unique per order and kind, never queued twice. Sending happens
+ * afterwards: a failed send leaves the row for a later retry and never undoes the order's change.
+ */
+export const orderEmails = pgTable(
+    'order_emails',
+    {
+        id: id(),
+        orderId: uuid('order_id')
+            .notNull()
+            .references(() => orders.id, { onDelete: 'cascade' }),
+        kind: text('kind', { enum: ORDER_EMAIL_KINDS }).notNull(),
+        createdAt: createdAt(),
+        /** When a sender took it. Another sender leaves it alone until the claim is old (see `CLAIM_TIMEOUT`). */
+        claimedAt: timestamp('claimed_at', { withTimezone: true }),
+        /** How many times sending was tried. It's given up after `MAX_ATTEMPTS`. */
+        attempts: integer('attempts').notNull().default(0),
+        /** Why the last try failed, for support. */
+        lastError: text('last_error'),
+        /** The email provider's id for the sent email. */
+        providerId: text('provider_id'),
+        sentAt: timestamp('sent_at', { withTimezone: true }),
+    },
+    (t) => [
+        unique('order_emails_order_id_kind_unique').on(t.orderId, t.kind),
+        check(
+            'order_emails_kind_valid',
+            sql`${t.kind} IN (${sql.raw(ORDER_EMAIL_KINDS.map((kind) => `'${kind}'`).join(', '))})`,
+        ),
+        check('order_emails_attempts_non_negative', sql`${t.attempts} >= 0`),
+        // The sender's work: emails not sent yet.
+        index('order_emails_unsent_idx')
+            .on(t.createdAt)
+            .where(sql`${t.sentAt} IS NULL`),
+    ],
+);
+
+export type OrderEmail = typeof orderEmails.$inferSelect;

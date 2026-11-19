@@ -19,6 +19,7 @@ import type { CheckoutState, Payments } from '../integrations/stripe.ts';
 import type { AuthContext } from '../lib/auth.ts';
 import { AppError, conflict, invalidField, notFound } from '../lib/errors.ts';
 import type { CartService } from './cart.ts';
+import { queueOrderEmail } from './order-emails.ts';
 
 export interface OrdersService {
     /**
@@ -40,6 +41,8 @@ export interface OrdersOptions {
     /** The web app's address, where Stripe sends the buyer back. No trailing slash. */
     siteUrl: string;
     now?: () => Date;
+    /** Called once an email was queued for an order (it's paid), to send it right away. Mustn't throw. */
+    onEmailQueued?: (orderId: string) => void;
 }
 
 /** How long the buyer has on Stripe's page before the order is cancelled. Stripe allows 30 min to 24 h. */
@@ -68,7 +71,7 @@ export function createOrdersService(
     db: Database,
     cart: CartService,
     payments: Payments | null,
-    { siteUrl, now = () => new Date() }: OrdersOptions,
+    { siteUrl, now = () => new Date(), onEmailQueued }: OrdersOptions,
 ): OrdersService {
     /**
      * The one place an order changes because of a payment. Safe to run any number of times and at the same
@@ -89,7 +92,7 @@ export function createOrdersService(
                 // Stripe requires an address before paying, so this shouldn't happen; the order is still paid.
                 console.error(`Order ${order.id} has prints, but Stripe session ${state.id} has no shipping address.`);
             }
-            await db.transaction(async (tx) => {
+            const madePaid = await db.transaction(async (tx) => {
                 const [paid] = await tx
                     .update(orders)
                     .set({
@@ -102,19 +105,24 @@ export function createOrdersService(
                     })
                     .where(and(eq(orders.id, order.id), eq(orders.status, 'pending')))
                     .returning({ userId: orders.userId });
-                // Already paid by an earlier call, or the buyer's account is gone.
-                if (!paid?.userId) return;
+                // Already paid by an earlier call.
+                if (!paid) return false;
+                await queueOrderEmail(tx, order.id, 'order_confirmation');
+                // The buyer's account is gone: nobody to grant the files to.
+                if (!paid.userId) return true;
                 const bought = await tx
                     .select({ productId: orderItems.productId })
                     .from(orderItems)
                     .where(and(eq(orderItems.orderId, order.id), eq(orderItems.type, 'digital')));
-                if (bought.length === 0) return;
+                if (bought.length === 0) return true;
                 await tx
                     .insert(entitlements)
                     .values(bought.map(({ productId }) => ({ userId: paid.userId!, productId, orderId: order.id })))
                     // Owned already (e.g. two orders paid at once): the first purchase stays the record.
                     .onConflictDoNothing();
+                return true;
             });
+            if (madePaid) onEmailQueued?.(order.id);
         } else if (state.failed || state.status === 'expired') {
             await db
                 .update(orders)

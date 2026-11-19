@@ -59,6 +59,17 @@ const envSchema = z
             .string()
             .startsWith('whsec_', 'STRIPE_WEBHOOK_SECRET must start with whsec_')
             .optional(),
+        /**
+         * Resend API key (`re_…`, "Sending access") for order emails. Without it, emails are printed to the console
+         * in development, and in production they wait in the outbox until it's set.
+         */
+        RESEND_API_KEY: z.string().startsWith('re_', 'RESEND_API_KEY must start with re_').optional(),
+        /** Who order emails are from. Its domain must be verified in Resend. */
+        EMAIL_FROM: z.string().min(3).default('Pesoprint <orders@pesoprint.allulab.eu>'),
+        /** Where replies to order emails go, e.g. a support inbox. Without it, replies go to EMAIL_FROM. */
+        EMAIL_REPLY_TO: z.email().optional(),
+        /** Put before every email subject, e.g. `[Staging] `, so emails from test environments stand out. */
+        EMAIL_SUBJECT_PREFIX: z.string().default(''),
         /** e.g. `https://<account id>.r2.cloudflarestorage.com`. */
         S3_ENDPOINT: z.url().optional(),
         /** `auto` for R2. */

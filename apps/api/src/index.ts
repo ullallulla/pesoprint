@@ -5,6 +5,7 @@ import packageJson from '../package.json' with { type: 'json' };
 import { createApp } from './app.ts';
 import { createDatabase, pingDatabase } from './db/client.ts';
 import { loadEnv } from './env.ts';
+import { createConsoleMailer, createResendMailer } from './integrations/email.ts';
 import { createStorageFromEnv } from './integrations/s3.ts';
 import { createStripePayments } from './integrations/stripe.ts';
 import { createClerkTokenVerifier } from './lib/auth.ts';
@@ -18,6 +19,7 @@ import { createDownloadsService } from './services/downloads.ts';
 import { createFavouritesService } from './services/favourites.ts';
 import { createLibraryService } from './services/library.ts';
 import { createMaterialsService } from './services/materials.ts';
+import { createOrderEmailsService } from './services/order-emails.ts';
 import { createOrdersService } from './services/orders.ts';
 import { createProductMediaService } from './services/product-media.ts';
 import { createProductsService } from './services/products.ts';
@@ -47,9 +49,27 @@ if (!payments) {
 } else if (!payments.verifyWebhook) {
     console.warn('STRIPE_WEBHOOK_SECRET is not set: POST /api/webhooks/stripe will answer 503.');
 }
+// Stripe sends buyers back to the web app, and emails link to it: the first of its origins.
+const siteUrl = env.WEB_ORIGINS[0]!;
+
+const mailer = env.RESEND_API_KEY
+    ? createResendMailer({ apiKey: env.RESEND_API_KEY, from: env.EMAIL_FROM, replyTo: env.EMAIL_REPLY_TO })
+    : env.NODE_ENV === 'production'
+      ? null
+      : createConsoleMailer();
+if (!env.RESEND_API_KEY) {
+    console.warn(
+        mailer
+            ? 'RESEND_API_KEY is not set: order emails are printed here instead of sent.'
+            : 'RESEND_API_KEY is not set: order emails are queued, and sent once it is.',
+    );
+}
+const orderEmails = createOrderEmailsService(db, mailer, { siteUrl, subjectPrefix: env.EMAIL_SUBJECT_PREFIX });
+// Send an order's email right after the change that queued it, without making the request wait for it.
+const sendEmailsOf = (orderId: string) => void orderEmails.deliver(orderId);
+
 const cart = createCartService(db, storage);
-// Stripe sends buyers back to the web app: the first of its origins.
-const orders = createOrdersService(db, cart, payments, { siteUrl: env.WEB_ORIGINS[0]! });
+const orders = createOrdersService(db, cart, payments, { siteUrl, onEmailQueued: sendEmailsOf });
 
 const app = createApp({
     checkDatabase: () => pingDatabase(db),
@@ -66,7 +86,7 @@ const app = createApp({
     catalog: createCatalogService(db, storage),
     cart,
     orders,
-    adminOrders: createAdminOrdersService(db),
+    adminOrders: createAdminOrdersService(db, { onEmailQueued: sendEmailsOf }),
     library: createLibraryService(db, storage),
     favourites: createFavouritesService(db, storage),
     reviews: createReviewsService(db),
@@ -94,6 +114,10 @@ async function forgetOldIpHashes() {
 }
 void forgetOldIpHashes();
 setInterval(() => void forgetOldIpHashes(), 24 * 60 * 60 * 1000).unref();
+
+// Retry order emails that failed (or were queued while no mailer was set up), at startup and then every 5 minutes.
+void orderEmails.deliver();
+setInterval(() => void orderEmails.deliver(), 5 * 60 * 1000).unref();
 
 function shutdown(signal: string) {
     console.log(`${signal} received, shutting down...`);

@@ -14,6 +14,7 @@ import type { Database } from '../db/client.ts';
 import { orderItems, orders, type Order } from '../db/schema.ts';
 import { conflict, notFound } from '../lib/errors.ts';
 import { escapeLike } from '../lib/like.ts';
+import { queueOrderEmail } from './order-emails.ts';
 
 export interface AdminOrdersService {
     /** One page of orders with prints, filtered by status and text. */
@@ -30,6 +31,8 @@ export interface AdminOrdersService {
 
 export interface AdminOrdersOptions {
     now?: () => Date;
+    /** Called once an email was queued for an order (its prints shipped), to send it right away. Mustn't throw. */
+    onEmailQueued?: (orderId: string) => void;
 }
 
 const STATUS_NAMES: Record<OrderStatus, string> = {
@@ -44,7 +47,10 @@ const STATUS_NAMES: Record<OrderStatus, string> = {
 
 const hasPrints = isNotNull(orders.parcelSize);
 
-export function createAdminOrdersService(db: Database, { now = () => new Date() }: AdminOrdersOptions = {}) {
+export function createAdminOrdersService(
+    db: Database,
+    { now = () => new Date(), onEmailQueued }: AdminOrdersOptions = {},
+) {
     async function withItems(rows: Order[]): Promise<AdminOrder[]> {
         if (rows.length === 0) return [];
         const items = await db
@@ -150,25 +156,32 @@ export function createAdminOrdersService(db: Database, { now = () => new Date() 
             }
 
             const at = now();
-            const [updated] = await db
-                .update(orders)
-                .set(
-                    change.status === 'shipped'
-                        ? {
-                              status: 'shipped',
-                              carrier: change.carrier,
-                              trackingNumber: change.trackingNumber,
-                              // A correction keeps the day it was shipped.
-                              shippedAt: order.shippedAt ?? at,
-                          }
-                        : change.status === 'delivered'
-                          ? { status: 'delivered', deliveredAt: at }
-                          : { status: change.status },
-                )
-                // Only from the status it was read in: two admins (or two clicks) can't both move it.
-                .where(and(eq(orders.id, orderId), eq(orders.status, order.status)))
-                .returning({ id: orders.id });
+            const shipping = change.status === 'shipped' && order.status !== 'shipped';
+            const updated = await db.transaction(async (tx) => {
+                const [row] = await tx
+                    .update(orders)
+                    .set(
+                        change.status === 'shipped'
+                            ? {
+                                  status: 'shipped',
+                                  carrier: change.carrier,
+                                  trackingNumber: change.trackingNumber,
+                                  // A correction keeps the day it was shipped.
+                                  shippedAt: order.shippedAt ?? at,
+                              }
+                            : change.status === 'delivered'
+                              ? { status: 'delivered', deliveredAt: at }
+                              : { status: change.status },
+                    )
+                    // Only from the status it was read in: two admins (or two clicks) can't both move it.
+                    .where(and(eq(orders.id, orderId), eq(orders.status, order.status)))
+                    .returning({ id: orders.id });
+                // Not when a tracking number is corrected: the buyer already has the email.
+                if (row && shipping) await queueOrderEmail(tx, orderId, 'order_shipped');
+                return row;
+            });
             if (!updated) throw conflict('The order changed in the meantime. Reload it and try again.');
+            if (shipping) onEmailQueued?.(orderId);
             return service.get(orderId);
         },
     };

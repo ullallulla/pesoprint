@@ -78,6 +78,13 @@
       "when": 1795097473223,
       "tag": "0010_reviews_and_favourites",
       "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "7",
+      "when": 1795103785962,
+      "tag": "0011_order_emails",
+      "breakpoints": true
     }
   ]
 }
