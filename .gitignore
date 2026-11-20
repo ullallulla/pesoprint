@@ -35,3 +35,8 @@ dist-ssr
 # Seed models and images: may be paid or third-party files, so never committed (see the README inside)
 apps/api/seed-assets/*
 !apps/api/seed-assets/README.md
+
+# Draft production plans and their review, superseded by docs/production-environment3.md
+docs/production-environment1.md
+docs/production-environment2.md
+docs/environment-review.md
