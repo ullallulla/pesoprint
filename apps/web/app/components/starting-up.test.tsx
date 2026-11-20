@@ -30,6 +30,11 @@ test('a page whose API is still starting up says so, and loads by itself', () =>
     expect(html).not.toContain('Something went wrong');
 });
 
+test("the starting-up page also works where there's no API to wake from the browser", () => {
+    const html = renderRootError(503, { reason: API_UNAVAILABLE });
+    expect(html).toContain('The site is starting up');
+});
+
 test('any other 503 is still an error', () => {
     const html = renderRootError(503, 'Maintenance');
     expect(html).not.toContain('The site is starting up');

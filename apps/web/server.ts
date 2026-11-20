@@ -31,13 +31,33 @@ app.use(express.static('build/client', { maxAge: '1h' }));
 app.get('/healthz', (_request, response) => {
     response.type('text/plain').send('ok');
 });
+// For an uptime monitor: is the whole shop up? Asks the API's health check, which also checks the database.
+// Answers 503 when anything behind this server is down, without saying what (the monitor's alert is enough).
+// The header lets the monitor tell this answer apart from a page the proxy or a login gate answers with.
+const apiHealthUrl = new URL('/api/health', process.env.API_URL ?? 'http://localhost:3001');
+app.get('/readyz', async (_request, response) => {
+    const ready = await fetch(apiHealthUrl, { signal: AbortSignal.timeout(3000) }).then(
+        (apiResponse) => {
+            // Only the status matters; drop the body so the connection is freed now.
+            void apiResponse.body?.cancel();
+            return apiResponse.ok;
+        },
+        () => false,
+    );
+    response.set('Cache-Control', 'no-store');
+    if (ready) {
+        response.set('X-Pesoprint-Ready', '1').type('text/plain').send('ok');
+    } else {
+        response.status(503).type('text/plain').send('unavailable');
+    }
+});
 app.use(morgan('tiny'));
 app.all('/{*splat}', createRequestHandler({ build, mode: process.env.NODE_ENV }));
 
 // A host that puts idle services to sleep wakes this server on the first visit; wake the API at the same
 // time, so it's ready sooner. Nothing depends on the answer.
 if (process.env.API_URL) {
-    fetch(new URL('/api/health', process.env.API_URL), { signal: AbortSignal.timeout(120_000) }).catch(() => {});
+    fetch(apiHealthUrl, { signal: AbortSignal.timeout(120_000) }).catch(() => {});
 }
 
 const port = Number(process.env.PORT ?? 3000);

@@ -20,9 +20,10 @@ function wakeApi(url: string) {
 
 /**
  * Shown when the API can't be reached: on a free host it sleeps when nobody visits, and the first visit
- * wakes it. Tries the page again by itself, and shows the page as soon as the API answers.
+ * wakes it (through `wakeUrl`, where the host needs that); elsewhere it's being deployed or is down for a
+ * moment. Tries the page again by itself, and shows the page as soon as the API answers.
  */
-export function StartingUp({ wakeUrl }: { wakeUrl: string }) {
+export function StartingUp({ wakeUrl }: { wakeUrl?: string }) {
     const { revalidate, state } = useRevalidator();
     const [attempts, setAttempts] = useState(0);
     const givenUp = attempts >= MAX_ATTEMPTS;
@@ -30,7 +31,7 @@ export function StartingUp({ wakeUrl }: { wakeUrl: string }) {
     useEffect(() => {
         if (givenUp || state !== 'idle') return;
         // Each attempt also wakes the API, in case an earlier request didn't get through.
-        wakeApi(wakeUrl);
+        if (wakeUrl) wakeApi(wakeUrl);
         const timer = setTimeout(() => {
             setAttempts((count) => count + 1);
             void revalidate();

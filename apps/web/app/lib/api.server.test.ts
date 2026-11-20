@@ -5,6 +5,9 @@ import { API_UNAVAILABLE } from './api-unavailable';
 import { apiFetch, ApiRequestError } from './api.server';
 
 const baseUrl = 'http://api.test';
+// The API's public address, which is not the one the web server uses.
+const WAKE_URL = 'https://api.public.test/api/health';
+vi.stubEnv('API_WAKE_URL', WAKE_URL);
 const healthy = { status: 'ok', database: 'up', version: '0.0.0', uptimeSeconds: 3 };
 
 function mockFetch(status: number, body: unknown) {
@@ -21,7 +24,7 @@ afterEach(() => {
 describe('apiFetch', () => {
     /** What apiFetch throws when the API can't be reached: a 503 response for the page. */
     const UNAVAILABLE = {
-        data: { reason: API_UNAVAILABLE, wakeUrl: 'http://api.test/api/health' },
+        data: { reason: API_UNAVAILABLE, wakeUrl: WAKE_URL },
         init: { status: 503, headers: { 'Retry-After': '10' } },
     };
     const thrownBy = (request: Promise<unknown>) =>

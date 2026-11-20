@@ -38,9 +38,10 @@ const GATEWAY_STATUSES = [502, 503, 504];
  * again. It's thrown as a response rather than an ApiRequestError so that it reaches the boundary as it is,
  * past every caller's handling of the API's own errors.
  */
-function apiUnavailable(reason: string, apiUrl: URL): never {
+function apiUnavailable(reason: string): never {
     console.warn(`API unavailable: ${reason}`);
-    const body: ApiUnavailable = { reason: API_UNAVAILABLE, wakeUrl: new URL('/api/health', apiUrl).href };
+    const { API_WAKE_URL } = getEnv();
+    const body: ApiUnavailable = { reason: API_UNAVAILABLE, ...(API_WAKE_URL && { wakeUrl: API_WAKE_URL }) };
     throw data(body, {
         status: 503,
         headers: { 'Retry-After': String(API_UNAVAILABLE_RETRY_SECONDS) },
@@ -73,11 +74,11 @@ export async function apiFetch<TSchema extends z.ZodType>(
     } catch (error) {
         // The caller's own signal (e.g. the visitor left the page) is not the API's fault.
         if (init.signal?.aborted) throw error;
-        if (timeout.aborted) apiUnavailable(`no answer within ${API_TIMEOUT_MS / 1000} s: ${url.pathname}`, url);
+        if (timeout.aborted) apiUnavailable(`no answer within ${API_TIMEOUT_MS / 1000} s: ${url.pathname}`);
         // fetch fails with a TypeError when it can't connect; the cause says why (e.g. ECONNREFUSED).
         if (error instanceof TypeError) {
             const cause = error.cause instanceof Error ? error.cause.message : error.message;
-            apiUnavailable(`${cause}: ${url.pathname}`, url);
+            apiUnavailable(`${cause}: ${url.pathname}`);
         }
         throw error;
     }
@@ -89,7 +90,7 @@ export async function apiFetch<TSchema extends z.ZodType>(
         const apiError = parsedError.success ? parsedError.data.error : undefined;
         // Our API always explains its errors. A gateway status without that came from the proxy instead.
         if (!apiError && GATEWAY_STATUSES.includes(response.status)) {
-            apiUnavailable(`${response.status} from ${url.pathname}`, url);
+            apiUnavailable(`${response.status} from ${url.pathname}`);
         }
         throw new ApiRequestError(
             apiError?.message ?? `API request failed: ${response.status} ${url.pathname}`,

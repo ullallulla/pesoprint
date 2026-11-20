@@ -13,10 +13,11 @@ export const API_UNAVAILABLE_RETRY_SECONDS = 10;
 export interface ApiUnavailable {
     reason: typeof API_UNAVAILABLE;
     /**
-     * The API's health check, for the visitor's browser to call. On Render's free plan, requests from the
-     * web server don't wake a sleeping API (they get an instant 502), but a request from outside Render does.
+     * The API's public health check, for the visitor's browser to call (API_WAKE_URL). On Render's free plan,
+     * requests from the web server don't wake a sleeping API (they get an instant 502), but a request from
+     * outside Render does. Absent where the API isn't public or never sleeps.
      */
-    wakeUrl: string;
+    wakeUrl?: string;
 }
 
 export const isApiUnavailable = (error: unknown): error is ErrorResponse & { data: ApiUnavailable } =>

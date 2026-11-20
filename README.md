@@ -171,7 +171,13 @@ docker run -p 3000:3000 -e API_URL=http://<api-host>:3001 \
 
 On hosts that start a container with a single command and have no pre-deploy step (e.g. Render's free plan), use
 `node dist/start.mjs` as the API's command: it applies pending migrations, then starts the server. Run only one API
-instance that way.
+instance that way. If the host puts an idle API to sleep and only wakes it for requests from outside (Render's free
+plan), set `API_WAKE_URL` on the web service to the API's public `/api/health` URL: the "starting up" page then asks
+the visitor's browser to wake it.
+
+The web server answers `/healthz` (the server itself is running, for the container's health check) and `/readyz`
+(the API and its database answer too, for an uptime monitor: `200 ok` with an `X-Pesoprint-Ready: 1` header, otherwise
+`503`).
 
 ## CI
 

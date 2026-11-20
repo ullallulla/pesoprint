@@ -5,6 +5,12 @@ import { z } from 'zod';
 const envSchema = z.object({
     /** Base URL the web server uses to reach the API, e.g. http://localhost:3001 */
     API_URL: z.url().default('http://localhost:3001'),
+    /**
+     * The API's public health check URL, for the visitor's browser to call on the "starting up" page. Only
+     * for hosts that put an idle API to sleep and wake it only for requests from outside (Render's free plan):
+     * e.g. https://pesoprint-api.onrender.com/api/health. Leave unset where the API is always running.
+     */
+    API_WAKE_URL: z.url().optional(),
     /** Public address of the site, used for canonical URLs, Open Graph tags and the sitemap. No trailing slash. */
     SITE_URL: z
         .url()
