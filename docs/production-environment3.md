@@ -1,6 +1,6 @@
 # Pesoprint – Production environment plan (M6), version 3
 
-_Drafted 2026-11-19 from [production-environment1.md](./production-environment1.md), [production-environment2.md](./production-environment2.md) and their [review](./environment-review.md). Plan 1 is the base. The changes come from the review, plus one more goal: the same stack must run on the homelab, a VPS or a cloud VM. Covers the "Own domain. Production environment …", "Sentry, uptime monitoring, database backups" and "Production deploy" items of M6 in [plan.md](./plan.md). Nothing here is built yet._
+_Drafted 2026-11-19 from [production-environment1.md](./production-environment1.md), [production-environment2.md](./production-environment2.md) and their [review](./environment-review.md). Plan 1 is the base. The changes come from the review, plus one more goal: the same stack must run on the homelab, a VPS or a cloud VM. Covers the "Own domain. Production environment …", "Sentry, uptime monitoring, database backups" and "Production deploy" items of M6 in [plan.md](./plan.md). Built so far: code steps 1–4 of §13 (the stack is in [`deploy/`](../deploy/))._
 
 ## 1. Summary of the decisions
 
@@ -57,7 +57,7 @@ Browser ──► R2 directly: presigned uploads (admin), signed download links,
 | Host                                         | Profiles                                       | In front of Caddy                                                                                              |
 | -------------------------------------------- | ---------------------------------------------- | -------------------------------------------------------------------------------------------------------------- |
 | Homelab VM                                   | `tunnel`, `postgres`, `backup`, `files-backup` | Cloudflare Tunnel                                                                                              |
-| VPS (e.g. Hetzner)                           | the same, or `tls` instead of `tunnel`         | Tunnel, or Cloudflare proxy → Caddy on 443 (Origin certificate, provider firewall open to Cloudflare IPs only) |
+| VPS (e.g. Hetzner)                           | the same, or tls mode instead of `tunnel`      | Tunnel, or Cloudflare proxy → Caddy on 443 (Origin certificate, provider firewall open to Cloudflare IPs only) |
 | Cloud VM (EC2, GCE, Azure)                   | the same; `postgres` off for a managed DB      | Tunnel, or the provider's load balancer → Caddy :80                                                            |
 | Managed containers (Cloud Run, App Runner …) | not this compose file                          | The platform's ingress. Run the same images, keep the Caddy rules as the platform's routing. Not planned       |
 
@@ -106,12 +106,14 @@ The wrapper reads the SHA from `$SSH_ORIGINAL_COMMAND`, accepts exactly 40 lower
 | File                      | What it is                                                                                                                                                                                                                 |
 | ------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `docker-compose.prod.yml` | Services `caddy`, `web`, `api`, and the profiled `cloudflared` (`tunnel`), `postgres`, `backup`, `files-backup`. Images pinned by `${IMAGE_TAG}`. Restart `unless-stopped`, health checks, **log limits on every service** |
+| `docker-compose.tls.yml`  | tls mode: publishes 443 and mounts the Origin certificate. Turned on with `COMPOSE_FILE` in the host's `.env` (a profile can't add ports to a service)                                                                     |
 | `Caddyfile`               | The routing and header rules (§5.1). Listens on `:80` behind a tunnel or load balancer, on `:443` with the Origin certificate in `tls` mode                                                                                |
 | `env/*.example`           | One env file per service (`api.env`, `web.env`, `postgres.env`, `backup.env`, `files-backup.env`, `cloudflared.env`), placeholders only. The web container never sees database or R2 credentials                           |
-| `.env.example`            | Host settings: `COMPOSE_PROFILES`, `IMAGE_TAG`, `TRUSTED_PROXIES`, `CADDY_LISTEN`                                                                                                                                          |
+| `.env.example`            | Host settings: `COMPOSE_PROFILES`, `COMPOSE_FILE` (tunnel or tls mode), `TRUSTED_PROXIES`, host names, image repository. Not the image tag: `bin/compose` takes it from the release                                        |
 | `bin/deploy-wrapper`      | The small, stable entry point for SSH (§7.3). Changes rarely and is installed by hand                                                                                                                                      |
+| `bin/compose`             | `docker compose` for one release: runs in `releases/<sha>/` with the host's `.env`, the `env/` files and `IMAGE_TAG=sha-<sha>`. For anything by hand: `/opt/pesoprint/current/bin/compose ps`                              |
 | `deploy.sh`               | The deploy steps, downloaded per release (§7.3)                                                                                                                                                                            |
-| `backup/`, `restore.sh`   | The backup jobs and the restore script (§8)                                                                                                                                                                                |
+| `backup/`, `restore.sh`   | The backup jobs and the restore script (§8). `backup/` is a small image (`postgres:18-alpine` + `age` + `rclone`) built on the host, not published                                                                         |
 
 Every service gets:
 
@@ -240,9 +242,9 @@ Seed: **never** in production.
 **Nightly** (the `backup` service, 03:00 Europe/Helsinki):
 
 1. `pg_dump --format=custom` with a Postgres 18 client.
-2. A **manifest** next to it: row counts of `users`, `products`, `product_files`, `orders`, `order_items`, `entitlements`, `reviews`; the latest applied migration; the `pg_dump` version.
+2. A **manifest** next to it, made from the dump itself (so it always matches): row counts of `users`, `products`, `product_files`, `orders`, `order_items`, `entitlements`, `reviews`; the latest applied migration; the `pg_dump` version.
 3. Encrypt both with **`age`** to a public key. The private key is **never on the VM**: password manager plus one offline copy.
-4. Upload to **`pesoprint-prod-backups`** as `daily/YYYY-MM-DD.*`; pre-deploy dumps under `pre-deploy/`.
+4. Upload to **`pesoprint-prod-backups`** as `daily/<UTC time>.dump.age` and `.manifest.txt.age` (a new name each time: the bucket lock forbids overwrites); pre-deploy dumps as `pre-deploy/<UTC time>-<sha>.*`.
 5. Ping the heartbeat URL on success.
 
 **Retention:** lifecycle rules delete `daily/` after 35 days and `pre-deploy/` after 14. A **bucket lock** of 14 days on the whole bucket, so a compromised VM can't delete recent backups (its token could otherwise).

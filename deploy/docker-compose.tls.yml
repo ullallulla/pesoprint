@@ -1,0 +1,17 @@
+# tls mode: Caddy ends TLS itself on 443 with the Cloudflare Origin certificate, behind Cloudflare's proxy (a VPS
+# without a tunnel, docs/production-environment3.md §2.1). Turn it on in the host's .env:
+#   COMPOSE_FILE=docker-compose.prod.yml:docker-compose.tls.yml
+#   TRUSTED_PROXIES=<Cloudflare's IP ranges>
+# and leave "tunnel" out of COMPOSE_PROFILES. The host's firewall must let in only Cloudflare's ranges, because
+# Docker's published ports bypass ufw.
+#
+# The certificate and key go in env/certs/origin.pem and env/certs/origin.key.
+
+services:
+    caddy:
+        environment:
+            CADDY_LISTEN: '443'
+        ports:
+            - '443:443'
+        volumes:
+            - ${ENV_DIR:-./env}/certs:/etc/caddy/certs:ro

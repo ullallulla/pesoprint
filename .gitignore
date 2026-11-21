@@ -40,3 +40,7 @@ apps/api/seed-assets/*
 docs/production-environment1.md
 docs/production-environment2.md
 docs/environment-review.md
+
+# Real production settings for a local test of deploy/; only the examples are committed
+deploy/env/*
+!deploy/env/*.example

@@ -1,0 +1,86 @@
+# The stack's one router, the same on every host (docs/production-environment3.md §5.1).
+#
+# - The shop host goes to the web server.
+# - The hooks host lets through only the Stripe and Clerk webhooks; everything else answers 404.
+# - Any other host answers 404.
+#
+# CADDY_LISTEN is 80 behind a tunnel or load balancer, and 443 in tls mode (docker-compose.tls.yml), where Caddy
+# ends TLS itself with the Cloudflare Origin certificate.
+{
+	# Nothing reloads Caddy at runtime: a new Caddyfile comes with a new release, which recreates the container.
+	admin off
+	# No certificates from Let's Encrypt and no HTTP→HTTPS redirects: Cloudflare does both in front of Caddy.
+	auto_https off
+
+	servers {
+		# Who may tell Caddy the visitor's IP and scheme: private_ranges when only cloudflared or a load balancer
+		# can reach Caddy, Cloudflare's published IP ranges in tls mode.
+		trusted_proxies static {$TRUSTED_PROXIES:private_ranges}
+		trusted_proxies_strict
+		# Cloudflare sets CF-Connecting-IP to the visitor's address. A load balancer appends to X-Forwarded-For.
+		client_ip_headers CF-Connecting-IP X-Forwarded-For
+	}
+}
+
+# TLS settings per listening port: none behind a tunnel, the Origin certificate in tls mode.
+(tls-80) {
+}
+
+(tls-443) {
+	tls /etc/caddy/certs/origin.pem /etc/caddy/certs/origin.key
+}
+
+# The app takes the visitor's IP from the last X-Forwarded-For entry (apps/api/src/lib/client-ip.ts,
+# apps/web/app/lib/downloads.server.ts), so send exactly one: the client IP Caddy worked out above.
+# X-Forwarded-Proto is passed on from trusted proxies (the tunnel sends https) and is https when Caddy ends TLS.
+(to-app) {
+	header_up X-Forwarded-For {client_ip}
+}
+
+{$SITE_HOST:pesoprint.allulab.eu}:{$CADDY_LISTEN:80} {
+	import tls-{$CADDY_LISTEN:80}
+
+	reverse_proxy web:3000 {
+		import to-app
+	}
+}
+
+{$HOOKS_HOST:pesoprint-hooks.allulab.eu}:{$CADDY_LISTEN:80} {
+	import tls-{$CADDY_LISTEN:80}
+
+	# Webhook signatures cover the exact bytes of the body, so it's passed on untouched.
+	@webhooks {
+		method POST
+		path /api/webhooks/stripe /api/webhooks/clerk
+	}
+	handle @webhooks {
+		request_body {
+			max_size 1MB
+		}
+		reverse_proxy api:3001 {
+			import to-app
+		}
+	}
+	handle {
+		respond 404
+	}
+}
+
+# Any other host name.
+http:// {
+	respond 404
+}
+
+# Inside the stack only (no port is published): Caddy's own health check, and the deploy's check of the whole
+# chain Caddy → web → API → database, the same in tunnel and tls mode.
+:8080 {
+	handle /caddy-health {
+		respond "ok"
+	}
+	handle /readyz {
+		reverse_proxy web:3000
+	}
+	handle {
+		respond 404
+	}
+}
