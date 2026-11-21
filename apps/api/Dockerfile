@@ -34,7 +34,8 @@ RUN vp install --frozen-lockfile --ignore-scripts --prod --filter "@app/api"
 
 # --- runtime: slim Debian + Node.js + the bundle ---
 FROM debian:trixie-slim AS runtime
-ENV NODE_ENV=production PORT=3001
+# Source maps make stack traces (in the log and in Sentry) point at the TypeScript source, not the bundle.
+ENV NODE_ENV=production PORT=3001 NODE_OPTIONS=--enable-source-maps
 # The official Node.js binary links against libatomic, which slim Debian doesn't include.
 RUN apt-get update \
     && apt-get install -y --no-install-recommends libatomic1 \

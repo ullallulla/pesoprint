@@ -14,6 +14,10 @@ When you visit a page, our hosting provider receives the technical details every
 
 Images and 3D previews are served from our file storage at Cloudflare, which also sees your IP address when your browser loads them.
 
+### Error reports
+
+When something goes wrong on the site, on our servers or in your browser, an error report is sent to Sentry so we can find and fix the problem. A report contains the error, where in our code it happened, the address of the page, the time, and your type of browser and operating system. We've set Sentry not to collect your IP address, cookies, what you typed or anything else that identifies you, and to remove email addresses from reports. The legal basis is our legitimate interest in keeping the site working (GDPR Article 6(1)(f)). Sentry deletes reports after at most 90 days. We use Sentry's EU servers in Germany.
+
 ### Downloading a model
 
 When you download a file, we record which model and file it was, when, and your account if you are signed in. We don't store your IP address. We store a one-way code made from it, mixed with a secret key and the date, so we can enforce the download limit (30 downloads an hour) without knowing who you are. The code changes every day and can't be turned back into your IP address. We erase it after 7 days.
@@ -65,6 +69,7 @@ We use these service providers, who process data only on our instructions:
 - **Clerk** (accounts and sign-in), Clerk, Inc., USA
 - **Stripe** (payments), Stripe Payments Europe, Ltd., Ireland
 - **PostHog** (statistics, only with consent), PostHog, Inc., USA. Data is stored in the EU (Frankfurt).
+- **Sentry** (error reports), Functional Software, Inc., USA. Data is stored in the EU (Germany).
 
 Some of them are US companies and may process data in the United States. Those transfers rely on the EU–US Data Privacy Framework or the European Commission's standard contractual clauses. We don't sell your data, and we don't share it with advertisers.
 

@@ -18,6 +18,7 @@
         "@react-router/node": "^8.5.1",
         "@react-three/drei": "catalog:",
         "@react-three/fiber": "catalog:",
+        "@sentry/react-router": "catalog:",
         "class-variance-authority": "catalog:",
         "cn": "catalog:",
         "compression": "catalog:",

@@ -70,6 +70,13 @@ const envSchema = z
         EMAIL_REPLY_TO: z.email().optional(),
         /** Put before every email subject, e.g. `[Staging] `, so emails from test environments stand out. */
         EMAIL_SUBJECT_PREFIX: z.string().default(''),
+        /**
+         * Where errors are reported: the DSN of the Sentry project `pesoprint-api` (Project settings → Client Keys).
+         * Without it, nothing is sent to Sentry.
+         */
+        SENTRY_DSN: z.url().optional(),
+        /** Which environment errors come from in Sentry, e.g. `production` or `staging`. Defaults to NODE_ENV. */
+        SENTRY_ENVIRONMENT: z.string().min(1).optional(),
         /** e.g. `https://<account id>.r2.cloudflarestorage.com`. */
         S3_ENDPOINT: z.url().optional(),
         /** `auto` for R2. */

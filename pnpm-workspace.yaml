@@ -19,6 +19,8 @@ catalog:
     '@react-router/express': ^8.5.1
     '@react-three/drei': ^10.7.9
     '@react-three/fiber': ^9.8.2
+    '@sentry/node': ^11.16.0
+    '@sentry/react-router': ^11.16.0
     '@tailwindcss/vite': ^4.3.5
     '@types/compression': ^1.8.1
     '@types/express': ^5.0.6
@@ -76,6 +78,20 @@ minimumReleaseAgeExclude:
     - '@voidzero-dev/vite-plus-win32-arm64-msvc@1.5.1'
     - '@voidzero-dev/vite-plus-win32-x64-msvc@1.5.1'
     - vite-plus@1.5.1
+    - '@sentry/browser-utils@11.16.0'
+    - '@sentry/browser@11.16.0'
+    - '@sentry/bundler-plugins@11.16.0'
+    - '@sentry/core@11.16.0'
+    - '@sentry/feedback@11.16.0'
+    - '@sentry/hono@11.16.0'
+    - '@sentry/node@11.16.0'
+    - '@sentry/opentelemetry@11.16.0'
+    - '@sentry/react-router@11.16.0'
+    - '@sentry/react@11.16.0'
+    - '@sentry/replay-canvas@11.16.0'
+    - '@sentry/replay@11.16.0'
+    - '@sentry/server-runtime-injection@11.16.0'
+    - '@sentry/server-utils@11.16.0'
 allowBuilds:
     esbuild: true
     # posthog-js depends on it; its install script only prints a donation message.

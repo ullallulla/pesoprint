@@ -10,6 +10,7 @@ import { createStorageFromEnv } from './integrations/s3.ts';
 import { createStripePayments } from './integrations/stripe.ts';
 import { createClerkTokenVerifier } from './lib/auth.ts';
 import { createIpHasher } from './lib/client-ip.ts';
+import { flushSentry, initSentry } from './lib/sentry.ts';
 import { createAdminOrdersService } from './services/admin-orders.ts';
 import { createAdminReviewsService } from './services/admin-reviews.ts';
 import { createCartService } from './services/cart.ts';
@@ -28,6 +29,9 @@ import { createReviewsService } from './services/reviews.ts';
 import { createUsersService } from './services/users.ts';
 
 const env = loadEnv();
+if (!initSentry(env)) {
+    console.warn('SENTRY_DSN is not set: errors are only logged here, not reported to Sentry.');
+}
 const { db, pool } = createDatabase(env.DATABASE_URL);
 
 const signingSecret = env.CLERK_WEBHOOK_SIGNING_SECRET;
@@ -124,7 +128,7 @@ setInterval(() => void orderEmails.deliver(), 5 * 60 * 1000).unref();
 function shutdown(signal: string) {
     console.log(`${signal} received, shutting down...`);
     server.close(() => {
-        void pool.end().then(() => process.exit(0));
+        void Promise.all([pool.end(), flushSentry()]).then(() => process.exit(0));
     });
     // Force exit if connections don't close in time.
     setTimeout(() => process.exit(1), 10_000).unref();

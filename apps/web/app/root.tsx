@@ -10,6 +10,7 @@ import {
     ScrollRestoration,
     useMatches,
     useNavigation,
+    useRouteLoaderData,
 } from 'react-router';
 
 import { Analytics } from '~/components/analytics';
@@ -23,6 +24,8 @@ import { getEnv } from '~/env.server';
 import { isApiUnavailable } from '~/lib/api-unavailable';
 import { cartCount, readCart } from '~/lib/cart.server';
 import { readConsent } from '~/lib/consent';
+import { SENTRY_CONFIG_META } from '~/lib/sentry';
+import { browserSentryConfig } from '~/lib/sentry.server';
 
 import type { Route } from './+types/root';
 // Served from this site rather than Google Fonts, so no visitor data goes to Google.
@@ -38,16 +41,20 @@ export const loader = (args: Route.LoaderArgs) =>
         return {
             analytics: POSTHOG_KEY ? { key: POSTHOG_KEY, host: POSTHOG_HOST } : null,
             consent: readConsent(request.headers.get('cookie')),
+            sentry: browserSentryConfig(),
             cartCount: cartCount(await readCart(request)),
         };
     });
 
 export function Layout({ children }: { children: React.ReactNode }) {
+    // Missing when the root loader failed; the page then doesn't report errors from the browser.
+    const sentry = useRouteLoaderData<typeof loader>('root')?.sentry;
     return (
         <html lang='en'>
             <head>
                 <meta charSet='utf-8' />
                 <meta name='viewport' content='width=device-width, initial-scale=1' />
+                {sentry && <meta name={SENTRY_CONFIG_META} content={JSON.stringify(sentry)} />}
                 <Meta />
                 <Links />
             </head>

@@ -12,7 +12,7 @@ export const OPERATOR = {
 } as const;
 
 /** Change when the content of the terms or privacy policy changes. */
-export const LEGAL_UPDATED = '2026-11-19';
+export const LEGAL_UPDATED = '2026-11-21';
 
 const TOKENS: Record<string, string> = {
     operatorName: OPERATOR.name,

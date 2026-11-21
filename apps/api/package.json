@@ -27,6 +27,7 @@
         "@hono/node-server": "catalog:",
         "@hono/swagger-ui": "catalog:",
         "@hono/zod-openapi": "catalog:",
+        "@sentry/node": "catalog:",
         "drizzle-orm": "catalog:",
         "hono": "catalog:",
         "meshoptimizer": "catalog:",

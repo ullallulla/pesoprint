@@ -11,10 +11,34 @@ import { resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 
 import { createRequestHandler } from '@react-router/express';
+import * as Sentry from '@sentry/react-router';
 import compression from 'compression';
 import express from 'express';
 import morgan from 'morgan';
 import type { ServerBuild } from 'react-router';
+
+// Report errors to Sentry, before the app loads. Errors only. Every console.error becomes an event: that includes
+// React Router's own log of each error in a loader, an action or rendering. The release comes from SENTRY_RELEASE,
+// set in the Docker image (or the host's commit variable, e.g. Render's). The browser gets these settings from the
+// root loader. Collects nothing about the visitor: the same settings as SENTRY_DATA_COLLECTION in app/lib/sentry.ts
+// (this file runs outside the build, so it can't import that).
+if (process.env.SENTRY_DSN) {
+    Sentry.init({
+        dsn: process.env.SENTRY_DSN,
+        environment: process.env.SENTRY_ENVIRONMENT || process.env.NODE_ENV,
+        dataCollection: {
+            userInfo: false,
+            cookies: false,
+            httpHeaders: false,
+            httpBodies: [],
+            urlQueryParams: false,
+            databaseQueryData: false,
+            queues: false,
+            stackFrameVariables: false,
+        },
+        integrations: [Sentry.captureConsoleIntegration({ levels: ['error'] })],
+    });
+}
 
 const build = (await import(pathToFileURL(resolve('build/server/index.js')).href)) as ServerBuild;
 
@@ -67,5 +91,5 @@ const server = app.listen(port, () => {
 });
 
 for (const signal of ['SIGTERM', 'SIGINT'] as const) {
-    process.once(signal, () => server.close());
+    process.once(signal, () => server.close(() => void Sentry.flush(2000)));
 }

@@ -28,6 +28,13 @@ const envSchema = z.object({
     POSTHOG_KEY: z.string().startsWith('phc_', 'POSTHOG_KEY is the project API key and starts with phc_').optional(),
     /** PostHog region: EU Cloud keeps the data in Frankfurt. */
     POSTHOG_HOST: z.url().default('https://eu.i.posthog.com'),
+    /**
+     * DSN of the Sentry project `pesoprint-web`. Both this server and visitors' browsers report errors to it.
+     * Read by server.ts, which starts Sentry before the app; listed here so it's documented and validated.
+     */
+    SENTRY_DSN: z.url().optional(),
+    /** Which environment errors come from in Sentry, e.g. `production` or `staging`. Defaults to NODE_ENV. */
+    SENTRY_ENVIRONMENT: z.string().min(1).optional(),
 });
 
 export type WebEnv = z.infer<typeof envSchema>;
