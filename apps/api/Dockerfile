@@ -46,6 +46,10 @@ COPY --from=deps /app/apps/api/node_modules ./apps/api/node_modules
 COPY --from=build /app/apps/api/package.json ./apps/api/package.json
 COPY --from=build /app/apps/api/dist ./apps/api/dist
 COPY --from=build /app/apps/api/drizzle ./apps/api/drizzle
+# The commit the image was built from (CI passes it). Errors reach Sentry under this release. Set this late, so
+# a new commit doesn't invalidate the cached layers above.
+ARG GIT_SHA=""
+ENV SENTRY_RELEASE=${GIT_SHA}
 WORKDIR /app/apps/api
 USER nobody
 EXPOSE 3001

@@ -43,6 +43,10 @@ COPY --from=deps /app/apps/web/node_modules ./apps/web/node_modules
 COPY --from=build /app/apps/web/package.json ./apps/web/package.json
 COPY --from=build /app/apps/web/build ./apps/web/build
 COPY --from=build /app/apps/web/server.ts ./apps/web/server.ts
+# The commit the image was built from (CI passes it). Errors reach Sentry under this release. Set this late, so
+# a new commit doesn't invalidate the cached layers above.
+ARG GIT_SHA=""
+ENV SENTRY_RELEASE=${GIT_SHA}
 WORKDIR /app/apps/web
 USER nobody
 EXPOSE 3000

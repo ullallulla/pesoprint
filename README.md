@@ -182,3 +182,12 @@ The web server answers `/healthz` (the server itself is running, for the contain
 ## CI
 
 GitHub Actions (`.github/workflows/ci.yml`) runs on every push to `master` and every pull request: `vp check`, all tests (with a Postgres service for the database tests), the production builds, and both Docker image builds.
+
+On `master`, once those pass, CI publishes both images to GitHub's container registry:
+`ghcr.io/ullallulla/pesoprint-api` and `ghcr.io/ullallulla/pesoprint-web`, tagged `sha-<full commit SHA>` (what a
+deploy uses) and `master` (the latest). The commit is also built into each image as `SENTRY_RELEASE`. Pull requests
+only build the images. Both packages are public, so pulling needs no login:
+
+```bash
+docker pull ghcr.io/ullallulla/pesoprint-api:master
+```

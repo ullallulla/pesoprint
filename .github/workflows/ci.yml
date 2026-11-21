@@ -7,7 +7,9 @@ on:
 
 concurrency:
     group: ci-${{ github.ref }}
-    cancel-in-progress: true
+    # A new push to a pull request replaces the run for the old one. On master a started run always finishes, so a
+    # commit never ends up with only one of its two images published.
+    cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 permissions:
     contents: read
@@ -46,21 +48,58 @@ jobs:
             - run: vp run -r test
             - run: vp run -r build
 
+    # Builds both images on every run. On master, after the checks pass, also publishes them to GitHub's container
+    # registry (ghcr.io/<owner>/pesoprint-api and pesoprint-web), tagged sha-<commit> for deploys and master for the
+    # latest. Pull requests only build: they can't publish, and fork PRs get no write access anyway.
     docker:
         name: Docker image (${{ matrix.app }})
         needs: check
         runs-on: ubuntu-latest
+        permissions:
+            contents: read
+            packages: write
+        env:
+            PUBLISH: ${{ github.event_name == 'push' && github.ref == 'refs/heads/master' }}
         strategy:
             matrix:
                 app: [api, web]
         steps:
             - uses: actions/checkout@v7.0.1
             - uses: docker/setup-buildx-action@v4.4.1
+
+            - name: Log in to GHCR
+              if: env.PUBLISH == 'true'
+              uses: docker/login-action@v4.8.0
+              with:
+                  registry: ghcr.io
+                  username: ${{ github.actor }}
+                  password: ${{ secrets.GITHUB_TOKEN }}
+
+            # Tags, plus OCI labels: the source label links the image to this repository on GitHub, and the
+            # revision label records the commit.
+            - name: Image tags and labels
+              id: meta
+              uses: docker/metadata-action@v6.2.0
+              with:
+                  images: ghcr.io/${{ github.repository_owner }}/pesoprint-${{ matrix.app }}
+                  tags: |
+                      type=sha,format=long
+                      type=raw,value=master
+                  labels: |
+                      org.opencontainers.image.title=pesoprint-${{ matrix.app }}
+                      org.opencontainers.image.description=Pesoprint ${{ matrix.app == 'api' && 'API' || 'web app' }}, a shop for 3D models and prints
+
             - uses: docker/build-push-action@v7.4.0
               with:
                   context: .
                   file: apps/${{ matrix.app }}/Dockerfile
-                  push: false
-                  tags: pesoprint-${{ matrix.app }}:ci
+                  platforms: linux/amd64
+                  push: ${{ env.PUBLISH == 'true' }}
+                  tags: ${{ steps.meta.outputs.tags }}
+                  labels: ${{ steps.meta.outputs.labels }}
+                  build-args: GIT_SHA=${{ github.sha }}
+                  # A single image rather than an image index with an attestation, so GHCR shows the labels
+                  # (description, source) and no extra "unknown/unknown" platform.
+                  provenance: false
                   cache-from: type=gha,scope=${{ matrix.app }}
                   cache-to: type=gha,mode=max,scope=${{ matrix.app }}
