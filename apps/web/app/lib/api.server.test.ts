@@ -64,10 +64,24 @@ describe('apiFetch', () => {
             UNAVAILABLE,
         );
 
+        // Render's answer to the web server when the free API is asleep.
+        vi.stubGlobal(
+            'fetch',
+            vi.fn<typeof fetch>(async () => new Response('Too Many Requests', { status: 429 })),
+        );
+        expect(await thrownBy(apiFetch('/api/catalog/home', healthResponseSchema, { baseUrl }))).toMatchObject(
+            UNAVAILABLE,
+        );
+
         mockFetch(503, { error: { code: 'internal_error', message: 'File storage is not configured.' } });
         const error = await apiFetch('/api/x', healthResponseSchema, { baseUrl }).catch((e: unknown) => e);
         expect(error).toBeInstanceOf(ApiRequestError);
         expect(error).toMatchObject({ status: 503, message: 'File storage is not configured.' });
+
+        mockFetch(429, { error: { code: 'rate_limited', message: 'Too many downloads.' } });
+        const limited = await apiFetch('/api/x', healthResponseSchema, { baseUrl }).catch((e: unknown) => e);
+        expect(limited).toBeInstanceOf(ApiRequestError);
+        expect(limited).toMatchObject({ status: 429 });
     });
 
     test('returns parsed data for a valid response', async () => {

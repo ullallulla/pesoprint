@@ -30,8 +30,11 @@ export interface ApiFetchOptions extends RequestInit {
     token?: string | null;
 }
 
-/** Statuses a proxy in front of the API answers with when there's no API behind it to answer. */
-const GATEWAY_STATUSES = [502, 503, 504];
+/**
+ * Statuses a proxy in front of the API answers with when there's no API behind it to answer. Render answers
+ * the web server's requests to a sleeping free API with 429 (earlier with 502).
+ */
+const GATEWAY_STATUSES = [429, 502, 503, 504];
 
 /**
  * The API couldn't be reached: the page answers 503, and the error boundaries show "starting up" and try
@@ -88,7 +91,7 @@ export async function apiFetch<TSchema extends z.ZodType>(
     if (!response.ok && !acceptStatuses.includes(response.status)) {
         const parsedError = apiErrorSchema.safeParse(body);
         const apiError = parsedError.success ? parsedError.data.error : undefined;
-        // Our API always explains its errors. A gateway status without that came from the proxy instead.
+        // Our API always explains its errors (also its own 429s). A gateway status without that came from the proxy.
         if (!apiError && GATEWAY_STATUSES.includes(response.status)) {
             apiUnavailable(`${response.status} from ${url.pathname}`);
         }
