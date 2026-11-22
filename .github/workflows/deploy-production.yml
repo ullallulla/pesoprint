@@ -1,0 +1,170 @@
+name: Deploy production
+
+# Deploys one commit of master to the production host (docs/production-environment3.md §7.2). Started by hand:
+# Actions → Deploy production → Run workflow, with a commit SHA or empty for the latest master commit.
+#
+# It checks that the commit is on master, that CI passed for it and that both images exist in GHCR, then joins the
+# tailnet and sends the SHA over SSH. On the host the deploy key may only run /opt/pesoprint/bin/deploy-wrapper,
+# which runs deploy/deploy.sh of that commit: backup, migrations, start, health checks, and a rollback on failure.
+#
+# Everything about the host lives in the "production" environment's secrets (the repository is public):
+#   TS_OAUTH_CLIENT_ID, TS_OAUTH_SECRET  Tailscale OAuth client (scope auth_keys, tag:ci)
+#   DEPLOY_HOST                          the host's Tailscale address
+#   DEPLOY_SSH_KEY                       private key of the deploy user's forced-command key
+#   DEPLOY_KNOWN_HOSTS                   the host's SSH host key line(s), as `ssh-keyscan <DEPLOY_HOST>` prints them
+
+on:
+    workflow_dispatch:
+        inputs:
+            sha:
+                description: Commit to deploy (the full 40-character SHA). Empty deploys the latest master commit.
+                required: false
+                type: string
+
+# One deploy at a time. A second one waits instead of cancelling the first halfway (the host also has a lock).
+concurrency:
+    group: deploy-production
+    cancel-in-progress: false
+
+permissions:
+    contents: read
+    # To check the commit's CI run.
+    actions: read
+
+jobs:
+    deploy:
+        name: Deploy
+        # The production environment only allows master; this says so up front instead of waiting for its rules.
+        if: github.ref == 'refs/heads/master'
+        runs-on: ubuntu-latest
+        environment:
+            name: production
+            url: https://pesoprint.allulab.eu
+        timeout-minutes: 30
+        env:
+            # Inputs go through the environment, never straight into a script.
+            INPUT_SHA: ${{ inputs.sha }}
+            GH_TOKEN: ${{ github.token }}
+            REPOSITORY: ${{ github.repository }}
+            OWNER: ${{ github.repository_owner }}
+        steps:
+            - name: Choose the commit
+              id: commit
+              run: |
+                  sha=${INPUT_SHA:-$GITHUB_SHA}
+                  sha=$(printf '%s' "$sha" | tr -d '[:space:]')
+                  if [[ ! $sha =~ ^[0-9a-f]{40}$ ]]; then
+                      echo "::error::Give the full 40-character commit SHA in lowercase (got '$sha')."
+                      exit 1
+                  fi
+                  echo "sha=$sha" >>"$GITHUB_OUTPUT"
+                  echo "Commit: $sha"
+
+            - name: Check that the commit is on master
+              env:
+                  SHA: ${{ steps.commit.outputs.sha }}
+              run: |
+                  # "identical" or "ahead": master contains the commit. "behind" or "diverged": it doesn't.
+                  status=$(gh api "repos/$REPOSITORY/compare/$SHA...master" --jq .status) || {
+                      echo "::error::Commit $SHA isn't in this repository."
+                      exit 1
+                  }
+                  if [[ $status != identical && $status != ahead ]]; then
+                      echo "::error::Commit $SHA isn't on master (compared with master: $status)."
+                      exit 1
+                  fi
+                  echo "On master ($status)."
+
+            - name: Check that CI passed for the commit
+              env:
+                  SHA: ${{ steps.commit.outputs.sha }}
+              run: |
+                  # The master push run is the one that published the images.
+                  run=$(gh api "repos/$REPOSITORY/actions/workflows/ci.yml/runs?head_sha=$SHA&event=push&branch=master&status=success&per_page=1" \
+                      --jq '.workflow_runs[0].html_url // empty')
+                  if [[ -z $run ]]; then
+                      echo "::error::No successful CI run on master for $SHA (still running, failed, or never ran)."
+                      exit 1
+                  fi
+                  echo "CI passed: $run"
+                  echo "CI run: $run" >>"$GITHUB_STEP_SUMMARY"
+
+            - name: Check that both images exist
+              env:
+                  SHA: ${{ steps.commit.outputs.sha }}
+              run: |
+                  owner=${OWNER,,}
+                  {
+                      echo
+                      echo "| Image | Digest |"
+                      echo "| --- | --- |"
+                  } >>"$GITHUB_STEP_SUMMARY"
+                  accept='application/vnd.oci.image.index.v1+json, application/vnd.oci.image.manifest.v1+json'
+                  accept+=', application/vnd.docker.distribution.manifest.list.v2+json'
+                  accept+=', application/vnd.docker.distribution.manifest.v2+json'
+                  for app in api web; do
+                      image="ghcr.io/$owner/pesoprint-$app:sha-$SHA"
+                      # Anonymously, the way the host pulls them: the packages must be public. An anonymous pull
+                      # token, then the manifest's headers, whose Docker-Content-Digest is what the host will run.
+                      digest=''
+                      if token=$(curl -fsS "https://ghcr.io/token?scope=repository:$owner/pesoprint-$app:pull" | jq -r .token) &&
+                          headers=$(curl -fsS --head -H "Authorization: Bearer $token" -H "Accept: $accept" \
+                              "https://ghcr.io/v2/$owner/pesoprint-$app/manifests/sha-$SHA"); then
+                          digest=$(tr -d '\r' <<<"$headers" | awk -F': ' 'tolower($1) == "docker-content-digest" { print $2 }')
+                      fi
+                      if [[ -z $digest ]]; then
+                          echo "::error::$image isn't in GHCR, or isn't public."
+                          exit 1
+                      fi
+                      echo "$image $digest"
+                      echo "| \`$image\` | \`$digest\` |" >>"$GITHUB_STEP_SUMMARY"
+                  done
+
+            - name: Join the tailnet
+              uses: tailscale/github-action@v4.4.0
+              with:
+                  oauth-client-id: ${{ secrets.TS_OAUTH_CLIENT_ID }}
+                  oauth-secret: ${{ secrets.TS_OAUTH_SECRET }}
+                  # The tailnet's access rules let tag:ci reach only the production host's SSH port.
+                  tags: tag:ci
+                  ping: ${{ secrets.DEPLOY_HOST }}
+
+            - name: Deploy
+              env:
+                  SHA: ${{ steps.commit.outputs.sha }}
+                  DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+                  DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+                  DEPLOY_KNOWN_HOSTS: ${{ secrets.DEPLOY_KNOWN_HOSTS }}
+              run: |
+                  ssh_dir=$RUNNER_TEMP/ssh
+                  mkdir -m 700 "$ssh_dir"
+                  printf '%s\n' "$DEPLOY_SSH_KEY" >"$ssh_dir/key"
+                  printf '%s\n' "$DEPLOY_KNOWN_HOSTS" >"$ssh_dir/known_hosts"
+                  chmod 600 "$ssh_dir/key"
+                  # The host key must match the pinned one. The SHA is the whole command: the key's forced command
+                  # hands it to deploy-wrapper, whose exit code (and so deploy.sh's) becomes this step's.
+                  ssh -i "$ssh_dir/key" \
+                      -o IdentitiesOnly=yes \
+                      -o BatchMode=yes \
+                      -o StrictHostKeyChecking=yes \
+                      -o UserKnownHostsFile="$ssh_dir/known_hosts" \
+                      -o ServerAliveInterval=30 \
+                      "deploy@$DEPLOY_HOST" "$SHA" 2>&1 | tee "$RUNNER_TEMP/deploy.log"
+
+            - name: Summary
+              if: always() && steps.commit.outputs.sha != ''
+              env:
+                  SHA: ${{ steps.commit.outputs.sha }}
+              run: |
+                  rm -rf "$RUNNER_TEMP/ssh"
+                  {
+                      echo
+                      echo "### Deploy of \`$SHA\`: ${{ job.status }}"
+                      if [[ -s $RUNNER_TEMP/deploy.log ]]; then
+                          echo
+                          echo '```'
+                          # The health check lines and what happened, without compose's per-container progress lines.
+                          grep -vE '^ (Container|Network|Volume|Image) ' "$RUNNER_TEMP/deploy.log" | tail -n 150
+                          echo '```'
+                      fi
+                  } >>"$GITHUB_STEP_SUMMARY"
