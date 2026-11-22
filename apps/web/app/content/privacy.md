@@ -10,7 +10,7 @@ The data controller is {{operatorName}} (Business ID {{businessId}}), {{address}
 
 ### Browsing the site
 
-When you visit a page, our hosting provider receives the technical details every website gets: your IP address, the page you asked for, and your browser's user agent. We use them only to deliver the site and keep it secure. Our own server logs record the page and response, but not your IP address.
+The website and its database run on our own server in Finland. Every visit first passes through Cloudflare, which protects the site and connects it to our server. Cloudflare and our server receive the technical details every website gets: your IP address, the page you asked for, and your browser's user agent. We use them only to deliver the site and keep it secure. Our own server logs record the page and response, but not your IP address.
 
 Images and 3D previews are served from our file storage at Cloudflare, which also sees your IP address when your browser loads them.
 
@@ -32,7 +32,7 @@ We use this data to sign you in and to provide the service you signed up for (GD
 
 ### Buying a model
 
-When you buy, we keep a record of the order: what you bought, the prices and VAT, your account and email address, and when it was paid. We need it to give you the files, and the law requires us to keep it for bookkeeping. You pay on the payment page of our payment provider, Stripe. We send Stripe your email address and what's in the order. Your card or bank details go only to Stripe; we never see them. Stripe also processes payment data for its own purposes, such as preventing fraud, as described in [Stripe's privacy policy](https://stripe.com/privacy).
+When you buy, we keep a record of the order: what you bought, the prices and VAT, your account and email address, and when it was paid. We need it to give you the files, and the law requires us to keep it for bookkeeping. You pay on the payment page of our payment provider, Stripe. We send Stripe your email address and what's in the order. Your card or bank details go only to Stripe; we never see them. Stripe also processes payment data for its own purposes, such as preventing fraud, as described in [Stripe's privacy policy](https://stripe.com/privacy). We send the order confirmation and the emails about shipping and refunds through our email provider, Resend, which receives your email address and the content of the email.
 
 The legal basis is our contract with you (GDPR Article 6(1)(b)) and our legal obligation to keep accounting records (GDPR Article 6(1)(c)). We keep orders for as long as accounting law requires.
 
@@ -43,6 +43,10 @@ When you review a model, we store your rating, your text, the model and when you
 When you save a model to your favourites, we store which model and when, linked to your account. Only you can see your favourites.
 
 The legal basis is providing the service you asked for (GDPR Article 6(1)(b)). You can delete a review or remove a favourite at any time. When your account is deleted, your reviews and favourites are deleted with it.
+
+### Backups
+
+We back up the database every night, encrypted, to our file storage at Cloudflare, and copy the stored files to a second place outside Cloudflare. Data you delete, or ask us to delete, can stay in these backups for up to 35 days before it is gone. We restore from a backup only to recover from data loss.
 
 ### Statistics, only if you allow them {#analytics}
 
@@ -63,11 +67,10 @@ The first three are strictly necessary for the site to work, so they don't need 
 
 We use these service providers, who process data only on our instructions:
 
-- **Render** (hosting the website), Render Services, Inc., USA
-- **Neon** (database), Neon, Inc., USA. The database is in the EU (Frankfurt).
-- **Cloudflare** (file storage and delivery), Cloudflare, Inc., USA
+- **Cloudflare** (the network in front of the website, file storage and delivery, and our encrypted backups), Cloudflare, Inc., USA. Files and backups are stored in the EU.
 - **Clerk** (accounts and sign-in), Clerk, Inc., USA
 - **Stripe** (payments), Stripe Payments Europe, Ltd., Ireland
+- **Resend** (order emails), Resend, Inc., USA. Emails are sent from its EU region.
 - **PostHog** (statistics, only with consent), PostHog, Inc., USA. Data is stored in the EU (Frankfurt).
 - **Sentry** (error reports), Functional Software, Inc., USA. Data is stored in the EU (Germany).
 
