@@ -79,9 +79,10 @@ jobs:
               env:
                   SHA: ${{ steps.commit.outputs.sha }}
               run: |
-                  # The master push run is the one that published the images.
-                  run=$(gh api "repos/$REPOSITORY/actions/workflows/ci.yml/runs?head_sha=$SHA&event=push&branch=master&status=success&per_page=1" \
-                      --jq '.workflow_runs[0].html_url // empty')
+                  # The master push run is the one that published the images. The success is picked here: the API's own
+                  # status=success filter can lag behind finished runs for a long time.
+                  run=$(gh api "repos/$REPOSITORY/actions/workflows/ci.yml/runs?head_sha=$SHA&event=push&branch=master" \
+                      --jq '[.workflow_runs[] | select(.conclusion == "success")][0].html_url // empty')
                   if [[ -z $run ]]; then
                       echo "::error::No successful CI run on master for $SHA (still running, failed, or never ran)."
                       exit 1
