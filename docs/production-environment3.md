@@ -1,13 +1,13 @@
 # Pesoprint – Production environment plan (M6), version 3
 
-_Drafted 2026-11-19 from [production-environment1.md](./production-environment1.md), [production-environment2.md](./production-environment2.md) and their [review](./environment-review.md). Plan 1 is the base. The changes come from the review, plus one more goal: the same stack must run on the homelab, a VPS or a cloud VM. Covers the "Own domain. Production environment …", "Sentry, uptime monitoring, database backups" and "Production deploy" items of M6 in [plan.md](./plan.md). Built so far: code steps 1–4 of §13 (the stack is in [`deploy/`](../deploy/))._
+_Drafted 2026-11-19 from [production-environment1.md](./production-environment1.md), [production-environment2.md](./production-environment2.md) and their [review](./environment-review.md). Plan 1 is the base. The changes come from the review, plus one more goal: the same stack must run on the homelab, a VPS or a cloud VM. Covers the "Own domain. Production environment …", "Sentry, uptime monitoring, database backups" and "Production deploy" items of M6 in [plan.md](./plan.md). **Done 2026-11-22:** all of §13. Production runs on the homelab, behind the gate (the stack is in [`deploy/`](../deploy/); how to run it is in the README's Production section). §18 lists what turned out differently from this plan._
 
 ## 1. Summary of the decisions
 
 | Topic             | Decision                                                                                                                                                                                                                                                 |
 | ----------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Portability       | Two Docker images (api, web) from GHCR and one `docker-compose.prod.yml`. Pieces that only some hosts need are **compose profiles**. Moving hosts means a new `.env` with different profiles and new DNS records; the app doesn't change                 |
-| First host        | The **homelab**: a new, dedicated Debian VM on **Proxmox** that runs nothing else                                                                                                                                                                        |
+| First host        | The **homelab**: a new, dedicated Ubuntu VM on **Proxmox** that runs nothing else                                                                                                                                                                        |
 | Ingress           | **Caddy on every host** is the stack's one router: it decides which paths are public and gives the app the same headers everywhere. In front of it: **Cloudflare Tunnel** on the homelab (no open ports); on a VPS or cloud VM, a tunnel or Caddy on 443 |
 | Cloudflare        | Always in front until go-live, because the **Access** login gate lives there                                                                                                                                                                             |
 | Hostnames         | Flat names under `allulab.eu`, so Cloudflare's free certificate covers them: `pesoprint.allulab.eu`, `pesoprint-hooks.allulab.eu`, `pesoprint-files.allulab.eu`                                                                                          |
@@ -15,7 +15,7 @@ _Drafted 2026-11-19 from [production-environment1.md](./production-environment1.
 | Database          | **Postgres inside the stack** (profile `postgres`). A managed database (Neon, RDS, Cloud SQL) works by turning the profile off and setting `DATABASE_URL`                                                                                                |
 | Network isolation | A firewall **outside the VM** (Proxmox firewall; on a VPS the provider's firewall): no inbound traffic at all with the tunnel, and no traffic to the home LAN                                                                                            |
 | Remote access     | **Tailscale** on the VM. SSH listens only on the tailnet                                                                                                                                                                                                 |
-| How "live"        | **Up, but hidden:** Cloudflare Access in front of the shop, Stripe in test mode through a **Stripe Sandbox**. Go-live (live keys, gate removed) is a later step, after VAT, company form and the legal pages                                             |
+| How "live"        | **Up, but hidden:** Cloudflare Access in front of the shop, Stripe in test mode through a **Stripe sandbox**. Go-live (live keys, gate removed) is a later step, after VAT, company form and the legal pages                                             |
 | Deploys           | **Manual promote.** CI pushes images for every master commit. A "Deploy production" GitHub Action (you pick the commit) connects over Tailscale and runs the deploy on the VM                                                                            |
 | Monitoring        | **Sentry** (EU, free plan) for errors. One external monitor on **`/readyz`** (web → API → database). A heartbeat for the nightly backup                                                                                                                  |
 | Backups           | Nightly `age`-encrypted `pg_dump` to an R2 bucket with a **bucket lock**, plus a dump before every deploy. Nightly copy of the production R2 buckets **off Cloudflare**. A restore test now and every few months                                         |
@@ -79,7 +79,7 @@ Zone settings: SSL/TLS mode **Full (strict)** (matters only in `tls` mode), **Al
 
 ## 4. The homelab VM
 
-**VM:** Debian 13 (trixie, the same base as the images). 2 vCPU, 4 GB RAM (the API makes GLB previews from STLs in memory), 40 GB disk. QEMU guest agent on, "Start at boot" on, a fixed IP (DHCP reservation).
+**VM:** Ubuntu 24.04 LTS (planned as Debian 13; Ubuntu's ISO was at hand, and nothing depends on the distribution). 2 vCPU, 4 GB RAM (the API makes GLB previews from STLs in memory), 40 GB disk. QEMU guest agent on, "Start at boot" on, a fixed IP (DHCP reservation).
 
 **Software:** Docker Engine + Compose plugin, Tailscale, `unattended-upgrades`. A `deploy` user that owns `/opt/pesoprint` and is in the `docker` group. Nothing else.
 
@@ -257,7 +257,7 @@ Seed: **never** in production.
 
 The private bucket holds what buyers paid for. A nightly `files-backup` job runs `rclone sync` of `pesoprint-prod-public` and `pesoprint-prod-private` to a destination **off Cloudflare**, with `--backup-dir` so deleted or overwritten objects are kept for 30 days. The destination is an `rclone` remote, so it moves with the host:
 
-- Homelab: a directory on the Proxmox backup storage, mounted into the VM read-write for this container only.
+- Homelab: a directory on the Proxmox host (`/var/lib/vz/pesoprint-files-backup`), shared into the VM with virtiofs (no network, so the firewall needs no opening) and mounted at `/mnt/pesoprint-files-backup`. The host has a single SSD, so this copy protects against losing files at Cloudflare, not against that disk failing (R2 still has the originals then).
 - VPS or cloud: e.g. a Hetzner Storage Box, or a bucket at another provider.
 
 It pings its own heartbeat.
@@ -313,12 +313,12 @@ The monitor runs **outside the homelab**, so it alerts when the house loses powe
 
 **Clerk (production instance)**
 
-- Production instance for `pesoprint.allulab.eu`; its DNS records in Cloudflare as **DNS only**.
+- Production instance for `pesoprint.allulab.eu`, set up as a **secondary application**, so Clerk's own names are under `pesoprint.allulab.eu` (`clerk.pesoprint.allulab.eu`, emails from `@pesoprint.allulab.eu`), not under the bare `allulab.eu`. Its DNS records in Cloudflare as **DNS only**, including the DMARC record.
 - Sign-in: **email** and **Google**. Google needs your own OAuth client (web) in a Google Cloud project, with the redirect URI Clerk shows, scopes email and profile, consent screen set to **"In production"** (otherwise only listed test users can sign in).
 - Webhook `https://pesoprint-hooks.allulab.eu/api/webhooks/clerk` with `user.created`, `user.updated`, `user.deleted`.
 - Sign up on production, set `publicMetadata.role = "admin"`; the `user.updated` webhook syncs it (or `vp run users:sync`).
 
-**Stripe:** a **Sandbox** named "production preview", separate from the test mode staging uses, so neither receives the other's events. Webhook `https://pesoprint-hooks.allulab.eu/api/webhooks/stripe` with the same six events as staging. At go-live, a live endpoint at the same URL (§16).
+**Stripe:** planned as a separate sandbox, but a second sandbox needs an activated live account. Until go-live, production shares staging's sandbox, with its own webhook endpoint and its own restricted key (`production preview`: Checkout Sessions write, PaymentIntents and PaymentMethods read, Charges and Refunds write). Each side receives the other's events too and ignores them (no matching order). Webhook `https://pesoprint-hooks.allulab.eu/api/webhooks/stripe` with the same six events as staging. At go-live, a live endpoint at the same URL (§16).
 
 **Resend:** a new production key (Sending access, domain `pesoprint.allulab.eu`, already verified).
 
@@ -341,12 +341,12 @@ The monitor runs **outside the homelab**, so it alerts when the house loses powe
 
 ### Your clicks (step-by-step lists will come with each PR)
 
-1. Proxmox VM, Debian, Docker, Tailscale, firewall (`firewall=1` on the NIC), `deploy` user. No router changes.
+1. Proxmox VM, Ubuntu, Docker, Tailscale, firewall (`firewall=1` on the NIC), `deploy` user. No router changes.
 2. Cloudflare: tunnel and its two public hostnames, zone SSL settings, Access application and `/readyz` bypass.
 3. R2: three buckets (jurisdiction decided), three tokens, custom domain, CORS, lifecycle rules, bucket lock.
 4. Files-backup destination (a directory on the Proxmox backup storage).
 5. Clerk production instance, DNS records, Google OAuth client, webhook, admin role.
-6. Stripe Sandbox and its webhook. Resend production key.
+6. Stripe webhook and restricted key (in the shared sandbox, §12). Resend production key.
 7. Sentry projects and alerts. UptimeRobot monitor. Two healthchecks.io checks.
 8. GitHub `production` environment and secrets. GHCR packages public.
 9. First deploy, then the restore test.
@@ -414,3 +414,14 @@ Review new features against this rule (in-memory caches, counters, locks, timers
 | 4. Cloud                 | Provider-managed scaling                                | The provider's load balancer in front of Caddy on each VM (§2.1), or the same images on a managed container service with the Caddy rules recreated in its routing                                                                                                                                                                                                                                                                               | Step 3's managed database                                                       |
 
 **Signals that it's time:** the monitor or Sentry shows deploy-time errors customers notice (step 1); CPU stays high or uploads time out (step 2); the homelab's outages start costing orders (step 3).
+
+## 18. What turned out differently (2026-11-22)
+
+Notes from setting it up, for the next host:
+
+- **Ubuntu 24.04 LTS** instead of Debian 13 (§4). Nothing in the stack depends on the distribution.
+- **The files backup** lives on the Proxmox host's only SSD, shared into the VM with virtiofs (§8.2).
+- **Stripe:** one shared sandbox until go-live (§12). At go-live production moves to live mode with its own live endpoint, and the sandbox is staging's again.
+- **Clerk** as a "secondary application" (§12). "Primary" puts Clerk on the bare `allulab.eu` (`clerk.allulab.eu`, sessions for every subdomain).
+- **The env files:** every first-deploy failure was a line missing from them, because only the values to fill in were copied in. The README's setup now says to keep every line, and has a command that compares the setting names with the examples. A missing `POSTGRES_USER` showed up as "password authentication failed": Postgres had created its default user instead, and only reads these settings when it creates its database.
+- **The deploy workflow:** two fixes after the first runs. The deploy step's `ssh … | tee` needs `pipefail` (a failed deploy showed green), and the CI check selects the successful run itself (the API's `status=success` filter lagged behind finished runs).
