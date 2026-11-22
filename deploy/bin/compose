@@ -1,0 +1,22 @@
+#!/bin/sh
+# `docker compose` for one release of the production stack: the release this script belongs to.
+#
+#   /opt/pesoprint/current/bin/compose ps
+#   /opt/pesoprint/current/bin/compose logs -f api
+#   /opt/pesoprint/current/bin/compose run --rm backup db daily
+#
+# It runs from the release directory (releases/<sha>), with the host's settings from /opt/pesoprint/.env, the
+# service settings from /opt/pesoprint/env/, and the images tagged sha-<sha>.
+# PESOPRINT_ROOT changes /opt/pesoprint, e.g. for a test run elsewhere.
+set -eu
+
+root=${PESOPRINT_ROOT:-/opt/pesoprint}
+# pwd -P follows the `current` link to the release itself.
+release=$(cd "$(dirname "$0")/.." && pwd -P)
+sha=$(basename "$release")
+
+export IMAGE_TAG="sha-$sha"
+export ENV_DIR="$root/env"
+
+cd "$release"
+exec docker compose --env-file "$root/.env" "$@"

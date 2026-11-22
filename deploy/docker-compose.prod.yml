@@ -1,0 +1,146 @@
+# Pesoprint's production stack (docs/production-environment3.md §5). The same file on every host; what differs is
+# the host's .env (which profiles run, tunnel or tls mode) and the env/ files.
+#
+# Run it through bin/compose, which sets the image tag from the release and finds the env files:
+#   /opt/pesoprint/current/bin/compose ps
+#
+# Profiles (COMPOSE_PROFILES in the host's .env):
+#   tunnel        cloudflared, the Cloudflare Tunnel in front of Caddy
+#   postgres      Postgres inside the stack. Leave it out for a managed database and set DATABASE_URL instead
+#   backup        nightly encrypted database dump to the backups bucket
+#   files-backup  nightly copy of the R2 buckets off Cloudflare
+#
+# Networks: only cloudflared (edge) reaches Caddy, only Caddy reaches the web server and the API (app), and only the
+# API and the backup reach Postgres (db, which has no way out to the internet). No port is published in tunnel mode.
+
+name: pesoprint-prod
+
+x-service: &service
+    restart: unless-stopped
+    logging:
+        # Rotates by itself: 5 files × 20 MB per container.
+        driver: local
+    security_opt:
+        - no-new-privileges:true
+
+services:
+    caddy:
+        <<: *service
+        image: caddy:2.11-alpine
+        environment:
+            SITE_HOST: ${SITE_HOST:-pesoprint.allulab.eu}
+            HOOKS_HOST: ${HOOKS_HOST:-pesoprint-hooks.allulab.eu}
+            TRUSTED_PROXIES: ${TRUSTED_PROXIES:-private_ranges}
+            CADDY_LISTEN: '80'
+        volumes:
+            - ./Caddyfile:/etc/caddy/Caddyfile:ro
+            - caddy-data:/data
+            - caddy-config:/config
+        cap_drop: [ALL]
+        cap_add: [NET_BIND_SERVICE]
+        networks: [edge, app]
+        healthcheck:
+            test: ['CMD', 'wget', '-q', '-O', '/dev/null', 'http://127.0.0.1:8080/caddy-health']
+            interval: 30s
+            timeout: 5s
+            start_period: 10s
+
+    cloudflared:
+        <<: *service
+        profiles: [tunnel]
+        image: cloudflare/cloudflared:2026.11.1
+        # Remotely managed tunnel: its public hostnames (set in the Cloudflare dashboard) point to http://caddy:80.
+        command: ['tunnel', '--no-autoupdate', 'run']
+        env_file: ${ENV_DIR:-./env}/cloudflared.env
+        cap_drop: [ALL]
+        networks: [edge]
+        depends_on: [caddy]
+
+    web:
+        <<: *service
+        image: ${IMAGE_REPO:-ghcr.io/ullallulla}/pesoprint-web:${IMAGE_TAG:?IMAGE_TAG is not set; run this through bin/compose}
+        # Never database or R2 credentials: the web server only talks to the API.
+        env_file: ${ENV_DIR:-./env}/web.env
+        read_only: true
+        tmpfs: [/tmp]
+        cap_drop: [ALL]
+        networks: [app]
+
+    api:
+        <<: *service
+        image: ${IMAGE_REPO:-ghcr.io/ullallulla}/pesoprint-api:${IMAGE_TAG:?IMAGE_TAG is not set; run this through bin/compose}
+        env_file: ${ENV_DIR:-./env}/api.env
+        read_only: true
+        tmpfs: [/tmp]
+        cap_drop: [ALL]
+        networks: [app, db]
+        depends_on:
+            postgres:
+                condition: service_healthy
+                # Not there with a managed database (profile postgres off).
+                required: false
+
+    postgres:
+        <<: *service
+        profiles: [postgres]
+        # The same major version as staging on Neon. The backup image's pg_dump must be this major version or newer.
+        image: postgres:18
+        env_file: ${ENV_DIR:-./env}/postgres.env
+        volumes:
+            - postgres-data:/var/lib/postgresql
+        shm_size: 256mb
+        # Time to finish writing on shutdown, instead of Docker's 10 seconds.
+        stop_grace_period: 60s
+        networks: [db]
+        healthcheck:
+            test: ['CMD-SHELL', 'pg_isready -U "$${POSTGRES_USER}" -d "$${POSTGRES_DB}"']
+            interval: 10s
+            timeout: 5s
+            start_period: 30s
+
+    backup:
+        <<: *service
+        profiles: [backup]
+        # Built on the host from ./backup (pg_dump, age, rclone), tagged with the release like the app images.
+        build: ./backup
+        image: pesoprint-backup:${IMAGE_TAG:?IMAGE_TAG is not set; run this through bin/compose}
+        command: ['db-schedule']
+        env_file: ${ENV_DIR:-./env}/backup.env
+        init: true
+        read_only: true
+        # The unencrypted dump only ever exists here, in memory.
+        tmpfs: [/tmp]
+        cap_drop: [ALL]
+        networks: [db, backup]
+        depends_on:
+            postgres:
+                condition: service_healthy
+                required: false
+
+    files-backup:
+        <<: *service
+        profiles: [files-backup]
+        build: ./backup
+        image: pesoprint-backup:${IMAGE_TAG:?IMAGE_TAG is not set; run this through bin/compose}
+        command: ['files-schedule']
+        env_file: ${ENV_DIR:-./env}/files-backup.env
+        init: true
+        read_only: true
+        tmpfs: [/tmp]
+        volumes:
+            # Homelab: a directory on the Proxmox backup storage (FILES_BACKUP_DEST=/backup in files-backup.env).
+            # Elsewhere the destination can be any rclone remote instead, and this mount stays unused.
+            - ${FILES_BACKUP_DIR:-/opt/pesoprint/files-backup}:/backup
+        networks: [backup]
+
+networks:
+    edge: {}
+    app: {}
+    db:
+        internal: true
+    backup: {}
+
+volumes:
+    caddy-data: {}
+    caddy-config: {}
+    postgres-data: {}

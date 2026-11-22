@@ -1,0 +1,55 @@
+#!/bin/sh
+# The entry point for deploys over SSH (docs/production-environment3.md §7.3). Installed by hand as
+# /opt/pesoprint/bin/deploy-wrapper, and changes rarely: everything else comes with each release.
+#
+# The "Deploy production" workflow's key may only run this (in ~deploy/.ssh/authorized_keys):
+#   restrict,command="/opt/pesoprint/bin/deploy-wrapper" ssh-ed25519 AAAA… github-deploy
+# and sends the commit as its command: `ssh deploy@<host> <40-character sha>`. By hand, on the host:
+#   /opt/pesoprint/bin/deploy-wrapper <sha>
+#
+# It downloads deploy/ at that commit from the public repository into releases/<sha>/ and runs its deploy.sh.
+set -eu
+
+root=${PESOPRINT_ROOT:-/opt/pesoprint}
+# Where `<source>/<sha>` is a .tar.gz of the repository at that commit.
+source=${PESOPRINT_SOURCE:-https://codeload.github.com/ullallulla/pesoprint/tar.gz}
+
+sha=${SSH_ORIGINAL_COMMAND:-${1:-}}
+# Exactly 40 lowercase hex characters, nothing else (no options, spaces or newlines).
+case $sha in
+	*[!0-9a-f]*) sha='' ;;
+esac
+if [ ${#sha} -ne 40 ]; then
+	echo "Usage: deploy-wrapper <full 40-character commit SHA>" >&2
+	exit 64
+fi
+
+# One deploy at a time. The lock is held until deploy.sh exits (it inherits the file descriptor).
+exec 9>"$root/deploy.lock"
+if ! flock -n 9; then
+	echo "Another deploy is running." >&2
+	exit 75
+fi
+
+release="$root/releases/$sha"
+# A release directory is never changed once it's there, so a running deploy.sh is never overwritten. The files at
+# a commit don't change either, so an existing directory (a redeploy, or a rollback by hand) is used as it is.
+if [ ! -d "$release" ]; then
+	mkdir -p "$root/releases"
+	tmp=$(mktemp -d "$root/releases/.download-$sha.XXXXXX")
+	trap 'rm -rf "$tmp"' EXIT
+	echo "Downloading deploy/ at $sha"
+	curl -fsSL --retry 3 -o "$tmp/source.tar.gz" "$source/$sha"
+	mkdir "$tmp/deploy"
+	# The archive's top directory is <repo>-<sha>/; keep only what's under its deploy/.
+	tar -xzf "$tmp/source.tar.gz" -C "$tmp/deploy" --strip-components=2 --wildcards '*/deploy/'
+	if [ ! -x "$tmp/deploy/deploy.sh" ]; then
+		echo "There is no deploy/deploy.sh at $sha." >&2
+		exit 1
+	fi
+	mv "$tmp/deploy" "$release"
+	rm -rf "$tmp"
+	trap - EXIT
+fi
+
+exec "$release/deploy.sh" "$sha"
