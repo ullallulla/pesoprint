@@ -136,6 +136,9 @@ jobs:
                   DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
                   DEPLOY_KNOWN_HOSTS: ${{ secrets.DEPLOY_KNOWN_HOSTS }}
               run: |
+                  # Without this, `ssh … | tee` takes tee's exit code, and a failed deploy shows as green. (A run step
+                  # without `shell:` is `bash -e`, without pipefail.)
+                  set -o pipefail
                   ssh_dir=$RUNNER_TEMP/ssh
                   mkdir -m 700 "$ssh_dir"
                   printf '%s\n' "$DEPLOY_SSH_KEY" >"$ssh_dir/key"
