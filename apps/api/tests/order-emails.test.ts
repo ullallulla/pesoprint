@@ -295,7 +295,7 @@ describe.skipIf(!url)('order emails (integration)', () => {
             return {
                 createCheckout: () => Promise.reject(new Error('not used')),
                 refund: () => Promise.reject(new Error('not used')),
-                getRefundedCents: () => Promise.reject(new Error('not used')),
+                getRefunds: () => Promise.reject(new Error('not used')),
                 getCheckout: async () => state,
                 verifyWebhook: null,
             };

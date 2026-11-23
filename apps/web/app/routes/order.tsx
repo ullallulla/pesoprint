@@ -17,7 +17,7 @@ import { ColourSwatch } from '~/components/colour-swatch';
 import { FileDownloads } from '~/components/file-downloads';
 import { OrderProgress, Shipment } from '~/components/order-progress';
 import { Button } from '~/components/ui/button';
-import { cartCount, readCart, saveCart } from '~/lib/cart.server';
+import { cartCount, clearCheckout, readCart, readCheckout, saveCart, withoutBought } from '~/lib/cart.server';
 import { formatPrice } from '~/lib/format';
 import { getOrder } from '~/lib/orders.server';
 import { printOptionText } from '~/lib/print-option';
@@ -31,8 +31,8 @@ export const meta: Route.MetaFunction = () => [
 
 /**
  * `/orders/:id`: where Stripe sends the buyer after paying. The API checks a pending order with Stripe
- * before answering, so it's usually paid by the time this page shows. Once paid, what was bought leaves
- * the cart.
+ * before answering, so it's usually paid by the time this page shows. Once paid, what the checkout took
+ * leaves the cart.
  */
 export async function loader(args: Route.LoaderArgs) {
     if (!z.uuid().safeParse(args.params.id).success) throw data(null, { status: 404 });
@@ -40,18 +40,20 @@ export async function loader(args: Route.LoaderArgs) {
     if (!isAuthenticated) return { order: null };
 
     const order = await getOrder(args, args.params.id);
-    if (!isPaidStatus(order.status)) return { order };
+    // Only for the order this browser just checked out, and only once: opening an old order (from the order
+    // list or an email) leaves today's cart alone.
+    const checkout = await readCheckout(args.request);
+    if (checkout?.orderId !== order.id || order.status === 'pending') return { order };
 
-    const cart = await readCart(args.request);
-    const kept = cart.filter(
-        (item) => !order.items.some((bought) => bought.productId === item.productId && bought.type === item.type),
-    );
-    if (kept.length === cart.length) return { order };
-    // `cartCount` corrects the header, whose loader read the cart before this one emptied it.
-    return data(
-        { order, cartCount: cartCount(kept) },
-        { headers: { 'Set-Cookie': await saveCart(args.request, kept) } },
-    );
+    const headers = new Headers();
+    headers.append('Set-Cookie', await clearCheckout(args.request));
+    // Not paid (cancelled): the cart still holds what the buyer meant to buy.
+    if (!isPaidStatus(order.status)) return data({ order }, { headers });
+
+    const kept = withoutBought(await readCart(args.request), checkout.items);
+    headers.append('Set-Cookie', await saveCart(args.request, kept));
+    // `cartCount` corrects the header, whose loader read the cart before this one changed it.
+    return data({ order, cartCount: cartCount(kept) }, { headers });
 }
 
 export default function OrderPage({ loaderData }: Route.ComponentProps) {

@@ -191,6 +191,9 @@ done
 check_database_url api
 has_profile backup && check_database_url backup
 
+[[ $(get api:SKIP_PRODUCTION_SETTINGS_CHECK) != true ]] ||
+	error "api.env: SKIP_PRODUCTION_SETTINGS_CHECK=true is only for the restore test, never for the live API"
+
 same api:INTERNAL_API_SECRET web:INTERNAL_API_SECRET "INTERNAL_API_SECRET isn't the same in api.env and web.env"
 same api:CLERK_SECRET_KEY web:CLERK_SECRET_KEY "CLERK_SECRET_KEY isn't the same in api.env and web.env"
 

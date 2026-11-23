@@ -141,7 +141,10 @@ expected_migrations=$(sed -n 's/^migrations_applied=//p' <<<"$manifest")
 [[ $migrations == "$expected_migrations" ]] ||
 	fail "$migrations migrations in the database, the manifest says $expected_migrations"
 
-api_env=(-e "DATABASE_URL=$db_url" -e CLERK_SECRET_KEY=sk_test_restore_check -e LOG_REQUESTS=false)
+# The image is in production mode, which requires every live key: this check runs without them. Production mode
+# itself stays, so the restored database's queued order emails stay queued instead of being printed.
+api_env=(-e "DATABASE_URL=$db_url" -e CLERK_SECRET_KEY=sk_test_restore_check -e LOG_REQUESTS=false
+	-e SKIP_PRODUCTION_SETTINGS_CHECK=true)
 log "Running the migrations of $api_image"
 docker run --rm --network "$network" "${api_env[@]}" "$api_image" node dist/migrate.mjs >/dev/null ||
 	fail "the migrations failed"

@@ -14,8 +14,11 @@ export interface Payments {
      * return the first refund instead of refunding again.
      */
     refund(input: { paymentIntentId: string; amountCents: number; idempotencyKey: string }): Promise<void>;
-    /** How much of a payment has been refunded so far, in cents, whoever refunded it (us or Stripe's dashboard). */
-    getRefundedCents(paymentIntentId: string): Promise<number>;
+    /**
+     * How much of a payment has been refunded so far, in cents, whoever refunded it (us or Stripe's dashboard), and
+     * the order it paid for (from the metadata checkout set; `null` for a payment the shop didn't create).
+     */
+    getRefunds(paymentIntentId: string): Promise<{ refundedCents: number; orderId: string | null }>;
     /**
      * Checks a webhook's signature against its raw body and returns what it's about, or `null` for events the
      * shop doesn't handle. Throws {@link WebhookSignatureError} if it isn't from Stripe. `null` itself when no
@@ -194,10 +197,13 @@ export function createStripePayments({
             }
         },
 
-        async getRefundedCents(paymentIntentId) {
+        async getRefunds(paymentIntentId) {
             const intent = await stripe.paymentIntents.retrieve(paymentIntentId, { expand: ['latest_charge'] });
             const charge = intent.latest_charge;
-            return charge && typeof charge === 'object' ? charge.amount_refunded : 0;
+            return {
+                refundedCents: charge && typeof charge === 'object' ? charge.amount_refunded : 0,
+                orderId: intent.metadata?.order_id ?? null,
+            };
         },
 
         verifyWebhook: webhookSecret
