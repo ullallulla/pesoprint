@@ -223,6 +223,7 @@ Extend the `docker` job in `.github/workflows/ci.yml` (today `push: false`, line
 
 `deploy.sh <sha>`:
 
+0. **Check the settings:** `bin/check-env` compares the host's `.env` and `env/*.env` with the release's examples and with each other (missing, empty or placeholder values, database URLs against `postgres.env`, shared secrets). Stop if it finds an error.
 1. Remember the current tag. `docker compose pull` the new images.
 2. **Pre-deploy backup:** run the backup job once, tagged `pre-deploy-<sha>`. Stop if it fails.
 3. **Migrate:** `docker compose run --rm api node dist/migrate.mjs` with the new image.
@@ -423,5 +424,5 @@ Notes from setting it up, for the next host:
 - **The files backup** lives on the Proxmox host's only SSD, shared into the VM with virtiofs (§8.2).
 - **Stripe:** one shared sandbox until go-live (§12). At go-live production moves to live mode with its own live endpoint, and the sandbox is staging's again.
 - **Clerk** as a "secondary application" (§12). "Primary" puts Clerk on the bare `allulab.eu` (`clerk.allulab.eu`, sessions for every subdomain).
-- **The env files:** every first-deploy failure was a line missing from them, because only the values to fill in were copied in. The README's setup now says to keep every line, and has a command that compares the setting names with the examples. A missing `POSTGRES_USER` showed up as "password authentication failed": Postgres had created its default user instead, and only reads these settings when it creates its database.
+- **The env files:** every first-deploy failure was a line missing from them, because only the values to fill in were copied in. The README's setup now says to keep every line, every deploy starts with `bin/check-env` (missing, empty and placeholder settings, and settings that must match across files), and the API and web server refuse to start in production without the settings they need. A missing `POSTGRES_USER` showed up as "password authentication failed": Postgres had created its default user instead, and only reads these settings when it creates its database.
 - **The deploy workflow:** two fixes after the first runs. The deploy step's `ssh … | tee` needs `pipefail` (a failed deploy showed green), and the CI check selects the successful run itself (the API's `status=success` filter lagged behind finished runs).

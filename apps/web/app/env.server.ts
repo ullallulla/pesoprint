@@ -35,24 +35,61 @@ const envSchema = z.object({
     SENTRY_DSN: z.url().optional(),
     /** Which environment errors come from in Sentry, e.g. `production` or `staging`. Defaults to NODE_ENV. */
     SENTRY_ENVIRONMENT: z.string().min(1).optional(),
+    /**
+     * Clerk's keys. Clerk's own code reads them (at runtime, so one image fits every environment); they're listed
+     * here so production can require them and a key from the wrong place fails here, not on a visitor's sign-in.
+     */
+    VITE_CLERK_PUBLISHABLE_KEY: z
+        .string()
+        .startsWith('pk_', 'VITE_CLERK_PUBLISHABLE_KEY must start with pk_')
+        .optional(),
+    CLERK_SECRET_KEY: z.string().startsWith('sk_', 'CLERK_SECRET_KEY must start with sk_').optional(),
 });
+
+/**
+ * Settings with a localhost default or optional elsewhere, but a production site is broken without them (wrong
+ * links, no sign-in, shared download limits, no error reports). With NODE_ENV=production they must be set.
+ */
+const PRODUCTION_KEYS = [
+    'API_URL',
+    'SITE_URL',
+    'INTERNAL_API_SECRET',
+    'SENTRY_DSN',
+    'VITE_CLERK_PUBLISHABLE_KEY',
+    'CLERK_SECRET_KEY',
+] as const;
 
 export type WebEnv = z.infer<typeof envSchema>;
 
 let cached: WebEnv | undefined;
 
-/** Validated server-side environment. The `.server` suffix keeps this out of the browser bundle. */
+/** Validates the settings in `source`. Exported for tests; the app uses getEnv(). */
+export function parseEnv(source: NodeJS.ProcessEnv): WebEnv {
+    // An empty value means "not set", as `KEY=` in a Docker env file gives an empty string, not a missing setting.
+    const values = Object.fromEntries(Object.entries(source).filter(([, value]) => value !== ''));
+    const missing = values.NODE_ENV === 'production' ? PRODUCTION_KEYS.filter((key) => values[key] === undefined) : [];
+    const result = envSchema.safeParse(values);
+    if (!result.success || missing.length > 0) {
+        const problems = [
+            ...(missing.length > 0 ? [`✖ Required in production, but not set: ${missing.join(', ')}`] : []),
+            ...(result.success ? [] : [z.prettifyError(result.error)]),
+        ];
+        throw new Error(`Invalid environment variables:\n${problems.join('\n')}`);
+    }
+    return result.data;
+}
+
+/**
+ * Validated server-side environment. The `.server` suffix keeps this out of the browser bundle. server.ts also
+ * calls it once at startup, so a production server with missing settings stops there instead of failing pages.
+ */
 export function getEnv(): WebEnv {
     if (!cached) {
         // Local development: read apps/web/.env. In production the container provides the variables.
         if (process.env.NODE_ENV !== 'production' && existsSync('.env')) {
             process.loadEnvFile('.env');
         }
-        const result = envSchema.safeParse(process.env);
-        if (!result.success) {
-            throw new Error(`Invalid environment variables:\n${z.prettifyError(result.error)}`);
-        }
-        cached = result.data;
+        cached = parseEnv(process.env);
     }
     return cached;
 }

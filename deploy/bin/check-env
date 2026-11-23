@@ -1,0 +1,249 @@
+#!/usr/bin/env bash
+# Checks the host's settings against the examples of this release (docs/production-environment3.md §6), before
+# anything is pulled, backed up or started. deploy.sh runs it first, and stops the deploy if it finds an error.
+# By hand on the host (as deploy or root, since the settings files are mode 600):
+#   /opt/pesoprint/current/bin/check-env
+# Before the first deploy there's no release yet: run it from the examples downloaded as the README's "Setting up a
+# host" says, e.g. `sudo /tmp/pp/bin/check-env`.
+#
+# Errors (exit 1):
+#   - a settings file that a compose profile in .env needs is missing
+#   - a setting in the example is missing from the host's file, is empty, or still has a placeholder (`...`,
+#     `<account id>`). A setting may be empty only when the comment right above it in the example says "may be empty"
+#   - settings that must match don't: the database URLs against postgres.env, INTERNAL_API_SECRET and
+#     CLERK_SECRET_KEY in api.env and web.env, both Clerk keys from the same instance, SITE_URL, WEB_ORIGINS and
+#     SITE_HOST
+#   - tls mode without the certificate, or the files backup's directory missing or not owned by its user (uid 70)
+# Warnings: settings that aren't in the example (a typo?), a setting given twice, files others can read.
+#
+# It never prints a value: deploy logs end up in the (public) repository's Actions logs.
+set -Eeuo pipefail
+
+root=${PESOPRINT_ROOT:-/opt/pesoprint}
+examples=$(cd "$(dirname "$0")/.." && pwd -P)
+
+errors=0
+warnings=0
+error() {
+	echo "error: $*"
+	errors=$((errors + 1))
+}
+warning() {
+	echo "warning: $*"
+	warnings=$((warnings + 1))
+}
+
+# Settings by "<file>:<name>", where <file> is .env or the service's name (api, web, …).
+declare -A value
+# Names in the example that may stay empty, as "<file>:<name>".
+declare -A may_be_empty
+
+# The value of a line's right-hand side, as Docker Compose reads env files: quotes removed, and for an unquoted
+# value, a " #" comment and trailing spaces dropped.
+unquote() {
+	local v=$1
+	if [[ $v == \"*\" || $v == \'*\' ]] && ((${#v} >= 2)); then
+		v=${v:1:${#v}-2}
+	else
+		v=${v%% #*}
+		v=${v%"${v##*[![:space:]]}"}
+	fi
+	printf '%s' "$v"
+}
+
+# Reads a host settings file into `value`, and its setting names into `names`.
+read_host_file() {
+	local file=$1 path=$2 line name n=0
+	local -A seen=()
+	names=()
+	while IFS= read -r line || [[ -n $line ]]; do
+		n=$((n + 1))
+		line=${line#"${line%%[![:space:]]*}"}
+		[[ -z $line || $line == \#* ]] && continue
+		line=${line#export }
+		if [[ ! $line =~ ^([A-Za-z_][A-Za-z0-9_]*)=(.*)$ ]]; then
+			warning "${path##*/}: line $n isn't NAME=value, so it's ignored here (Docker may not read it either)"
+			continue
+		fi
+		name=${BASH_REMATCH[1]}
+		[[ -n ${seen[$name]:-} ]] && warning "${path##*/}: $name is set twice; the last one wins"
+		seen[$name]=1
+		value["$file:$name"]=$(unquote "${BASH_REMATCH[2]}")
+		names+=("$name")
+	done <"$path"
+}
+
+# Reads an example's setting names into `example_names`, and notes the ones that may be empty.
+read_example() {
+	local file=$1 path=$2 line previous=''
+	example_names=()
+	while IFS= read -r line || [[ -n $line ]]; do
+		if [[ $line =~ ^([A-Za-z_][A-Za-z0-9_]*)= ]]; then
+			[[ $previous == \#* && ${previous,,} == *"may be empty"* ]] && may_be_empty["$file:${BASH_REMATCH[1]}"]=1
+			example_names+=("${BASH_REMATCH[1]}")
+		fi
+		previous=$line
+	done <"$path"
+}
+
+placeholder='\.\.\.|<[^<>@]*>'
+
+# Compares one host file with its example.
+check_file() {
+	local file=$1 path=$2 example=$3 name v
+	local -a names example_names
+	if [[ ! -f $path ]]; then
+		error "$path is missing (copy it from $(basename "$example") in the repository's deploy/)"
+		return
+	fi
+	if [[ ! -r $path ]]; then
+		error "$path can't be read: run this as deploy or root"
+		return
+	fi
+	if [[ $(stat -c %a "$path") != [0-7]00 ]]; then
+		warning "$path can be read by others: chmod 600 it"
+	fi
+	read_host_file "$file" "$path"
+	read_example "$file" "$example"
+	for name in "${example_names[@]}"; do
+		if [[ -z ${value["$file:$name"]+set} ]]; then
+			error "${path##*/}: $name is missing (every line of the example stays, even the ones already right)"
+			continue
+		fi
+		v=${value["$file:$name"]}
+		if [[ -z $v && -z ${may_be_empty["$file:$name"]:-} ]]; then
+			error "${path##*/}: $name is empty"
+		elif [[ $v =~ $placeholder ]]; then
+			error "${path##*/}: $name still has the example's placeholder"
+		fi
+	done
+	for name in "${names[@]}"; do
+		[[ " ${example_names[*]} " == *" $name "* ]] && continue
+		# files-backup.env may add its own rclone remote (e.g. RCLONE_CONFIG_BOX_*).
+		[[ $file == files-backup && $name == RCLONE_CONFIG_* ]] && continue
+		warning "${path##*/}: $name isn't in the example (a typo?)"
+	done
+}
+
+get() {
+	printf '%s' "${value["$1"]:-}"
+}
+
+# Prints "user password host port database" of a postgres:// URL (the password decoded), or nothing.
+parse_database_url() {
+	local re='^postgres(ql)?://([^:@/]+):([^@/]*)@([^:/?]+)(:([0-9]+))?/([^?]+)'
+	[[ $1 =~ $re ]] || return 0
+	local password=${BASH_REMATCH[3]}
+	printf '%s\n' "${BASH_REMATCH[2]}" "$(printf '%b' "${password//%/\\x}")" "${BASH_REMATCH[4]}" \
+		"${BASH_REMATCH[6]:-5432}" "${BASH_REMATCH[7]}"
+}
+
+# A DATABASE_URL against postgres.env, when Postgres runs in the stack.
+check_database_url() {
+	local file=$1 url parts
+	url=$(get "$file:DATABASE_URL")
+	[[ -n $url ]] || return 0
+	mapfile -t parts < <(parse_database_url "$url")
+	if ((${#parts[@]} != 5)); then
+		error "$file.env: DATABASE_URL isn't postgres://<user>:<password>@<host>:<port>/<database>"
+		return
+	fi
+	if ! has_profile postgres; then
+		[[ ${parts[2]} != postgres ]] ||
+			error "$file.env: DATABASE_URL points to the stack's Postgres (host postgres), but the postgres profile is off"
+		return
+	fi
+	[[ ${parts[0]} == "$(get postgres:POSTGRES_USER)" ]] ||
+		error "$file.env: the user in DATABASE_URL isn't POSTGRES_USER from postgres.env"
+	[[ ${parts[1]} == "$(get postgres:POSTGRES_PASSWORD)" ]] ||
+		error "$file.env: the password in DATABASE_URL isn't POSTGRES_PASSWORD from postgres.env"
+	[[ ${parts[2]} == postgres && ${parts[3]} == 5432 ]] ||
+		error "$file.env: DATABASE_URL must point to postgres:5432, the stack's Postgres"
+	[[ ${parts[4]} == "$(get postgres:POSTGRES_DB)" ]] ||
+		error "$file.env: the database in DATABASE_URL isn't POSTGRES_DB from postgres.env"
+}
+
+same() {
+	local a=$1 b=$2 what=$3
+	[[ -z $(get "$a") || -z $(get "$b") || $(get "$a") == "$(get "$b")" ]] || error "$what"
+}
+
+# --- The host's .env, and which profiles it turns on ---
+
+echo "Checking the settings in $root against the examples in $examples"
+check_file .env "$root/.env" "$examples/.env.example"
+profiles=",$(get .env:COMPOSE_PROFILES),"
+has_profile() {
+	[[ $profiles == *",$1,"* ]]
+}
+
+services=(api web)
+has_profile postgres && services+=(postgres)
+has_profile backup && services+=(backup)
+has_profile files-backup && services+=(files-backup)
+has_profile tunnel && services+=(cloudflared)
+for service in "${services[@]}"; do
+	check_file "$service" "$root/env/$service.env" "$examples/env/$service.env.example"
+done
+
+# --- Settings that must agree with each other ---
+
+check_database_url api
+has_profile backup && check_database_url backup
+
+same api:INTERNAL_API_SECRET web:INTERNAL_API_SECRET "INTERNAL_API_SECRET isn't the same in api.env and web.env"
+same api:CLERK_SECRET_KEY web:CLERK_SECRET_KEY "CLERK_SECRET_KEY isn't the same in api.env and web.env"
+
+publishable=$(get web:VITE_CLERK_PUBLISHABLE_KEY)
+secret=$(get web:CLERK_SECRET_KEY)
+if [[ $publishable == pk_live_* && $secret == sk_test_* ]] || [[ $publishable == pk_test_* && $secret == sk_live_* ]]; then
+	error "web.env: VITE_CLERK_PUBLISHABLE_KEY and CLERK_SECRET_KEY are from different Clerk instances (live and test)"
+fi
+
+site_url=$(get web:SITE_URL)
+site_url=${site_url%/}
+first_origin=$(get api:WEB_ORIGINS)
+first_origin=${first_origin%%,*}
+first_origin=${first_origin%/}
+if [[ -n $site_url && -n $first_origin && $site_url != "$first_origin" ]]; then
+	error "SITE_URL in web.env isn't the first of WEB_ORIGINS in api.env (Stripe and emails link to that one)"
+fi
+site_host=$(get .env:SITE_HOST)
+if [[ -n $site_url && -n $site_host && $site_url != "https://$site_host" ]]; then
+	error "SITE_URL in web.env isn't https://<SITE_HOST from .env>"
+fi
+
+s3_endpoint=$(get api:S3_ENDPOINT)
+for service in backup files-backup; do
+	has_profile "$service" || continue
+	r2_endpoint=$(get "$service:RCLONE_CONFIG_R2_ENDPOINT")
+	if [[ -n $s3_endpoint && -n $r2_endpoint && ${s3_endpoint%/} != "${r2_endpoint%/}" ]]; then
+		warning "$service.env: RCLONE_CONFIG_R2_ENDPOINT isn't S3_ENDPOINT from api.env (another account or jurisdiction?)"
+	fi
+done
+
+# --- Files and directories the stack mounts ---
+
+if [[ $(get .env:COMPOSE_FILE) == *docker-compose.tls.yml* ]]; then
+	for cert in origin.pem origin.key; do
+		[[ -f $root/env/certs/$cert ]] || error "tls mode needs $root/env/certs/$cert (the Cloudflare Origin certificate)"
+	done
+	has_profile tunnel && warning "both tls mode (COMPOSE_FILE) and the tunnel profile are on; normally it's one or the other"
+fi
+
+if has_profile files-backup && [[ $(get files-backup:FILES_BACKUP_DEST) == /* ]]; then
+	dir=$(get .env:FILES_BACKUP_DIR)
+	if [[ -z $dir || ! -d $dir ]]; then
+		error "FILES_BACKUP_DIR in .env must be an existing directory, for the files backup (FILES_BACKUP_DEST is a path)"
+	elif [[ $(stat -c %u "$dir") != 70 ]]; then
+		error "FILES_BACKUP_DIR ($dir) must belong to uid 70, the backup image's user: sudo chown 70:70 $dir"
+	fi
+fi
+
+# --- Result ---
+
+if ((errors > 0)); then
+	echo "check-env: $errors error(s), $warnings warning(s). Fix the settings in $root and try again."
+	exit 1
+fi
+echo "check-env: the settings look right ($warnings warning(s))"
