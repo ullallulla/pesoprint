@@ -6,7 +6,7 @@ import { Form, Link, redirect, useNavigation } from 'react-router';
 
 import { Button } from '~/components/ui/button';
 import { ApiRequestError } from '~/lib/api.server';
-import { quoteCart, readCart } from '~/lib/cart.server';
+import { quoteCart, readCart, saveCheckout } from '~/lib/cart.server';
 import { printOptionText } from '~/lib/print-option';
 import { formatPrice } from '~/lib/format';
 import { isCartChanged, startCheckout } from '~/lib/orders.server';
@@ -49,8 +49,11 @@ export async function action(args: Route.ActionArgs) {
     if (hasFiles && !immediateDeliveryConsent) return { error: CONSENT_MISSING, consentMissing: true };
 
     try {
-        const { paymentUrl } = await startCheckout(args, { items, immediateDeliveryConsent });
-        return redirect(paymentUrl);
+        const { orderId, paymentUrl } = await startCheckout(args, { items, immediateDeliveryConsent });
+        // The cart stays as it is until the order is paid (the buyer may come back from Stripe without paying).
+        return redirect(paymentUrl, {
+            headers: { 'Set-Cookie': await saveCheckout(args.request, { orderId, items }) },
+        });
     } catch (error) {
         if (isCartChanged(error)) return redirect('/cart');
         // Stripe unreachable or not set up, or the account is still being created: say so and stay here.

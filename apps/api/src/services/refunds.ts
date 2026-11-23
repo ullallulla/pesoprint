@@ -1,8 +1,9 @@
-import { isPaidStatus } from '@app/shared';
-import { and, eq, ne } from 'drizzle-orm';
+import { isPaidStatus, PAID_ORDER_STATUSES } from '@app/shared';
+import { and, asc, eq, inArray, ne } from 'drizzle-orm';
+import { z } from 'zod';
 
-import type { Database } from '../db/client.ts';
-import { entitlements, orders, type Order } from '../db/schema.ts';
+import type { Database, Transaction } from '../db/client.ts';
+import { entitlements, orderItems, orders, users, type Order } from '../db/schema.ts';
 import { RefundError, type Payments } from '../integrations/stripe.ts';
 import { AppError, conflict, notFound } from '../lib/errors.ts';
 import { queueOrderEmail } from './order-emails.ts';
@@ -36,41 +37,78 @@ export function createRefundsService(
     { now = () => new Date(), onEmailQueued }: RefundsOptions = {},
 ): RefundsService {
     /**
-     * The one place an order changes because of a refund. Only moves forward, and only from the amount it read,
-     * so the webhook and the admin's request arriving together apply it once.
+     * The one place an order changes because of a refund. Locks the order, then asks Stripe for the total refunded
+     * so far: a webhook and the admin's request (or two webhooks) arriving together take turns, and each applies
+     * Stripe's latest total, so none is lost and the order is refunded once.
      */
-    async function applyRefunded(order: Order, refundedCents: number): Promise<void> {
-        if (refundedCents === order.refundedCents) return;
-        if (refundedCents < order.refundedCents) {
-            // A pending refund that failed: the money is still ours, and the admin decides what to do.
-            console.error(
-                `Order ${order.id}: Stripe now reports ${refundedCents} cents refunded, less than the ${order.refundedCents} recorded. Check the payment in Stripe.`,
-            );
-            return;
-        }
-        const full = refundedCents >= order.totalCents;
+    async function applyRefunded(orderId: string, paymentIntentId: string, stripe: Payments): Promise<void> {
         const refunded = await db.transaction(async (tx) => {
-            const [row] = await tx
+            const [order] = await tx.select().from(orders).where(eq(orders.id, orderId)).for('update');
+            if (!order || order.status === 'refunded') return false;
+            const { refundedCents } = await stripe.getRefunds(paymentIntentId);
+            if (refundedCents === order.refundedCents) return false;
+            if (refundedCents < order.refundedCents) {
+                // A pending refund that failed: the money is still ours, and the admin decides what to do.
+                console.error(
+                    `Order ${order.id}: Stripe now reports ${refundedCents} cents refunded, less than the ${order.refundedCents} recorded. Check the payment in Stripe.`,
+                );
+                return false;
+            }
+            const full = refundedCents >= order.totalCents;
+            await tx
                 .update(orders)
                 .set({
                     refundedCents: Math.min(refundedCents, order.totalCents),
                     ...(full && { status: 'refunded' as const, refundedAt: now() }),
                 })
-                .where(
-                    and(
-                        eq(orders.id, order.id),
-                        eq(orders.refundedCents, order.refundedCents),
-                        ne(orders.status, 'refunded'),
-                    ),
-                )
-                .returning({ id: orders.id });
-            if (!row || !full) return false;
-            // A refunded file is no longer the buyer's.
-            await tx.delete(entitlements).where(eq(entitlements.orderId, order.id));
+                .where(eq(orders.id, order.id));
+            if (!full) return false;
+            await revokeFiles(tx, order);
             await queueOrderEmail(tx, order.id, 'order_refunded');
             return true;
         });
-        if (refunded) onEmailQueued?.(order.id);
+        if (refunded) onEmailQueued?.(orderId);
+    }
+
+    /**
+     * A refunded order's files are no longer the buyer's, unless another of their paid orders bought the same file
+     * (e.g. two checkouts paid at once, one of them refunded): that order becomes the record instead.
+     */
+    async function revokeFiles(tx: Transaction, order: Order): Promise<void> {
+        if (!order.userId) {
+            await tx.delete(entitlements).where(eq(entitlements.orderId, order.id));
+            return;
+        }
+        // The buyer's refunds take turns here, so two of their orders refunded at once can't each hand the files
+        // to the other. Doesn't block their checkouts, which only take a key-share lock on the row.
+        await tx.select({ id: users.id }).from(users).where(eq(users.id, order.userId)).for('no key update');
+        const taken = await tx
+            .delete(entitlements)
+            .where(eq(entitlements.orderId, order.id))
+            .returning({ productId: entitlements.productId });
+        if (taken.length === 0) return;
+        const stillPaid = await tx
+            .selectDistinctOn([orderItems.productId], { productId: orderItems.productId, orderId: orders.id })
+            .from(orderItems)
+            .innerJoin(orders, eq(orders.id, orderItems.orderId))
+            .where(
+                and(
+                    eq(orders.userId, order.userId),
+                    ne(orders.id, order.id),
+                    inArray(orders.status, [...PAID_ORDER_STATUSES]),
+                    eq(orderItems.type, 'digital'),
+                    inArray(
+                        orderItems.productId,
+                        taken.map((row) => row.productId),
+                    ),
+                ),
+            )
+            .orderBy(orderItems.productId, asc(orders.paidAt));
+        if (stillPaid.length === 0) return;
+        await tx
+            .insert(entitlements)
+            .values(stillPaid.map((row) => ({ userId: order.userId!, productId: row.productId, orderId: row.orderId })))
+            .onConflictDoNothing();
     }
 
     return {
@@ -99,13 +137,21 @@ export function createRefundsService(
                 console.error(`Refunding order ${order.id} failed:`, error);
                 throw new AppError(502, 'internal_error', "Couldn't reach Stripe. Try again in a moment.");
             }
-            await applyRefunded(order, await payments.getRefundedCents(order.stripePaymentIntentId));
+            await applyRefunded(order.id, order.stripePaymentIntentId, payments);
         },
 
         async syncRefunds(paymentIntentId) {
             if (!payments) throw paymentsUnavailable();
-            const [order] = await db.select().from(orders).where(eq(orders.stripePaymentIntentId, paymentIntentId));
+            let [order] = await db.select().from(orders).where(eq(orders.stripePaymentIntentId, paymentIntentId));
             if (!order) {
+                // The payment is recorded on its order only once the order is paid, so a refund that arrives first
+                // finds its order through the payment's metadata (set at checkout).
+                const { orderId } = await payments.getRefunds(paymentIntentId);
+                if (orderId && z.uuid().safeParse(orderId).success) {
+                    [order] = await db.select().from(orders).where(eq(orders.id, orderId));
+                }
+            }
+            if (!order || (order.stripePaymentIntentId && order.stripePaymentIntentId !== paymentIntentId)) {
                 // Another environment sharing the Stripe account (e.g. local and staging in test mode).
                 console.warn(`Stripe refund webhook for payment ${paymentIntentId}, which no order here has. Ignored.`);
                 return;
@@ -115,7 +161,7 @@ export function createRefundsService(
                 throw new Error(`Order ${order.id} was refunded before it was recorded as paid. Retry later.`);
             }
             if (order.status === 'cancelled') return;
-            await applyRefunded(order, await payments.getRefundedCents(paymentIntentId));
+            await applyRefunded(order.id, paymentIntentId, payments);
         },
     };
 }

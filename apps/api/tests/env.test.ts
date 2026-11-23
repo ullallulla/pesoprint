@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'vite-plus/test';
 
-import { loadEnv } from '../src/env.ts';
+import { loadDatabaseUrl, loadEnv } from '../src/env.ts';
 
 const base = { DATABASE_URL: 'postgres://u:p@localhost/db', CLERK_SECRET_KEY: 'sk_test_x' };
 
@@ -59,5 +59,26 @@ describe('loadEnv', () => {
 
     test('outside production, those settings stay optional', () => {
         expect(loadEnv({ ...base, NODE_ENV: 'development' }).STRIPE_SECRET_KEY).toBeUndefined();
+    });
+
+    test('the restore test can run the production image without the live keys', () => {
+        const env = loadEnv({ ...base, NODE_ENV: 'production', SKIP_PRODUCTION_SETTINGS_CHECK: 'true' });
+        expect(env.NODE_ENV).toBe('production');
+        expect(env.STRIPE_SECRET_KEY).toBeUndefined();
+    });
+
+    test('WEB_ORIGINS with no origin in it is refused', () => {
+        expect(() => loadEnv({ ...base, ...production, WEB_ORIGINS: ' , ' })).toThrow(/at least one origin/);
+    });
+});
+
+describe('loadDatabaseUrl', () => {
+    test('needs only DATABASE_URL, even in production', () => {
+        expect(loadDatabaseUrl({ NODE_ENV: 'production', DATABASE_URL: base.DATABASE_URL })).toBe(base.DATABASE_URL);
+    });
+
+    test('refuses a missing or non-postgres URL', () => {
+        expect(() => loadDatabaseUrl({ DATABASE_URL: '' })).toThrow(/DATABASE_URL must be a postgres/);
+        expect(() => loadDatabaseUrl({ DATABASE_URL: 'mysql://h/db' })).toThrow(/DATABASE_URL must be a postgres/);
     });
 });

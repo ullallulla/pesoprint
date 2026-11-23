@@ -118,6 +118,9 @@ describe('refunds without a database', () => {
  */
 function createFakeRefunds() {
     const refunded = new Map<string, number>();
+    /** Each payment's `order_id` metadata. */
+    const orderIds = new Map<string, string>();
+    let afterNextRead: (() => void) | null = null;
     const requests: { paymentIntentId: string; amountCents: number; idempotencyKey: string }[] = [];
     const seenKeys = new Set<string>();
     let refusal: string | null = null;
@@ -125,8 +128,15 @@ function createFakeRefunds() {
         requests: typeof requests;
         refundInDashboard(paymentIntentId: string, amountCents: number): void;
         refuseNext(message: string): void;
+        paysFor(paymentIntentId: string, orderId: string): void;
+        /** Runs once, right after the next `getRefunds` read its answer: something changing at that moment. */
+        afterNextRead(run: () => void): void;
     } = {
         requests,
+        paysFor: (id, orderId) => orderIds.set(id, orderId),
+        afterNextRead: (run) => {
+            afterNextRead = run;
+        },
         refundInDashboard: (id, amount) => refunded.set(id, (refunded.get(id) ?? 0) + amount),
         refuseNext: (message) => {
             refusal = message;
@@ -145,7 +155,13 @@ function createFakeRefunds() {
             seenKeys.add(request.idempotencyKey);
             payments.refundInDashboard(request.paymentIntentId, request.amountCents);
         },
-        getRefundedCents: async (id) => refunded.get(id) ?? 0,
+        async getRefunds(id) {
+            const answer = { refundedCents: refunded.get(id) ?? 0, orderId: orderIds.get(id) ?? null };
+            const run = afterNextRead;
+            afterNextRead = null;
+            run?.();
+            return answer;
+        },
         verifyWebhook: createStripePayments({ secretKey: 'sk_test_unused', webhookSecret: WEBHOOK_SECRET })
             .verifyWebhook,
     };
@@ -330,7 +346,7 @@ describe.skipIf(!url)('refunds (integration)', () => {
 
         // Both clicks reached Stripe with the same key, so Stripe made one refund.
         expect(new Set(payments.requests.map((request) => request.idempotencyKey)).size).toBe(1);
-        expect(await payments.getRefundedCents(order.stripePaymentIntentId!)).toBe(2230);
+        expect((await payments.getRefunds(order.stripePaymentIntentId!)).refundedCents).toBe(2230);
         expect((await owned()).map((row) => row.productId)).toEqual([other!.id]);
         expect(queued).toEqual([order.id]);
     });
@@ -423,6 +439,69 @@ describe.skipIf(!url)('refunds (integration)', () => {
 
         expect((await webhook(order.stripePaymentIntentId!)).status).toBe(500);
         expect(await reload(order.id)).toMatchObject({ status: 'pending', refundedCents: 0 });
+    });
+
+    test('a partial and a full refund whose webhooks overlap end with the order refunded', async () => {
+        const order = await shippedOrder();
+        const intent = order.stripePaymentIntentId!;
+        payments.refundInDashboard(intent, 490);
+        let second: Promise<Response> | undefined;
+        // The rest is refunded, and its webhook arrives, while the first webhook is still being handled.
+        payments.afterNextRead(() => {
+            payments.refundInDashboard(intent, 1740);
+            second = webhook(intent);
+        });
+
+        expect((await webhook(intent)).status).toBe(200);
+        expect((await second!).status).toBe(200);
+
+        expect(await reload(order.id)).toMatchObject({ status: 'refunded', refundedCents: 2230 });
+        expect(await owned()).toEqual([]);
+        expect(queued).toEqual([order.id]);
+    });
+
+    test('refunding one of two orders that bought the same file leaves the file with the buyer', async () => {
+        const first = await shippedOrder({}, { withPrint: false });
+        const second = await shippedOrder({ paidAt: new Date('2026-11-17T10:05:00Z') }, { withPrint: false });
+        expect(await owned()).toEqual([expect.objectContaining({ orderId: first.id })]);
+
+        payments.refundInDashboard(first.stripePaymentIntentId!, 450);
+        expect((await webhook(first.stripePaymentIntentId!)).status).toBe(200);
+
+        expect(await reload(first.id)).toMatchObject({ status: 'refunded' });
+        expect(await owned()).toEqual([expect.objectContaining({ productId: fileProductId, orderId: second.id })]);
+
+        // Refunding the other one too takes the file back.
+        payments.refundInDashboard(second.stripePaymentIntentId!, 450);
+        expect((await webhook(second.stripePaymentIntentId!)).status).toBe(200);
+        expect(await owned()).toEqual([]);
+    });
+
+    test('a refund that arrives before the payment is recorded finds its order through the metadata', async () => {
+        const intent = 'pi_refunded_before_paid';
+        const order = await shippedOrder({
+            status: 'pending',
+            paidAt: null,
+            carrier: null,
+            trackingNumber: null,
+            shippedAt: null,
+            stripePaymentIntentId: null,
+        });
+        payments.paysFor(intent, order.id);
+        payments.refundInDashboard(intent, 2230);
+
+        // Not acknowledged, so Stripe delivers it again...
+        expect((await webhook(intent)).status).toBe(500);
+        expect(await reload(order.id)).toMatchObject({ status: 'pending', refundedCents: 0 });
+
+        // ...after the payment's own webhook has recorded it.
+        await db
+            .update(orders)
+            .set({ status: 'paid', paidAt: NOW, stripePaymentIntentId: intent })
+            .where(eq(orders.id, order.id));
+        expect((await webhook(intent)).status).toBe(200);
+        expect(await reload(order.id)).toMatchObject({ status: 'refunded', refundedCents: 2230 });
+        expect(await owned()).toEqual([]);
     });
 
     test('a refund webhook for a payment no order here has is acknowledged and ignored', async () => {

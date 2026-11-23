@@ -30,11 +30,22 @@ const PRODUCTION_KEYS = [
     ...STORAGE_KEYS,
 ] as const;
 
+const databaseUrlSchema = z.url({ protocol: /^postgres(ql)?$/, error: 'DATABASE_URL must be a postgres:// URL' });
+
 const envSchema = z
     .object({
         NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
         PORT: z.coerce.number().int().positive().default(3001),
-        DATABASE_URL: z.url({ protocol: /^postgres(ql)?$/, error: 'DATABASE_URL must be a postgres:// URL' }),
+        DATABASE_URL: databaseUrlSchema,
+        /**
+         * `true` lets NODE_ENV=production start without the PRODUCTION_KEYS. Only for the restore test
+         * (deploy/restore.sh), which runs the production image against a restored database with no live keys;
+         * never in a real environment. Staying in production mode keeps queued order emails queued.
+         */
+        SKIP_PRODUCTION_SETTINGS_CHECK: z
+            .enum(['true', 'false'])
+            .default('false')
+            .transform((value) => value === 'true'),
         LOG_REQUESTS: z
             .enum(['true', 'false'])
             .default('true')
@@ -55,7 +66,8 @@ const envSchema = z
                     .split(',')
                     .map((origin) => origin.trim())
                     .filter(Boolean),
-            ),
+            )
+            .refine((origins) => origins.length > 0, 'WEB_ORIGINS must list at least one origin'),
         /**
          * Shared with the web app (same value on both). Lets the web server tell the API a visitor's IP for
          * download rate limits. Optional: without it the API uses the IP its own proxy reports.
@@ -129,18 +141,9 @@ export type Env = z.infer<typeof envSchema>;
  * seed script, so settings from two environments are never mixed.
  */
 export function loadEnv(source: NodeJS.ProcessEnv = process.env, { envFile }: { envFile?: string } = {}): Env {
-    if (envFile !== undefined && !existsSync(envFile)) {
-        throw new Error(`The settings file ${envFile} does not exist.`);
-    }
-    // src/env.ts and the bundled dist/*.mjs both sit one level below the package root.
-    const file = envFile ?? fileURLToPath(new URL('../.env', import.meta.url));
-    if (source === process.env && existsSync(file)) {
-        process.loadEnvFile(file);
-    }
-
-    // An empty value means "not set", as `KEY=` in a Docker env file gives an empty string, not a missing setting.
-    const values = Object.fromEntries(Object.entries(source).filter(([, value]) => value !== ''));
-    const missing = values.NODE_ENV === 'production' ? PRODUCTION_KEYS.filter((key) => values[key] === undefined) : [];
+    const values = readValues(source, envFile);
+    const checkProduction = values.NODE_ENV === 'production' && values.SKIP_PRODUCTION_SETTINGS_CHECK !== 'true';
+    const missing = checkProduction ? PRODUCTION_KEYS.filter((key) => values[key] === undefined) : [];
     const result = envSchema.safeParse(values);
     if (!result.success || missing.length > 0) {
         const problems = [
@@ -150,4 +153,30 @@ export function loadEnv(source: NodeJS.ProcessEnv = process.env, { envFile }: { 
         throw new Error(`Invalid environment variables:\n${problems.join('\n')}`);
     }
     return result.data;
+}
+
+/**
+ * Only DATABASE_URL, for the migrations: they need nothing else, so they run wherever the database is reachable
+ * (e.g. the restore test) without the API's other settings.
+ */
+export function loadDatabaseUrl(source: NodeJS.ProcessEnv = process.env): string {
+    const result = databaseUrlSchema.safeParse(readValues(source).DATABASE_URL);
+    if (!result.success) {
+        throw new Error(`Invalid environment variables:\n${z.prettifyError(result.error)}`);
+    }
+    return result.data;
+}
+
+/** Loads the settings file into process.env (when reading process.env), and drops empty values. */
+function readValues(source: NodeJS.ProcessEnv, envFile?: string): Record<string, string | undefined> {
+    if (envFile !== undefined && !existsSync(envFile)) {
+        throw new Error(`The settings file ${envFile} does not exist.`);
+    }
+    // src/env.ts and the bundled dist/*.mjs both sit one level below the package root.
+    const file = envFile ?? fileURLToPath(new URL('../.env', import.meta.url));
+    if (source === process.env && existsSync(file)) {
+        process.loadEnvFile(file);
+    }
+    // An empty value means "not set", as `KEY=` in a Docker env file gives an empty string, not a missing setting.
+    return Object.fromEntries(Object.entries(source).filter(([, value]) => value !== ''));
 }

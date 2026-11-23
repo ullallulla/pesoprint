@@ -12,6 +12,7 @@ import {
 } from '@app/shared';
 import { getAuth } from '@clerk/react-router/server';
 import { createCookie, data, redirect, type LoaderFunctionArgs } from 'react-router';
+import { z } from 'zod';
 
 import { apiFetch } from '~/lib/api.server';
 
@@ -43,6 +44,55 @@ export function saveCart(request: Request, items: CartItem[]): Promise<string> {
     return items.length === 0
         ? cartCookie.serialize('', { secure, maxAge: 0 })
         : cartCookie.serialize(items, { secure });
+}
+
+/**
+ * What the last checkout took from the cart, and for which order. The order's page (where Stripe sends the
+ * buyer back) removes exactly that from the cart once the order is paid, and only once: opening an old order
+ * later leaves the cart as it is then.
+ */
+export const CHECKOUT_COOKIE = 'pesoprint_checkout';
+
+const checkoutCookie = createCookie(CHECKOUT_COOKIE, {
+    path: '/',
+    httpOnly: true,
+    sameSite: 'lax',
+    // A bank payment can take a few days to be confirmed.
+    maxAge: 60 * 60 * 24 * 7,
+});
+
+const checkoutRecordSchema = z.object({ orderId: z.uuid(), items: cartItemsSchema });
+export type CheckoutRecord = z.infer<typeof checkoutRecordSchema>;
+
+/** A `Set-Cookie` header that remembers `items` went into the order `orderId`. */
+export function saveCheckout(request: Request, record: CheckoutRecord): Promise<string> {
+    return checkoutCookie.serialize(record, { secure: new URL(request.url).protocol === 'https:' });
+}
+
+/** The last checkout's record; `null` if there's none (or it's unreadable). */
+export async function readCheckout(request: Request): Promise<CheckoutRecord | null> {
+    const value: unknown = await checkoutCookie.parse(request.headers.get('cookie')).catch(() => null);
+    const parsed = checkoutRecordSchema.safeParse(value);
+    return parsed.success ? parsed.data : null;
+}
+
+/** A `Set-Cookie` header that forgets the last checkout. */
+export function clearCheckout(request: Request): Promise<string> {
+    return checkoutCookie.serialize('', { secure: new URL(request.url).protocol === 'https:', maxAge: 0 });
+}
+
+/**
+ * The cart without what a checkout took: its files, and as many copies of each print (same material and
+ * colour) as it bought. Copies added since stay.
+ */
+export function withoutBought(cart: CartItem[], bought: CartItem[]): CartItem[] {
+    return cart.flatMap((item) => {
+        const match = bought.find((entry) => sameItem(entry, item));
+        if (!match) return [item];
+        if (item.type !== 'print' || match.type !== 'print') return [];
+        const quantity = item.quantity - match.quantity;
+        return quantity > 0 ? [{ ...item, quantity }] : [];
+    });
 }
 
 /**

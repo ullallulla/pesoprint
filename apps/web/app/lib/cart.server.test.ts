@@ -7,11 +7,15 @@ import {
     cartChanged,
     cartCount,
     cartItemFromForm,
+    clearCheckout,
     isInCart,
     readCart,
+    readCheckout,
     removeFromCart,
     saveCart,
+    saveCheckout,
     setQuantity,
+    withoutBought,
 } from './cart.server';
 
 const id = (n: number) => `0190b6a0-0000-7000-8000-${String(n).padStart(12, '0')}`;
@@ -178,5 +182,28 @@ describe('cartChanged', () => {
         const response = await cartChanged(request, [item(1)], '/models/hook');
         expect(response).not.toBeInstanceOf(Response);
         expect(response).toMatchObject({ data: { error: null }, init: { headers: expect.any(Object) } });
+    });
+});
+
+describe('after a checkout is paid', () => {
+    test('the checkout cookie remembers the order and what went into it, until cleared', async () => {
+        const record = { orderId: id(500), items: [item(1), print(2, 900, 2)] };
+        const setCookie = await saveCheckout(new Request('https://shop.test/checkout'), record);
+        expect(setCookie).toContain('HttpOnly');
+        expect(setCookie).toContain('SameSite=Lax');
+        expect(await readCheckout(requestWith(setCookie))).toEqual(record);
+
+        expect(await clearCheckout(new Request('https://shop.test/'))).toContain('Max-Age=0');
+        expect(await readCheckout(new Request('https://shop.test/'))).toBeNull();
+    });
+
+    test('only what was bought leaves the cart: other colours and copies added since stay', () => {
+        const cart = [item(1), item(3), print(2, 900, 3), print(2, 901, 1), print(4, null, 1)];
+        const bought = [item(1), print(2, 900, 2), print(4, null, 1)];
+        expect(withoutBought(cart, bought)).toEqual([item(3), print(2, 900, 1), print(2, 901, 1)]);
+    });
+
+    test('a cart that changed completely since is left as it is', () => {
+        expect(withoutBought([item(7)], [item(1), print(2)])).toEqual([item(7)]);
     });
 });
