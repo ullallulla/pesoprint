@@ -13,6 +13,23 @@ const STORAGE_KEYS = [
     'PUBLIC_ASSETS_URL',
 ] as const;
 
+/**
+ * Optional elsewhere, but a production shop is broken without them (checkout, webhooks, emails, uploads, rate
+ * limits or error reports), so with NODE_ENV=production the API refuses to start until they're set. WEB_ORIGINS
+ * has a localhost default for development, so it must be set explicitly too.
+ */
+const PRODUCTION_KEYS = [
+    'WEB_ORIGINS',
+    'CLERK_WEBHOOK_SIGNING_SECRET',
+    'INTERNAL_API_SECRET',
+    'IP_HASH_SECRET',
+    'STRIPE_SECRET_KEY',
+    'STRIPE_WEBHOOK_SECRET',
+    'RESEND_API_KEY',
+    'SENTRY_DSN',
+    ...STORAGE_KEYS,
+] as const;
+
 const envSchema = z
     .object({
         NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
@@ -121,9 +138,16 @@ export function loadEnv(source: NodeJS.ProcessEnv = process.env, { envFile }: { 
         process.loadEnvFile(file);
     }
 
-    const result = envSchema.safeParse(source);
-    if (!result.success) {
-        throw new Error(`Invalid environment variables:\n${z.prettifyError(result.error)}`);
+    // An empty value means "not set", as `KEY=` in a Docker env file gives an empty string, not a missing setting.
+    const values = Object.fromEntries(Object.entries(source).filter(([, value]) => value !== ''));
+    const missing = values.NODE_ENV === 'production' ? PRODUCTION_KEYS.filter((key) => values[key] === undefined) : [];
+    const result = envSchema.safeParse(values);
+    if (!result.success || missing.length > 0) {
+        const problems = [
+            ...(missing.length > 0 ? [`✖ Required in production, but not set: ${missing.join(', ')}`] : []),
+            ...(result.success ? [] : [z.prettifyError(result.error)]),
+        ];
+        throw new Error(`Invalid environment variables:\n${problems.join('\n')}`);
     }
     return result.data;
 }

@@ -2,6 +2,7 @@
 # Deploys one commit of Pesoprint (docs/production-environment3.md §7.3). bin/deploy-wrapper downloads this release
 # into /opt/pesoprint/releases/<sha>/ and runs `releases/<sha>/deploy.sh <sha>` while holding the deploy lock.
 #
+# 0. Check the host's settings against this release's examples (bin/check-env). Stop if they're wrong.
 # 1. Pull the images tagged sha-<sha> (and build the backup image).
 # 2. Back up the database (pre-deploy/ in the backups bucket). Stop if that fails.
 # 3. Run the migrations with the new API image.
@@ -78,6 +79,8 @@ check() {
 trap 'log "Deploy of $sha failed. The running release stays as it was (but migrations that ran stay applied)"; record failed' ERR
 
 log "Deploying $sha${previous:+ (running now: $(basename "$previous"))}"
+# Before compose reads anything: a missing settings file would stop `compose config` with a less helpful message.
+"$release/bin/check-env"
 services=$(new config --services)
 has() {
 	grep -qx "$1" <<<"$services"

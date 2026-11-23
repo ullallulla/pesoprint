@@ -237,7 +237,8 @@ login gate, with Stripe in a sandbox, until go-live. Stripe and Clerk reach the 
     ```bash
     mkdir -p /tmp/pp
     curl -fsSL https://codeload.github.com/ullallulla/pesoprint/tar.gz/master |
-        tar -xz -C /tmp/pp --strip-components=2 --wildcards '*/deploy/.env.example' '*/deploy/env/'
+        tar -xz -C /tmp/pp --strip-components=2 --wildcards '*/deploy/.env.example' '*/deploy/env/' \
+            '*/deploy/bin/check-env'
     sudo install -d -o deploy -g deploy -m 700 /opt/pesoprint/env
     sudo install -o deploy -g deploy -m 600 /tmp/pp/.env.example /opt/pesoprint/.env
     for f in api web postgres backup files-backup cloudflared; do
@@ -247,17 +248,20 @@ login gate, with Stripe in a sandbox, until go-live. Stripe and Clerk reach the 
 
     Edit them with `sudoedit`, and fill in **only** the empty values and the `<…>`/`...` placeholders. **Every other
     line stays**: those values are already right, and a missing line breaks something that may only show up later
-    (the first production deploy failed several times on lines that had gone missing). Before the first deploy,
-    compare the setting names with the examples (it prints nothing when every setting is there):
+    (the first production deploy failed several times on lines that had gone missing). A setting may stay empty only
+    when the comment above it in the example says so. Before the first deploy (after step 5), check them:
 
     ```bash
-    for f in api web postgres backup files-backup cloudflared; do
-        echo "== $f"
-        diff <(grep -oE '^[A-Z0-9_]+=' /tmp/pp/env/$f.env.example | sort) \
-            <(sudo grep -oE '^[A-Z0-9_]+=' /opt/pesoprint/env/$f.env | sort)
-    done
+    sudo /tmp/pp/bin/check-env
     rm -rf /tmp/pp
     ```
+
+    It compares the files with the examples and with each other, and lists what's wrong by setting name, never by
+    value: missing settings, empty ones, leftover placeholders, database URLs that don't match `postgres.env`, secrets
+    that must be the same in `api.env` and `web.env`, and the files backup's directory. Every deploy runs it first
+    (from the release being deployed) and stops before touching anything if it finds an error. By hand later:
+    `sudo /opt/pesoprint/current/bin/check-env`. On top of that, the API and the web server refuse to start in
+    production without the settings they need, and say which ones.
 
     Postgres reads `POSTGRES_USER`, `POSTGRES_PASSWORD` and `POSTGRES_DB` **only when it creates its database**, on
     the first start. If one was wrong then, fixing the file changes nothing: while the database is still empty,
@@ -295,7 +299,7 @@ On the host, `/opt/pesoprint` then looks like this after a deploy:
    full SHA (to go back to an earlier commit, for example).
 
 The workflow checks that the commit is on `master`, that CI passed and that both images are public, joins the tailnet
-and sends the SHA to the VM. There `deploy.sh` backs up the database (`pre-deploy/`), runs the migrations, starts the
+and sends the SHA to the VM. There `deploy.sh` checks the settings (`bin/check-env`), backs up the database (`pre-deploy/`), runs the migrations, starts the
 new release and checks the API's `/api/health` and `/readyz` through Caddy. If those checks fail, it goes back to the
 previous release by itself and the run fails. **Migrations aren't undone**, so a migration must keep working with the
 previous release. The run's Summary page shows the deploy's output.

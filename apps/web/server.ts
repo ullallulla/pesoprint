@@ -17,6 +17,8 @@ import express from 'express';
 import morgan from 'morgan';
 import type { ServerBuild } from 'react-router';
 
+import { getEnv } from './app/env.server.ts';
+
 // Report errors to Sentry, before the app loads. Errors only. Every console.error becomes an event: that includes
 // React Router's own log of each error in a loader, an action or rendering. The release comes from SENTRY_RELEASE,
 // set in the Docker image (or the host's commit variable, e.g. Render's). The browser gets these settings from the
@@ -39,6 +41,10 @@ if (process.env.SENTRY_DSN) {
         integrations: [Sentry.captureConsoleIntegration({ levels: ['error'] })],
     });
 }
+
+// Check the settings before serving anything. With missing or invalid ones the server stops here with a list of
+// them, so a deploy fails (and rolls back) instead of starting a site whose pages fail.
+getEnv();
 
 const build = (await import(pathToFileURL(resolve('build/server/index.js')).href)) as ServerBuild;
 
